@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model accounting_invoice_lines {
+  id                    BigInt              @id @default(autoincrement())
+  accounting_invoice_id BigInt
+  description           String?             @db.VarChar(500)
+  quantity              Decimal?            @db.Decimal(12, 2)
+  unit_price            Decimal?            @db.Decimal(12, 2)
+  amount                Decimal?            @db.Decimal(12, 2)
+  sort_order            Int                 @default(0)
+  created_at            DateTime            @default(now()) @db.Timestamptz(6)
+  accounting_invoices   accounting_invoices @relation(fields: [accounting_invoice_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([accounting_invoice_id], map: "idx_accounting_invoice_lines_invoice")
+}
+
+model accounting_invoices {
+  id                       BigInt                     @id @default(autoincrement())
+  company                  String                     @db.VarChar(20)
+  master_order_number      String?                    @db.VarChar(100)
+  order_number             String?                    @db.VarChar(100)
+  contract_date            DateTime?                  @db.Date
+  contract_price           Decimal?                   @db.Decimal(12, 2)
+  broker_company           String?                    @db.VarChar(200)
+  broker_load_number       String?                    @db.VarChar(100)
+  from_to                  String?                    @db.VarChar(50)
+  invoice_number           String                     @unique @db.VarChar(50)
+  invoice_date             DateTime?                  @db.Date
+  invoice_price            Decimal?                   @db.Decimal(12, 2)
+  check_date               DateTime?                  @db.Date
+  check_amount             Decimal?                   @db.Decimal(12, 2)
+  check_number             String?                    @db.VarChar(100)
+  deduction                String?                    @db.VarChar(200)
+  rts                      String?                    @db.VarChar(200)
+  difference               String?                    @db.VarChar(200)
+  notes                    String?
+  bill_to                  String?                    @db.VarChar(200)
+  description              String?
+  quantity                 Decimal?                   @db.Decimal(12, 2)
+  unit_price               Decimal?                   @db.Decimal(12, 2)
+  pickup_date              DateTime?                  @db.Date
+  pickup_company           String?                    @db.VarChar(200)
+  pickup_address           String?                    @db.VarChar(300)
+  drop_date                DateTime?                  @db.Date
+  drop_company             String?                    @db.VarChar(200)
+  drop_address             String?                    @db.VarChar(300)
+  created_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  created_by               BigInt?
+  updated_by               BigInt?
+  accounting_invoice_lines accounting_invoice_lines[]
+
+  @@index([check_date], map: "idx_accounting_invoices_check_date")
+  @@index([company], map: "idx_accounting_invoices_company")
+  @@index([invoice_date], map: "idx_accounting_invoices_invoice_date")
+}
