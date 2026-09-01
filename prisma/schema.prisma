@@ -61,3 +61,13 @@ model accounting_invoices {
   @@index([company], map: "idx_accounting_invoices_company")
   @@index([invoice_date], map: "idx_accounting_invoices_invoice_date")
 }
+
+model users {
+  id            BigInt   @id @default(autoincrement())
+  username      String   @unique @db.VarChar(50)
+  password_hash String
+  name          String?  @db.VarChar(100)
+  role          String   @default("user") @db.VarChar(50)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+}
