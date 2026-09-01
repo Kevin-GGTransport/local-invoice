@@ -37,7 +37,9 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const raw = searchParams.get("callbackUrl");
   const callbackUrl =
-    raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/dashboard";
+    raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("\\")
+      ? raw
+      : "/dashboard";
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
