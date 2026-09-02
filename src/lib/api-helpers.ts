@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server"
 import type { Session } from "next-auth"
 import { auth } from "@/lib/auth"
+import type { ApiResponse } from "@/lib/api/types"
 
 /** 鉴权：无 session 时返回 401 响应（调用方直接 return error） */
 export async function requireSession(): Promise<{
@@ -13,7 +14,7 @@ export async function requireSession(): Promise<{
 }> {
   const session = await auth().catch(() => null)
   if (!session?.user) {
-    return { session: null, error: NextResponse.json({ error: "未授权" }, { status: 401 }) }
+    return { session: null, error: jsonError("未授权", 401) }
   }
   return { session, error: null }
 }
@@ -25,17 +26,34 @@ export function userIdBigint(session: Session | null): bigint | null {
   return BigInt(id)
 }
 
-/** BigInt 安全的 JSON 成功响应 */
-export function jsonOk(data: unknown, status = 200): NextResponse {
+/** BigInt 安全的统一成功响应：{ success: true, data } */
+export function jsonOk<TData>(data: TData, status = 200): NextResponse {
+  const payload: ApiResponse<TData> = { success: true, data }
   return new NextResponse(
-    JSON.stringify(data, (_key, value) => (typeof value === "bigint" ? value.toString() : value)),
-    { status, headers: { "Content-Type": "application/json" } }
+    JSON.stringify(payload, (_key, value) =>
+      typeof value === "bigint" ? value.toString() : value
+    ),
+    {
+      status,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    }
   )
 }
 
-/** 错误响应（中文消息） */
+/** 统一错误响应：{ success: false, error } */
 export function jsonError(message: string, status: number): NextResponse {
-  return NextResponse.json({ error: message }, { status })
+  return new NextResponse(JSON.stringify({ success: false, error: message }), {
+    status,
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+  })
+}
+
+/** 读取统一 JSON 请求体；非法或空 JSON 时返回空对象，交给 Zod 输出业务校验错误 */
+export async function readJsonBody(request: Request): Promise<Record<string, unknown>> {
+  const body = await request.json().catch(() => null)
+  return body !== null && typeof body === "object" && !Array.isArray(body)
+    ? (body as Record<string, unknown>)
+    : {}
 }
 
 /** Prisma 已知错误码 → 中文 HTTP 响应，其余记日志返 500 */

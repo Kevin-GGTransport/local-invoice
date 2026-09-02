@@ -21,7 +21,7 @@ export async function DELETE(request: NextRequest) {
       where: { id: { in: ids } },
     })
 
-    return jsonOk({ data: { count: result.count } })
+    return jsonOk({ count: result.count })
   } catch (err) {
     return handleDbError(err, "批量删除陆运账单失败")
   }

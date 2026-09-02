@@ -12,7 +12,14 @@ import {
 } from "@/lib/finance/accounting-invoice-lines"
 import { toInvoiceUpdateData } from "@/lib/finance/accounting-invoice-input"
 import { accountingInvoiceUpdateSchema } from "@/lib/validations/accounting-invoice"
-import { requireSession, userIdBigint, jsonOk, jsonError, handleDbError } from "@/lib/api-helpers"
+import {
+  requireSession,
+  userIdBigint,
+  jsonOk,
+  jsonError,
+  handleDbError,
+  readJsonBody,
+} from "@/lib/api-helpers"
 
 function parseId(raw: string): bigint | null {
   return /^\d+$/.test(raw) ? BigInt(raw) : null
@@ -36,7 +43,7 @@ export async function GET(
     })
     if (!record) return jsonError("记录不存在", 404)
 
-    return jsonOk({ data: record })
+    return jsonOk(record)
   } catch (err) {
     return handleDbError(err, "查询陆运账单失败")
   }
@@ -54,7 +61,7 @@ export async function PUT(
     const id = parseId(raw)
     if (id == null) return jsonError("无效的记录 ID", 400)
 
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+    const body = await readJsonBody(request)
     const { lines, ...rest } = body
 
     const parsed = accountingInvoiceUpdateSchema.safeParse(rest)
@@ -94,7 +101,7 @@ export async function PUT(
       return updated
     })
 
-    return jsonOk({ data: record })
+    return jsonOk(record)
   } catch (err) {
     return handleDbError(err, "更新陆运账单失败")
   }
@@ -113,7 +120,7 @@ export async function DELETE(
     if (id == null) return jsonError("无效的记录 ID", 400)
 
     await prisma.accounting_invoices.delete({ where: { id } })
-    return jsonOk({ data: { id: id.toString() } })
+    return jsonOk({ id: id.toString() })
   } catch (err) {
     return handleDbError(err, "删除陆运账单失败")
   }

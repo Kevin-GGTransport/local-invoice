@@ -30,6 +30,7 @@ import {
   ACCOUNTING_FROM_TO_OPTIONS,
   ACCOUNTING_PDF_TEMPLATE_COMPANIES,
 } from "@/lib/finance/accounting-invoice-companies"
+import { fetchJson } from "@/lib/api/client"
 
 type RowData = Record<string, unknown> | null | undefined
 
@@ -722,20 +723,13 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
       const url = isEditing
         ? `/api/finance/accounting-invoices/${effectiveId}`
         : "/api/finance/accounting-invoices"
-      const response = await fetch(url, {
+      const result = await fetchJson<Record<string, unknown>>(url, {
         method: isEditing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || "保存失败")
-      }
-
-      const result = await response.json()
-      const recordId = result?.data?.id != null ? String(result.data.id) : effectiveId
-      const invoiceNumber = String(result?.data?.invoice_number ?? values.invoice_number)
+      const recordId = result.id != null ? String(result.id) : effectiveId
+      const invoiceNumber = String(result.invoice_number ?? values.invoice_number)
       if (recordId) setSavedId(recordId)
       setSavedInfo({ id: recordId ?? "", invoiceNumber })
       toast.success(isEditing ? "已更新" : `已保存：${invoiceNumber}`)

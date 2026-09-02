@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
 import { ACCOUNTING_PDF_TEMPLATE_COMPANIES } from "@/lib/finance/accounting-invoice-companies"
+import { fetchJson } from "@/lib/api/client"
 
 const LIST_URL = "/dashboard/finance/accounting-invoices"
 
@@ -24,10 +25,10 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
     let cancelled = false
     ;(async () => {
       try {
-        const res = await fetch(`/api/finance/accounting-invoices/${id}`)
-        const json = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(json?.error || `加载失败 (${res.status})`)
-        if (!cancelled) setRecord(json?.data ?? null)
+        const data = await fetchJson<Record<string, unknown>>(
+          `/api/finance/accounting-invoices/${id}`
+        )
+        if (!cancelled) setRecord(data)
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "加载失败")
       }

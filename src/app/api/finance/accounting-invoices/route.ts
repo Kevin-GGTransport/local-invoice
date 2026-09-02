@@ -18,7 +18,14 @@ import {
 } from "@/lib/finance/accounting-invoice-lines"
 import { toInvoiceCreateData } from "@/lib/finance/accounting-invoice-input"
 import { accountingInvoiceCreateSchema } from "@/lib/validations/accounting-invoice"
-import { requireSession, userIdBigint, jsonOk, jsonError, handleDbError } from "@/lib/api-helpers"
+import {
+  requireSession,
+  userIdBigint,
+  jsonOk,
+  jsonError,
+  handleDbError,
+  readJsonBody,
+} from "@/lib/api-helpers"
 
 export async function GET(request: NextRequest) {
   const { error } = await requireSession()
@@ -41,7 +48,7 @@ export async function GET(request: NextRequest) {
       prisma.accounting_invoices.count({ where }),
     ])
 
-    return jsonOk({ data: rows, total, page, pageSize })
+    return jsonOk({ rows, pagination: { total, page, pageSize } })
   } catch (err) {
     return handleDbError(err, "查询陆运账单失败")
   }
@@ -52,7 +59,7 @@ export async function POST(request: NextRequest) {
   if (error) return error
 
   try {
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
+    const body = await readJsonBody(request)
     const { lines, ...rest } = body
 
     // 发票号留空 → 先按公司前缀 + 月 + 年 + 当月序号自动生成，再进校验
@@ -89,7 +96,7 @@ export async function POST(request: NextRequest) {
       return created
     })
 
-    return jsonOk({ data: record })
+    return jsonOk(record, 201)
   } catch (err) {
     return handleDbError(err, "创建陆运账单失败")
   }

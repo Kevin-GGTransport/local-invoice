@@ -68,6 +68,8 @@ import {
 import { toast } from "sonner"
 import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
 import { AccountingInvoicesBatchPdf } from "@/components/finance/accounting-invoices-batch-pdf"
+import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
+import type { PaginatedData } from "@/lib/api/types"
 import {
   ACCOUNTING_COMPANY_OPTIONS,
   ACCOUNTING_FROM_TO_OPTIONS,
@@ -97,6 +99,8 @@ type Row = {
   notes: string | null
 }
 
+type ListData = PaginatedData<Row>
+
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
@@ -112,18 +116,27 @@ function fmtMoney(value: string | null) {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+function fmtText(value: string | null) {
+  return value == null || value === "" ? "—" : value
+}
+
+function CardField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] text-muted-foreground">{label}</dt>
+      <dd className="truncate text-sm" title={value}>
+        {value}
+      </dd>
+    </div>
+  )
+}
+
 async function downloadExport(url: string, filename: string, successToast: string) {
   try {
     toast.loading("正在生成 Excel 文件，请稍候...")
     const response = await fetch(url)
     if (!response.ok) {
-      let errorMsg = `导出失败 (${response.status})`
-      try {
-        const errorData = await response.json()
-        errorMsg = errorData.error || errorMsg
-      } catch {
-        // JSON 解析失败，使用默认错误消息
-      }
+      const errorMsg = await getApiErrorMessage(response, `导出失败 (${response.status})`)
       throw new Error(errorMsg)
     }
     const blob = await response.blob()
@@ -208,17 +221,16 @@ export function AccountingInvoiceTable() {
     ;(async () => {
       setLoading(true)
       try {
-        const res = await fetch(`/api/finance/accounting-invoices?${buildQueryParams()}`)
-        const json = (await res.json().catch(() => ({}))) as
-          | { data?: Row[]; total?: number; error?: string }
-          | undefined
-        if (!res.ok) throw new Error(json?.error ?? `加载失败 (${res.status})`)
         if (cancelled) return
-        setRows(json?.data ?? [])
-        setTotal(json?.total ?? 0)
+        const data = await fetchJson<ListData>(
+          `/api/finance/accounting-invoices?${buildQueryParams()}`
+        )
+        if (cancelled) return
+        setRows(data.rows)
+        setTotal(data.pagination.total)
         // 删除后落在空页时回退到最后一页
-        if ((json?.data ?? []).length === 0 && page > 1 && (json?.total ?? 0) > 0) {
-          setPage(Math.max(1, Math.ceil((json?.total ?? 0) / pageSize)))
+        if (data.rows.length === 0 && page > 1 && data.pagination.total > 0) {
+          setPage(Math.max(1, Math.ceil(data.pagination.total / pageSize)))
         }
       } catch (error) {
         if (!cancelled) toast.error(getErrorMessage(error, "加载陆运账单失败"))
@@ -268,9 +280,9 @@ export function AccountingInvoiceTable() {
     async (row: Row) => {
       if (!window.confirm(`确定删除账单「${row.invoice_number}」？`)) return
       try {
-        const res = await fetch(`/api/finance/accounting-invoices/${row.id}`, { method: "DELETE" })
-        const json = (await res.json().catch(() => ({}))) as { error?: string } | undefined
-        if (!res.ok) throw new Error(json?.error ?? "删除失败")
+        await fetchJson<{ id: string }>(`/api/finance/accounting-invoices/${row.id}`, {
+          method: "DELETE",
+        })
         toast.success("已删除")
         setSelected((prev) => {
           const next = new Set(prev)
@@ -289,12 +301,10 @@ export function AccountingInvoiceTable() {
     if (selected.size === 0) return
     if (!window.confirm(`确定删除选中的 ${selected.size} 条账单？`)) return
     try {
-      const res = await fetch(
+      await fetchJson<{ count: number }>(
         `/api/finance/accounting-invoices/batch-delete?ids=${encodeURIComponent([...selected].join(","))}`,
         { method: "DELETE" }
       )
-      const json = (await res.json().catch(() => ({}))) as { error?: string } | undefined
-      if (!res.ok) throw new Error(json?.error ?? "批量删除失败")
       toast.success(`已删除 ${selected.size} 条账单`)
       setSelected(new Set())
       refresh()
@@ -311,12 +321,10 @@ export function AccountingInvoiceTable() {
   const openEdit = React.useCallback(async (row: Row) => {
     setDetailLoading(true)
     try {
-      const res = await fetch(`/api/finance/accounting-invoices/${row.id}`)
-      const json = (await res.json().catch(() => ({}))) as
-        | { data?: Record<string, unknown>; error?: string }
-        | undefined
-      if (!res.ok) throw new Error(json?.error ?? "加载失败")
-      setEditingRecord(json?.data ?? null)
+      const data = await fetchJson<Record<string, unknown>>(
+        `/api/finance/accounting-invoices/${row.id}`
+      )
+      setEditingRecord(data)
       setDialogOpen(true)
     } catch (error) {
       toast.error(getErrorMessage(error, "加载账单失败"))
@@ -341,6 +349,54 @@ export function AccountingInvoiceTable() {
       "noopener,noreferrer"
     )
   }, [])
+
+  const renderRowActions = React.useCallback(
+    (r: Row) => (
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          title="查看详情"
+          aria-label={`查看 ${r.invoice_number}`}
+          onClick={() => router.push(`/dashboard/finance/accounting-invoices/${r.id}`)}
+        >
+          <Eye className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          title="打印PDF"
+          aria-label={`打印 ${r.invoice_number}`}
+          onClick={() => handleRowPrint(r)}
+        >
+          <FileText className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          title="编辑"
+          aria-label={`编辑 ${r.invoice_number}`}
+          onClick={() => openEdit(r)}
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-destructive hover:text-destructive"
+          title="删除"
+          aria-label={`删除 ${r.invoice_number}`}
+          onClick={() => handleRowDelete(r)}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    ),
+    [router, handleRowPrint, openEdit, handleRowDelete]
+  )
 
   // —— 导出 ——
   const handleExportFiltered = React.useCallback(async () => {
@@ -510,49 +566,14 @@ export function AccountingInvoiceTable() {
         cell: ({ row }) => {
           const r = row.original
           return (
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                title="查看详情"
-                onClick={() => router.push(`/dashboard/finance/accounting-invoices/${r.id}`)}
-              >
-                <Eye className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                title="打印PDF"
-                onClick={() => handleRowPrint(r)}
-              >
-                <FileText className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                title="编辑"
-                onClick={() => openEdit(r)}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-destructive hover:text-destructive"
-                title="删除"
-                onClick={() => handleRowDelete(r)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+            <div className="flex items-center justify-center">
+              {renderRowActions(r)}
             </div>
           )
         },
       }),
     ],
-    [allSelected, toggleAll, selected, toggleRow, sorting, toggleSort, router, handleRowPrint, openEdit, handleRowDelete]
+    [allSelected, toggleAll, selected, toggleRow, sorting, toggleSort, renderRowActions]
   )
 
   const table = useReactTable({
@@ -615,8 +636,8 @@ export function AccountingInvoiceTable() {
         </div>
       </div>
 
-      {/* 筛选栏 */}
-      <div className="flex flex-wrap items-center gap-2 rounded-md border p-2">
+      {/* 筛选栏：窄屏堆叠，宽屏恢复工具带 */}
+      <div className="grid gap-2 rounded-lg border bg-card/70 p-3 sm:grid-cols-2 sm:items-center xl:flex xl:flex-wrap">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm">
@@ -645,7 +666,7 @@ export function AccountingInvoiceTable() {
             setPage(1)
           }}
         >
-          <SelectTrigger className="h-8 w-[140px]">
+          <SelectTrigger className="h-9 w-full sm:w-[150px]">
             <SelectValue placeholder="From - To" />
           </SelectTrigger>
           <SelectContent>
@@ -658,55 +679,59 @@ export function AccountingInvoiceTable() {
           </SelectContent>
         </Select>
 
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          Invoice日期
-          <Input
-            type="date"
-            className="h-8 w-[136px]"
-            value={invoiceFrom}
-            onChange={(e) => {
-              setInvoiceFrom(e.target.value)
-              setPage(1)
-            }}
-          />
-          ~
-          <Input
-            type="date"
-            className="h-8 w-[136px]"
-            value={invoiceTo}
-            onChange={(e) => {
-              setInvoiceTo(e.target.value)
-              setPage(1)
-            }}
-          />
+        <div className="grid gap-2 sm:col-span-2 xl:col-span-1">
+          <span className="text-xs font-medium text-muted-foreground">Invoice 日期</span>
+          <div className="grid gap-2 min-[480px]:grid-cols-[1fr_auto_1fr] min-[480px]:items-center">
+            <Input
+              type="date"
+              className="h-9 w-full"
+              value={invoiceFrom}
+              onChange={(e) => {
+                setInvoiceFrom(e.target.value)
+                setPage(1)
+              }}
+            />
+            <span className="text-center text-xs text-muted-foreground">至</span>
+            <Input
+              type="date"
+              className="h-9 w-full"
+              value={invoiceTo}
+              onChange={(e) => {
+                setInvoiceTo(e.target.value)
+                setPage(1)
+              }}
+            />
+          </div>
         </div>
 
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          支票日期
-          <Input
-            type="date"
-            className="h-8 w-[136px]"
-            value={checkFrom}
-            onChange={(e) => {
-              setCheckFrom(e.target.value)
-              setPage(1)
-            }}
-          />
-          ~
-          <Input
-            type="date"
-            className="h-8 w-[136px]"
-            value={checkTo}
-            onChange={(e) => {
-              setCheckTo(e.target.value)
-              setPage(1)
-            }}
-          />
+        <div className="grid gap-2 sm:col-span-2 xl:col-span-1">
+          <span className="text-xs font-medium text-muted-foreground">支票日期</span>
+          <div className="grid gap-2 min-[480px]:grid-cols-[1fr_auto_1fr] min-[480px]:items-center">
+            <Input
+              type="date"
+              className="h-9 w-full"
+              value={checkFrom}
+              onChange={(e) => {
+                setCheckFrom(e.target.value)
+                setPage(1)
+              }}
+            />
+            <span className="text-center text-xs text-muted-foreground">至</span>
+            <Input
+              type="date"
+              className="h-9 w-full"
+              value={checkTo}
+              onChange={(e) => {
+                setCheckTo(e.target.value)
+                setPage(1)
+              }}
+            />
+          </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:col-span-2 xl:ml-auto">
           <Input
-            className="h-8 w-[200px]"
+            className="h-9 min-w-0 flex-1"
             placeholder="搜索发票号/货号/Load#/支票号/备注"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
@@ -724,8 +749,8 @@ export function AccountingInvoiceTable() {
         </div>
       </div>
 
-      {/* 表格 */}
-      <div className="overflow-x-auto rounded-md border">
+      {/* 宽屏表格；低于 2xl 分辨率切换为卡片视图 */}
+      <div className="hidden overflow-x-auto rounded-lg border bg-card 2xl:block">
         <Table className="text-[13px]">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -771,6 +796,75 @@ export function AccountingInvoiceTable() {
             )}
           </TableBody>
         </Table>
+      </div>
+
+      <div
+        aria-label="陆运账单卡片列表"
+        className="grid gap-3 2xl:hidden min-[560px]:grid-cols-2 min-[900px]:grid-cols-3"
+      >
+        {loading ? (
+          <div className="flex min-h-32 items-center justify-center rounded-lg border bg-card text-sm text-muted-foreground min-[560px]:col-span-2 min-[900px]:col-span-3">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            正在加载...
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="flex min-h-32 items-center justify-center rounded-lg border bg-card text-sm text-muted-foreground min-[560px]:col-span-2 min-[900px]:col-span-3">
+            暂无账单数据
+          </div>
+        ) : (
+          rows.map((row) => (
+            <article
+              key={row.id}
+              className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-xs"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-amber-300/60 bg-amber-400/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                      {fmtText(row.company)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {fmtDate(row.invoice_date) || "—"}
+                    </span>
+                  </div>
+                  <h2 className="mt-2 break-words text-sm font-semibold" title={row.invoice_number}>
+                    {fmtText(row.invoice_number)}
+                  </h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {fmtText(row.from_to)}
+                  </p>
+                </div>
+                <Checkbox
+                  checked={selected.has(row.id)}
+                  onCheckedChange={() => toggleRow(row.id)}
+                  aria-label={`选择 ${row.invoice_number}`}
+                  className="mt-1"
+                />
+              </div>
+
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-3">
+                <CardField label="Invoice 金额" value={fmtMoney(row.invoice_price) || "—"} />
+                <CardField label="Load #" value={fmtText(row.broker_load_number)} />
+                <CardField label="总货号" value={fmtText(row.master_order_number)} />
+                <CardField label="货号" value={fmtText(row.order_number)} />
+                <CardField label="合同日期" value={fmtDate(row.contract_date) || "—"} />
+                <CardField label="合同价格" value={fmtMoney(row.contract_price) || "—"} />
+                <CardField label="支票日期" value={fmtDate(row.check_date) || "—"} />
+                <CardField label="支票金额" value={fmtMoney(row.check_amount) || "—"} />
+                <CardField label="支票号" value={fmtText(row.check_number)} />
+                <CardField label="Broker公司" value={fmtText(row.broker_company)} />
+              </dl>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+                <span className="text-xs text-muted-foreground">
+                  扣 {fmtText(row.deduction)} · RTS {fmtText(row.rts)} · 差额{" "}
+                  {fmtText(row.difference)}
+                </span>
+                {renderRowActions(row)}
+              </div>
+            </article>
+          ))
+        )}
       </div>
 
       {/* 分页 */}
