@@ -160,11 +160,11 @@ const columnHelper = createColumnHelper<Row>()
 /** 排序图标（服务端排序，点击表头在 desc/asc 间切换） */
 function SortIcon({ id, sorting }: { id: string; sorting: SortingState }) {
   const sorted = sorting.find((s) => s.id === id)
-  if (!sorted) return <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground" />
+  if (!sorted) return <ArrowUpDown className="ml-1 h-3 w-3 text-slate-400" />
   return sorted.desc ? (
-    <ArrowDown className="ml-1 h-3 w-3" />
+    <ArrowDown className="ml-1 h-3 w-3 text-amber-300" />
   ) : (
-    <ArrowUp className="ml-1 h-3 w-3" />
+    <ArrowUp className="ml-1 h-3 w-3 text-amber-300" />
   )
 }
 
@@ -591,94 +591,137 @@ export function AccountingInvoiceTable() {
 
   return (
     <div className="space-y-4">
-      {/* 标题 + 工具栏 */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">陆运账单</h1>
-          <p className="text-xs text-muted-foreground">
-            承运商对 Broker 开票 + 会计对账，共 {total} 条
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            新建账单
-          </Button>
-          <AccountingInvoicesBatchPdf selectedRows={selectedRows} />
-          {selected.size > 0 && (
-            <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={handleBatchDelete}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              批量删除 ({selected.size})
-            </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Download className="mr-2 h-4 w-4" />
-                批量导出
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleExportFiltered}>
-                <FileSpreadsheet className="mr-2 h-4 w-4" />
-                导出筛选结果（{total}条）
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportAll}>
-                <Database className="mr-2 h-4 w-4" />
-                导出全部数据（{total}条）
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportSelected}>
-                <Download className="mr-2 h-4 w-4" />
-                导出选中（{selected.size}条）
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
+      {/* 页面头部 + 操作工具栏 */}
+      <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="relative overflow-hidden bg-slate-950 px-4 py-5 text-white sm:px-6">
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 opacity-70"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 82% 20%, rgba(245, 158, 11, 0.20), transparent 34%), radial-gradient(circle at 15% 100%, rgba(56, 189, 248, 0.16), transparent 30%)",
+            }}
+          />
+          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-300">
+                财务管理
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">陆运账单</h1>
+                <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-xs text-slate-200">
+                  共 {total} 条
+                </span>
+                {selected.size > 0 && (
+                  <span className="rounded-full border border-amber-300/40 bg-amber-400/15 px-2.5 py-1 text-xs font-medium text-amber-200">
+                    已选 {selected.size} 条
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 text-sm text-slate-300">
+                承运商对 Broker 开票 + 会计对账
+              </p>
+            </div>
 
-      {/* 筛选栏：窄屏堆叠，宽屏恢复工具带 */}
-      <div className="grid gap-2 rounded-lg border bg-card/70 p-3 sm:grid-cols-2 sm:items-center xl:flex xl:flex-wrap">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm">
-              公司{companies.length > 0 ? `（${companies.length}）` : ""}
-              <ChevronDown className="ml-1 h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {ACCOUNTING_COMPANY_OPTIONS.map((opt) => (
-              <DropdownMenuCheckboxItem
-                key={opt.value}
-                checked={companies.includes(opt.value)}
-                onCheckedChange={(checked) => toggleCompany(opt.value, checked === true)}
-                onSelect={(e) => e.preventDefault()}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                className="bg-amber-500 text-slate-950 hover:bg-amber-400 focus-visible:ring-amber-300/50"
+                onClick={openCreate}
               >
-                {opt.label}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+                <Plus className="mr-2 h-4 w-4" />
+                新建账单
+              </Button>
+              <AccountingInvoicesBatchPdf selectedRows={selectedRows} />
+              {selected.size > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  onClick={handleBatchDelete}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  批量删除
+                </Button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    批量导出
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleExportFiltered}>
+                    <FileSpreadsheet className="mr-2 h-4 w-4" />
+                    导出筛选结果（{total}条）
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportAll}>
+                    <Database className="mr-2 h-4 w-4" />
+                    导出全部数据（{total}条）
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportSelected}>
+                    <Download className="mr-2 h-4 w-4" />
+                    导出选中（{selected.size}条）
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </div>
 
-        <Select
-          value={fromTo || "__all__"}
-          onValueChange={(v) => {
-            setFromTo(v === "__all__" ? "" : v)
-            setPage(1)
-          }}
-        >
-          <SelectTrigger className="h-9 w-full sm:w-[150px]">
-            <SelectValue placeholder="From - To" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">全部线路</SelectItem>
-            {ACCOUNTING_FROM_TO_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* 筛选工具栏：窄屏堆叠，宽屏恢复工具带 */}
+        <div className="grid gap-3 p-3 sm:grid-cols-2 sm:items-end xl:flex xl:flex-wrap sm:p-4">
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">公司</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 w-full justify-between sm:w-[150px]">
+                  {companies.length > 0 ? `已选 ${companies.length} 项` : "全部公司"}
+                  <ChevronDown className="ml-1 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {ACCOUNTING_COMPANY_OPTIONS.map((opt) => (
+                  <DropdownMenuCheckboxItem
+                    key={opt.value}
+                    checked={companies.includes(opt.value)}
+                    onCheckedChange={(checked) => toggleCompany(opt.value, checked === true)}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    {opt.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">运输线路</span>
+            <Select
+              value={fromTo || "__all__"}
+              onValueChange={(v) => {
+                setFromTo(v === "__all__" ? "" : v)
+                setPage(1)
+              }}
+            >
+              <SelectTrigger className="h-9 w-full">
+                <SelectValue placeholder="From - To" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">全部线路</SelectItem>
+                {ACCOUNTING_FROM_TO_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         <div className="grid gap-2 sm:col-span-2 xl:col-span-1">
           <span className="text-xs font-medium text-muted-foreground">Invoice 日期</span>
           <div className="grid gap-2 min-[480px]:grid-cols-[1fr_auto_1fr] min-[480px]:items-center">
@@ -729,25 +772,38 @@ export function AccountingInvoiceTable() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:col-span-2 xl:ml-auto">
-          <Input
-            className="h-9 min-w-0 flex-1"
-            placeholder="搜索发票号/货号/Load#/支票号/备注"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") applySearch()
-            }}
-          />
-          <Button variant="outline" size="sm" onClick={applySearch}>
-            <Search className="mr-1 h-4 w-4" />
-            搜索
-          </Button>
-          <Button variant="ghost" size="sm" onClick={resetFilters} title="清空筛选条件">
-            <RotateCcw className="h-4 w-4" />
-          </Button>
+        <div className="space-y-1.5 sm:col-span-2 xl:ml-auto xl:w-[360px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-muted-foreground">快速搜索</span>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={resetFilters}
+              title="清空筛选条件"
+              className="text-muted-foreground"
+            >
+              <RotateCcw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              重置
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              className="h-9 min-w-0 flex-1"
+              placeholder="发票号 / 货号 / Load# / 支票号 / 备注"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") applySearch()
+              }}
+            />
+            <Button variant="outline" size="sm" className="h-9 shrink-0" onClick={applySearch}>
+              <Search className="mr-1 h-4 w-4" />
+              搜索
+            </Button>
+          </div>
         </div>
       </div>
+      </section>
 
       {/* 宽屏表格；低于 2xl 分辨率切换为卡片视图 */}
       <div className="hidden overflow-x-auto rounded-lg border bg-card 2xl:block">
@@ -758,7 +814,7 @@ export function AccountingInvoiceTable() {
                 {headerGroup.headers.map((header) => (
                   <TableHead
                     key={header.id}
-                    className="h-8 whitespace-nowrap px-2 text-[12px]"
+                    className="h-10 whitespace-nowrap border-slate-800 bg-slate-950 px-3 text-[12px] font-semibold text-slate-100 [&_button]:text-slate-100 [&_button:hover]:text-white"
                     style={{ width: header.getSize() !== 150 ? header.getSize() : undefined }}
                   >
                     {header.isPlaceholder

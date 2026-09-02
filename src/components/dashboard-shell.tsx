@@ -3,14 +3,13 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Menu, ReceiptText, Route, X } from "lucide-react";
+import { ChevronDown, Home, Landmark, Menu, ReceiptText, Route, X } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const navItems = [
-  { href: "/dashboard", label: "首页", icon: Home },
+const financeChildren = [
   { href: "/dashboard/finance/accounting-invoices", label: "陆运账单", icon: ReceiptText },
 ];
 
@@ -23,6 +22,8 @@ export function DashboardShell({
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const financeActive = pathname.startsWith("/dashboard/finance");
+  const [financeOpen, setFinanceOpen] = React.useState(financeActive);
 
   React.useEffect(() => {
     if (!menuOpen) return;
@@ -33,11 +34,7 @@ export function DashboardShell({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [menuOpen]);
 
-  const activeHref =
-    [...navItems]
-      .sort((a, b) => b.href.length - a.href.length)
-      .find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))?.href ??
-    "/dashboard";
+  const homeActive = pathname === "/dashboard";
 
   return (
     <div className="min-h-dvh bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -80,25 +77,72 @@ export function DashboardShell({
           </Button>
         </div>
 
-        <nav className="flex-1 space-y-1 p-3">
-          {navItems.map((item) => {
-            const active = activeHref === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                onClick={() => setMenuOpen(false)}
+        <nav className="flex-1 space-y-2 overflow-y-auto p-3">
+          <p className="px-3 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            导航
+          </p>
+
+          <Link
+            href="/dashboard"
+            aria-current={homeActive ? "page" : undefined}
+            onClick={() => setMenuOpen(false)}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white",
+              homeActive && "bg-amber-400/15 font-medium text-amber-200"
+            )}
+          >
+            <Home className="size-4" aria-hidden="true" />
+            首页
+          </Link>
+
+          <div className="space-y-1">
+            <button
+              type="button"
+              aria-expanded={financeOpen}
+              aria-controls="finance-navigation"
+              onClick={() => setFinanceOpen((open) => !open)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white",
+                financeActive && "bg-white/5 font-medium text-white"
+              )}
+            >
+              <Landmark className="size-4" aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-left">财务管理</span>
+              <ChevronDown
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white",
-                  active && "bg-amber-400/15 font-medium text-amber-200"
+                  "size-4 shrink-0 text-slate-400 transition-transform duration-200",
+                  financeOpen && "rotate-180"
                 )}
-              >
-                <item.icon className="size-4" aria-hidden="true" />
-                {item.label}
-              </Link>
-            );
-          })}
+                aria-hidden="true"
+              />
+            </button>
+
+            {financeOpen && (
+              <ul id="finance-navigation" className="ml-4 space-y-1 border-l border-white/10 pl-3">
+                {financeChildren.map((item) => {
+                  const active =
+                    pathname === item.href || pathname.startsWith(`${item.href}/`);
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        aria-current={active ? "page" : undefined}
+                        onClick={() => setMenuOpen(false)}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-white/10 hover:text-white",
+                          active &&
+                            "bg-amber-400/15 font-medium text-amber-200"
+                        )}
+                      >
+                        <item.icon className="size-4" aria-hidden="true" />
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </nav>
 
         <div className="border-t border-white/10 px-4 py-4 text-xs leading-5 text-slate-500">
