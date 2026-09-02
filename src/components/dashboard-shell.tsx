@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Home } from "lucide-react";
+import { FileText, Home, ReceiptText } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", label: "首页", icon: Home },
+  { href: "/dashboard/finance/accounting-invoices", label: "陆运账单", icon: ReceiptText },
 ];
 
 export function DashboardShell({
@@ -35,7 +36,9 @@ export function DashboardShell({
               href={item.href}
               className={cn(
                 "flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-muted",
-                pathname === item.href && "bg-muted font-medium"
+                (pathname === item.href ||
+                  pathname.startsWith(`${item.href}/`)) &&
+                  "bg-muted font-medium"
               )}
             >
               <item.icon className="size-4" />

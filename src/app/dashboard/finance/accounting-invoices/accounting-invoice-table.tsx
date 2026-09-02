@@ -1,0 +1,847 @@
+"use client"
+
+/**
+ * 陆运账单列表（本模块专用表格，替代源项目通用 EntityTable）
+ * 服务端分页/排序/筛选 + 勾选批量（合并打印 PDF / 导出 Excel / 批量删除）
+ * + 新建/编辑弹窗复用模版编辑表单（AccountingInvoiceForm）
+ */
+
+import React from "react"
+import { useRouter } from "next/navigation"
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+  type SortingState,
+} from "@tanstack/react-table"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Database,
+  Download,
+  Eye,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Search,
+  Trash2,
+} from "lucide-react"
+import { toast } from "sonner"
+import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
+import { AccountingInvoicesBatchPdf } from "@/components/finance/accounting-invoices-batch-pdf"
+import {
+  ACCOUNTING_COMPANY_OPTIONS,
+  ACCOUNTING_FROM_TO_OPTIONS,
+  ACCOUNTING_PDF_TEMPLATE_COMPANIES,
+} from "@/lib/finance/accounting-invoice-companies"
+
+/** 列表行（API 返回 JSON：BigInt id 已转 string，Decimal 为 string） */
+type Row = {
+  id: string
+  company: string
+  master_order_number: string | null
+  order_number: string | null
+  contract_date: string | null
+  contract_price: string | null
+  broker_company: string | null
+  broker_load_number: string | null
+  from_to: string | null
+  invoice_number: string
+  invoice_date: string | null
+  invoice_price: string | null
+  check_date: string | null
+  check_amount: string | null
+  check_number: string | null
+  deduction: string | null
+  rts: string | null
+  difference: string | null
+  notes: string | null
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
+function fmtDate(value: string | null) {
+  return value ? value.slice(0, 10) : ""
+}
+
+function fmtMoney(value: string | null) {
+  if (value == null || value === "") return ""
+  const n = Number(value)
+  if (Number.isNaN(n)) return ""
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+async function downloadExport(url: string, filename: string, successToast: string) {
+  try {
+    toast.loading("正在生成 Excel 文件，请稍候...")
+    const response = await fetch(url)
+    if (!response.ok) {
+      let errorMsg = `导出失败 (${response.status})`
+      try {
+        const errorData = await response.json()
+        errorMsg = errorData.error || errorMsg
+      } catch {
+        // JSON 解析失败，使用默认错误消息
+      }
+      throw new Error(errorMsg)
+    }
+    const blob = await response.blob()
+    const objectUrl = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = objectUrl
+    a.download = filename
+    a.click()
+    window.URL.revokeObjectURL(objectUrl)
+    toast.dismiss()
+    toast.success(successToast)
+  } catch (error: unknown) {
+    console.error("导出陆运账单失败:", error)
+    toast.dismiss()
+    toast.error(getErrorMessage(error, "导出失败，请重试"))
+  }
+}
+
+const columnHelper = createColumnHelper<Row>()
+
+/** 排序图标（服务端排序，点击表头在 desc/asc 间切换） */
+function SortIcon({ id, sorting }: { id: string; sorting: SortingState }) {
+  const sorted = sorting.find((s) => s.id === id)
+  if (!sorted) return <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground" />
+  return sorted.desc ? (
+    <ArrowDown className="ml-1 h-3 w-3" />
+  ) : (
+    <ArrowUp className="ml-1 h-3 w-3" />
+  )
+}
+
+export function AccountingInvoiceTable() {
+  const router = useRouter()
+
+  // 数据与分页/排序
+  const [rows, setRows] = React.useState<Row[]>([])
+  const [total, setTotal] = React.useState(0)
+  const [page, setPage] = React.useState(1)
+  const [pageSize, setPageSize] = React.useState(100)
+  const [sorting, setSorting] = React.useState<SortingState>([{ id: "invoice_date", desc: true }])
+  const [loading, setLoading] = React.useState(true)
+  const [reloadFlag, setReloadFlag] = React.useState(0)
+
+  // 筛选条件（变更即回第一页）
+  const [searchInput, setSearchInput] = React.useState("")
+  const [appliedSearch, setAppliedSearch] = React.useState("")
+  const [companies, setCompanies] = React.useState<string[]>([])
+  const [fromTo, setFromTo] = React.useState("")
+  const [invoiceFrom, setInvoiceFrom] = React.useState("")
+  const [invoiceTo, setInvoiceTo] = React.useState("")
+  const [checkFrom, setCheckFrom] = React.useState("")
+  const [checkTo, setCheckTo] = React.useState("")
+
+  // 勾选与新建/编辑弹窗
+  const [selected, setSelected] = React.useState<Set<string>>(new Set())
+  const [dialogOpen, setDialogOpen] = React.useState(false)
+  const [editingRecord, setEditingRecord] = React.useState<Record<string, unknown> | null>(null)
+  const [detailLoading, setDetailLoading] = React.useState(false)
+
+  const refresh = React.useCallback(() => setReloadFlag((f) => f + 1), [])
+
+  const buildQueryParams = React.useCallback((): string => {
+    const params = new URLSearchParams()
+    params.set("page", String(page))
+    params.set("pageSize", String(pageSize))
+    if (sorting[0]) {
+      params.set("sort", sorting[0].id)
+      params.set("order", sorting[0].desc ? "desc" : "asc")
+    }
+    if (appliedSearch) params.set("search", appliedSearch)
+    if (companies.length > 0) params.set("company", companies.join(","))
+    if (fromTo) params.set("from_to", fromTo)
+    if (invoiceFrom) params.set("invoice_date_from", invoiceFrom)
+    if (invoiceTo) params.set("invoice_date_to", invoiceTo)
+    if (checkFrom) params.set("check_date_from", checkFrom)
+    if (checkTo) params.set("check_date_to", checkTo)
+    return params.toString()
+  }, [page, pageSize, sorting, appliedSearch, companies, fromTo, invoiceFrom, invoiceTo, checkFrom, checkTo])
+
+  React.useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      try {
+        const res = await fetch(`/api/finance/accounting-invoices?${buildQueryParams()}`)
+        const json = (await res.json().catch(() => ({}))) as
+          | { data?: Row[]; total?: number; error?: string }
+          | undefined
+        if (!res.ok) throw new Error(json?.error ?? `加载失败 (${res.status})`)
+        if (cancelled) return
+        setRows(json?.data ?? [])
+        setTotal(json?.total ?? 0)
+        // 删除后落在空页时回退到最后一页
+        if ((json?.data ?? []).length === 0 && page > 1 && (json?.total ?? 0) > 0) {
+          setPage(Math.max(1, Math.ceil((json?.total ?? 0) / pageSize)))
+        }
+      } catch (error) {
+        if (!cancelled) toast.error(getErrorMessage(error, "加载陆运账单失败"))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [buildQueryParams, reloadFlag, page, pageSize])
+
+  const toggleSort = React.useCallback((id: string) => {
+    setSorting((prev) => {
+      const current = prev[0]
+      if (current?.id === id) return [{ id, desc: !current.desc }]
+      return [{ id, desc: true }]
+    })
+    setPage(1)
+  }, [])
+
+  // —— 勾选 ——
+  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id))
+  const toggleAll = React.useCallback(() => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (rows.every((r) => next.has(r.id))) rows.forEach((r) => next.delete(r.id))
+      else rows.forEach((r) => next.add(r.id))
+      return next
+    })
+  }, [rows])
+  const toggleRow = React.useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+  const selectedRows = React.useMemo(
+    () => rows.filter((r) => selected.has(r.id)).map((r) => ({ id: r.id, company: r.company })),
+    [rows, selected]
+  )
+
+  // —— 行操作 ——
+  const handleRowDelete = React.useCallback(
+    async (row: Row) => {
+      if (!window.confirm(`确定删除账单「${row.invoice_number}」？`)) return
+      try {
+        const res = await fetch(`/api/finance/accounting-invoices/${row.id}`, { method: "DELETE" })
+        const json = (await res.json().catch(() => ({}))) as { error?: string } | undefined
+        if (!res.ok) throw new Error(json?.error ?? "删除失败")
+        toast.success("已删除")
+        setSelected((prev) => {
+          const next = new Set(prev)
+          next.delete(row.id)
+          return next
+        })
+        refresh()
+      } catch (error) {
+        toast.error(getErrorMessage(error, "删除失败"))
+      }
+    },
+    [refresh]
+  )
+
+  const handleBatchDelete = React.useCallback(async () => {
+    if (selected.size === 0) return
+    if (!window.confirm(`确定删除选中的 ${selected.size} 条账单？`)) return
+    try {
+      const res = await fetch(
+        `/api/finance/accounting-invoices/batch-delete?ids=${encodeURIComponent([...selected].join(","))}`,
+        { method: "DELETE" }
+      )
+      const json = (await res.json().catch(() => ({}))) as { error?: string } | undefined
+      if (!res.ok) throw new Error(json?.error ?? "批量删除失败")
+      toast.success(`已删除 ${selected.size} 条账单`)
+      setSelected(new Set())
+      refresh()
+    } catch (error) {
+      toast.error(getErrorMessage(error, "批量删除失败"))
+    }
+  }, [selected, refresh])
+
+  const openCreate = React.useCallback(() => {
+    setEditingRecord(null)
+    setDialogOpen(true)
+  }, [])
+
+  const openEdit = React.useCallback(async (row: Row) => {
+    setDetailLoading(true)
+    try {
+      const res = await fetch(`/api/finance/accounting-invoices/${row.id}`)
+      const json = (await res.json().catch(() => ({}))) as
+        | { data?: Record<string, unknown>; error?: string }
+        | undefined
+      if (!res.ok) throw new Error(json?.error ?? "加载失败")
+      setEditingRecord(json?.data ?? null)
+      setDialogOpen(true)
+    } catch (error) {
+      toast.error(getErrorMessage(error, "加载账单失败"))
+    } finally {
+      setDetailLoading(false)
+    }
+  }, [])
+
+  const closeDialog = React.useCallback(() => {
+    setDialogOpen(false)
+    setEditingRecord(null)
+  }, [])
+
+  const handleRowPrint = React.useCallback((row: Row) => {
+    if (!row.company || !ACCOUNTING_PDF_TEMPLATE_COMPANIES.includes(row.company)) {
+      toast.error(`公司「${row.company || "未知"}」暂无 PDF 模版`)
+      return
+    }
+    window.open(
+      `/api/finance/accounting-invoices/${row.id}/pdf?t=${Date.now()}`,
+      "_blank",
+      "noopener,noreferrer"
+    )
+  }, [])
+
+  // —— 导出 ——
+  const handleExportFiltered = React.useCallback(async () => {
+    const params = new URLSearchParams(buildQueryParams())
+    params.delete("page")
+    params.delete("pageSize")
+    await downloadExport(
+      `/api/finance/accounting-invoices/export?${params.toString()}`,
+      `陆运账单_筛选_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      `成功导出 ${total} 条数据`
+    )
+  }, [buildQueryParams, total])
+
+  const handleExportAll = React.useCallback(async () => {
+    await downloadExport(
+      "/api/finance/accounting-invoices/export",
+      `陆运账单_全部_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      `成功导出全部 ${total} 条数据`
+    )
+  }, [total])
+
+  const handleExportSelected = React.useCallback(async () => {
+    if (selected.size === 0) {
+      toast.error("请先勾选要导出的记录")
+      return
+    }
+    await downloadExport(
+      `/api/finance/accounting-invoices/export?ids=${encodeURIComponent([...selected].join(","))}`,
+      `陆运账单_选中_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      `成功导出 ${selected.size} 条数据`
+    )
+  }, [selected])
+
+  // —— 筛选交互 ——
+  const toggleCompany = React.useCallback((value: string, checked: boolean) => {
+    setCompanies((prev) => {
+      const next = checked ? [...new Set([...prev, value])] : prev.filter((c) => c !== value)
+      return next
+    })
+    setPage(1)
+  }, [])
+
+  const resetFilters = React.useCallback(() => {
+    setSearchInput("")
+    setAppliedSearch("")
+    setCompanies([])
+    setFromTo("")
+    setInvoiceFrom("")
+    setInvoiceTo("")
+    setCheckFrom("")
+    setCheckTo("")
+    setPage(1)
+  }, [])
+
+  const applySearch = React.useCallback(() => {
+    setAppliedSearch(searchInput.trim())
+    setPage(1)
+  }, [searchInput])
+
+  // —— 列定义（sortable 与源 config 一致） ——
+  const columns = React.useMemo(
+    () => [
+      columnHelper.display({
+        id: "select",
+        size: 36,
+        header: () => (
+          <Checkbox
+            checked={allSelected}
+            onCheckedChange={toggleAll}
+            aria-label="全选本页"
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={selected.has(row.original.id)}
+            onCheckedChange={() => toggleRow(row.original.id)}
+            aria-label="选择该行"
+          />
+        ),
+      }),
+      columnHelper.accessor("company", {
+        header: ({ column }) => (
+          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            公司
+            <SortIcon id={column.id} sorting={sorting} />
+          </button>
+        ),
+        cell: (info) => info.getValue(),
+      }),
+      columnHelper.accessor("master_order_number", { header: "总货号", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.accessor("order_number", { header: "货号", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.accessor("contract_date", {
+        header: ({ column }) => (
+          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            合同日期
+            <SortIcon id={column.id} sorting={sorting} />
+          </button>
+        ),
+        cell: (info) => fmtDate(info.getValue()),
+      }),
+      columnHelper.accessor("contract_price", {
+        header: ({ column }) => (
+          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            合同价格
+            <SortIcon id={column.id} sorting={sorting} />
+          </button>
+        ),
+        cell: (info) => fmtMoney(info.getValue()),
+      }),
+      columnHelper.accessor("broker_company", { header: "Broker公司", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.accessor("broker_load_number", { header: "Load #", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.accessor("from_to", { header: "From - To", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.accessor("invoice_number", {
+        header: ({ column }) => (
+          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            Invoice Number
+            <SortIcon id={column.id} sorting={sorting} />
+          </button>
+        ),
+        cell: (info) => info.getValue(),
+      }),
+      columnHelper.accessor("invoice_date", {
+        header: ({ column }) => (
+          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            Invoice 日期
+            <SortIcon id={column.id} sorting={sorting} />
+          </button>
+        ),
+        cell: (info) => fmtDate(info.getValue()),
+      }),
+      columnHelper.accessor("invoice_price", {
+        header: ({ column }) => (
+          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            Invoice 价格
+            <SortIcon id={column.id} sorting={sorting} />
+          </button>
+        ),
+        cell: (info) => fmtMoney(info.getValue()),
+      }),
+      columnHelper.accessor("check_date", {
+        header: ({ column }) => (
+          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            支票日期
+            <SortIcon id={column.id} sorting={sorting} />
+          </button>
+        ),
+        cell: (info) => fmtDate(info.getValue()),
+      }),
+      columnHelper.accessor("check_amount", {
+        header: ({ column }) => (
+          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            支票金额
+            <SortIcon id={column.id} sorting={sorting} />
+          </button>
+        ),
+        cell: (info) => fmtMoney(info.getValue()),
+      }),
+      columnHelper.accessor("check_number", { header: "支票号", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.accessor("deduction", { header: "扣", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.accessor("rts", { header: "RTS", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.accessor("difference", { header: "差额", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.accessor("notes", { header: "备注", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.display({
+        id: "actions",
+        size: 140,
+        header: "操作",
+        cell: ({ row }) => {
+          const r = row.original
+          return (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                title="查看详情"
+                onClick={() => router.push(`/dashboard/finance/accounting-invoices/${r.id}`)}
+              >
+                <Eye className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                title="打印PDF"
+                onClick={() => handleRowPrint(r)}
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                title="编辑"
+                onClick={() => openEdit(r)}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-destructive hover:text-destructive"
+                title="删除"
+                onClick={() => handleRowDelete(r)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )
+        },
+      }),
+    ],
+    [allSelected, toggleAll, selected, toggleRow, sorting, toggleSort, router, handleRowPrint, openEdit, handleRowDelete]
+  )
+
+  const table = useReactTable({
+    data: rows,
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    manualPagination: true,
+    manualSorting: true,
+    enableSortingRemoval: false,
+  })
+
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+
+  return (
+    <div className="space-y-4">
+      {/* 标题 + 工具栏 */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold">陆运账单</h1>
+          <p className="text-xs text-muted-foreground">
+            承运商对 Broker 开票 + 会计对账，共 {total} 条
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" />
+            新建账单
+          </Button>
+          <AccountingInvoicesBatchPdf selectedRows={selectedRows} />
+          {selected.size > 0 && (
+            <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={handleBatchDelete}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              批量删除 ({selected.size})
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Download className="mr-2 h-4 w-4" />
+                批量导出
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleExportFiltered}>
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                导出筛选结果（{total}条）
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportAll}>
+                <Database className="mr-2 h-4 w-4" />
+                导出全部数据（{total}条）
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportSelected}>
+                <Download className="mr-2 h-4 w-4" />
+                导出选中（{selected.size}条）
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* 筛选栏 */}
+      <div className="flex flex-wrap items-center gap-2 rounded-md border p-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              公司{companies.length > 0 ? `（${companies.length}）` : ""}
+              <ChevronDown className="ml-1 h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {ACCOUNTING_COMPANY_OPTIONS.map((opt) => (
+              <DropdownMenuCheckboxItem
+                key={opt.value}
+                checked={companies.includes(opt.value)}
+                onCheckedChange={(checked) => toggleCompany(opt.value, checked === true)}
+                onSelect={(e) => e.preventDefault()}
+              >
+                {opt.label}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Select
+          value={fromTo || "__all__"}
+          onValueChange={(v) => {
+            setFromTo(v === "__all__" ? "" : v)
+            setPage(1)
+          }}
+        >
+          <SelectTrigger className="h-8 w-[140px]">
+            <SelectValue placeholder="From - To" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">全部线路</SelectItem>
+            {ACCOUNTING_FROM_TO_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          Invoice日期
+          <Input
+            type="date"
+            className="h-8 w-[136px]"
+            value={invoiceFrom}
+            onChange={(e) => {
+              setInvoiceFrom(e.target.value)
+              setPage(1)
+            }}
+          />
+          ~
+          <Input
+            type="date"
+            className="h-8 w-[136px]"
+            value={invoiceTo}
+            onChange={(e) => {
+              setInvoiceTo(e.target.value)
+              setPage(1)
+            }}
+          />
+        </div>
+
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          支票日期
+          <Input
+            type="date"
+            className="h-8 w-[136px]"
+            value={checkFrom}
+            onChange={(e) => {
+              setCheckFrom(e.target.value)
+              setPage(1)
+            }}
+          />
+          ~
+          <Input
+            type="date"
+            className="h-8 w-[136px]"
+            value={checkTo}
+            onChange={(e) => {
+              setCheckTo(e.target.value)
+              setPage(1)
+            }}
+          />
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          <Input
+            className="h-8 w-[200px]"
+            placeholder="搜索发票号/货号/Load#/支票号/备注"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") applySearch()
+            }}
+          />
+          <Button variant="outline" size="sm" onClick={applySearch}>
+            <Search className="mr-1 h-4 w-4" />
+            搜索
+          </Button>
+          <Button variant="ghost" size="sm" onClick={resetFilters} title="清空筛选条件">
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* 表格 */}
+      <div className="overflow-x-auto rounded-md border">
+        <Table className="text-[13px]">
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead
+                    key={header.id}
+                    className="h-8 whitespace-nowrap px-2 text-[12px]"
+                    style={{ width: header.getSize() !== 150 ? header.getSize() : undefined }}
+                  >
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                  <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                  正在加载...
+                </TableCell>
+              </TableRow>
+            ) : rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                  暂无账单数据
+                </TableCell>
+              </TableRow>
+            ) : (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id} className="h-8 px-2 py-1.5">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* 分页 */}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+        <span>
+          共 {total} 条 · 第 {page}/{pageCount} 页
+        </span>
+        <div className="flex items-center gap-2">
+          <Select
+            value={String(pageSize)}
+            onValueChange={(v) => {
+              setPageSize(Number(v))
+              setPage(1)
+            }}
+          >
+            <SelectTrigger className="h-8 w-[110px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[20, 50, 100, 200].map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n} 条/页
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            上一页
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= pageCount || loading}
+            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+          >
+            下一页
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* 新建/编辑弹窗：复用模版编辑表单 */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => (open ? setDialogOpen(true) : closeDialog())}>
+        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingRecord ? "编辑陆运账单" : "新建陆运账单"}</DialogTitle>
+          </DialogHeader>
+          {detailLoading ? (
+            <div className="flex min-h-[200px] items-center justify-center text-sm text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              正在加载账单...
+            </div>
+          ) : (
+            <AccountingInvoiceForm
+              key={String(editingRecord?.id ?? "new")}
+              data={editingRecord}
+              onSuccess={() => {
+                closeDialog()
+                refresh()
+              }}
+              onCancel={closeDialog}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
