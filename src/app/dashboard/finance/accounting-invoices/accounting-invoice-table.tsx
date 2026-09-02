@@ -101,6 +101,8 @@ type Row = {
 
 type ListData = PaginatedData<Row>
 
+type DateFilterType = "invoice" | "check"
+
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
@@ -185,10 +187,9 @@ export function AccountingInvoiceTable() {
   const [appliedSearch, setAppliedSearch] = React.useState("")
   const [companies, setCompanies] = React.useState<string[]>([])
   const [fromTo, setFromTo] = React.useState("")
-  const [invoiceFrom, setInvoiceFrom] = React.useState("")
-  const [invoiceTo, setInvoiceTo] = React.useState("")
-  const [checkFrom, setCheckFrom] = React.useState("")
-  const [checkTo, setCheckTo] = React.useState("")
+  const [dateType, setDateType] = React.useState<DateFilterType>("invoice")
+  const [dateFrom, setDateFrom] = React.useState("")
+  const [dateTo, setDateTo] = React.useState("")
 
   // 勾选与新建/编辑弹窗
   const [selected, setSelected] = React.useState<Set<string>>(new Set())
@@ -209,12 +210,17 @@ export function AccountingInvoiceTable() {
     if (appliedSearch) params.set("search", appliedSearch)
     if (companies.length > 0) params.set("company", companies.join(","))
     if (fromTo) params.set("from_to", fromTo)
-    if (invoiceFrom) params.set("invoice_date_from", invoiceFrom)
-    if (invoiceTo) params.set("invoice_date_to", invoiceTo)
-    if (checkFrom) params.set("check_date_from", checkFrom)
-    if (checkTo) params.set("check_date_to", checkTo)
+    if (dateFrom) {
+      params.set(
+        dateType === "invoice" ? "invoice_date_from" : "check_date_from",
+        dateFrom
+      )
+    }
+    if (dateTo) {
+      params.set(dateType === "invoice" ? "invoice_date_to" : "check_date_to", dateTo)
+    }
     return params.toString()
-  }, [page, pageSize, sorting, appliedSearch, companies, fromTo, invoiceFrom, invoiceTo, checkFrom, checkTo])
+  }, [page, pageSize, sorting, appliedSearch, companies, fromTo, dateType, dateFrom, dateTo])
 
   React.useEffect(() => {
     let cancelled = false
@@ -444,10 +450,9 @@ export function AccountingInvoiceTable() {
     setAppliedSearch("")
     setCompanies([])
     setFromTo("")
-    setInvoiceFrom("")
-    setInvoiceTo("")
-    setCheckFrom("")
-    setCheckTo("")
+    setDateType("invoice")
+    setDateFrom("")
+    setDateTo("")
     setPage(1)
   }, [])
 
@@ -674,135 +679,148 @@ export function AccountingInvoiceTable() {
           </div>
         </div>
 
-        {/* 筛选工具栏：窄屏堆叠，宽屏恢复工具带 */}
-        <div className="grid gap-3 p-3 sm:grid-cols-2 sm:items-end xl:flex xl:flex-wrap sm:p-4">
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">公司</span>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 w-full justify-between sm:w-[150px]">
-                  {companies.length > 0 ? `已选 ${companies.length} 项` : "全部公司"}
-                  <ChevronDown className="ml-1 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                {ACCOUNTING_COMPANY_OPTIONS.map((opt) => (
-                  <DropdownMenuCheckboxItem
-                    key={opt.value}
-                    checked={companies.includes(opt.value)}
-                    onCheckedChange={(checked) => toggleCompany(opt.value, checked === true)}
-                    onSelect={(e) => e.preventDefault()}
+        {/* 统一筛选与搜索工具栏 */}
+        <div className="border-t bg-muted/30 px-3 py-3 sm:px-4">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 w-full justify-between bg-background sm:w-[136px]"
                   >
-                    {opt.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+                    {companies.length > 0 ? `公司 ${companies.length}` : "全部公司"}
+                    <ChevronDown className="ml-1 h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {ACCOUNTING_COMPANY_OPTIONS.map((opt) => (
+                    <DropdownMenuCheckboxItem
+                      key={opt.value}
+                      checked={companies.includes(opt.value)}
+                      onCheckedChange={(checked) => toggleCompany(opt.value, checked === true)}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {opt.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">运输线路</span>
-            <Select
-              value={fromTo || "__all__"}
-              onValueChange={(v) => {
-                setFromTo(v === "__all__" ? "" : v)
-                setPage(1)
-              }}
-            >
-              <SelectTrigger className="h-9 w-full">
-                <SelectValue placeholder="From - To" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">全部线路</SelectItem>
-                {ACCOUNTING_FROM_TO_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        <div className="grid gap-2 sm:col-span-2 xl:col-span-1">
-          <span className="text-xs font-medium text-muted-foreground">Invoice 日期</span>
-          <div className="grid gap-2 min-[480px]:grid-cols-[1fr_auto_1fr] min-[480px]:items-center">
-            <Input
-              type="date"
-              className="h-9 w-full"
-              value={invoiceFrom}
-              onChange={(e) => {
-                setInvoiceFrom(e.target.value)
-                setPage(1)
-              }}
-            />
-            <span className="text-center text-xs text-muted-foreground">至</span>
-            <Input
-              type="date"
-              className="h-9 w-full"
-              value={invoiceTo}
-              onChange={(e) => {
-                setInvoiceTo(e.target.value)
-                setPage(1)
-              }}
-            />
+              <Select
+                value={fromTo || "__all__"}
+                onValueChange={(v) => {
+                  setFromTo(v === "__all__" ? "" : v)
+                  setPage(1)
+                }}
+              >
+                <SelectTrigger
+                  className="h-9 w-full bg-background sm:w-[150px]"
+                  aria-label="运输线路"
+                >
+                  <SelectValue placeholder="运输线路" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">全部线路</SelectItem>
+                  {ACCOUNTING_FROM_TO_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <div
+                aria-label="时间筛选"
+                className="flex w-full min-w-0 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 shadow-xs sm:w-auto"
+              >
+                <div
+                  role="tablist"
+                  aria-label="时间类型"
+                  className="flex shrink-0 items-center rounded-md bg-muted p-0.5"
+                >
+                  {(
+                    [
+                      ["invoice", "Invoice日期"],
+                      ["check", "支票日期"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="tab"
+                      aria-selected={dateType === value}
+                      onClick={() => {
+                        setDateType(value)
+                        setPage(1)
+                      }}
+                      className={
+                        dateType === value
+                          ? "rounded-[5px] bg-background px-2 py-1 text-xs font-medium text-foreground shadow-xs"
+                          : "rounded-[5px] px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <Input
+                  type="date"
+                  aria-label="开始日期"
+                  className="h-7 min-w-24 flex-1 border-0 px-1 text-xs shadow-none focus-visible:border-transparent focus-visible:ring-0 sm:w-32"
+                  value={dateFrom}
+                  onChange={(e) => {
+                    setDateFrom(e.target.value)
+                    setPage(1)
+                  }}
+                />
+                <span className="text-xs text-muted-foreground">至</span>
+                <Input
+                  type="date"
+                  aria-label="结束日期"
+                  className="h-7 min-w-24 flex-1 border-0 px-1 text-xs shadow-none focus-visible:border-transparent focus-visible:ring-0 sm:w-32"
+                  value={dateTo}
+                  onChange={(e) => {
+                    setDateTo(e.target.value)
+                    setPage(1)
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="flex h-10 w-full min-w-0 items-center gap-1 rounded-lg border border-input bg-background p-1 shadow-xs transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30 xl:ml-auto xl:max-w-md">
+              <Search
+                className="ml-1.5 size-4 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                aria-label="搜索账单"
+                className="h-8 min-w-0 flex-1 rounded-none border-0 px-1 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0"
+                placeholder="发票号 / 货号 / Load# / 支票号 / 备注"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") applySearch()
+                }}
+              />
+              <Button size="sm" className="h-8 shrink-0" onClick={applySearch}>
+                搜索
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 shrink-0 text-muted-foreground"
+                onClick={resetFilters}
+                title="清空筛选条件"
+                aria-label="清空筛选条件"
+              >
+                <RotateCcw className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
           </div>
         </div>
-
-        <div className="grid gap-2 sm:col-span-2 xl:col-span-1">
-          <span className="text-xs font-medium text-muted-foreground">支票日期</span>
-          <div className="grid gap-2 min-[480px]:grid-cols-[1fr_auto_1fr] min-[480px]:items-center">
-            <Input
-              type="date"
-              className="h-9 w-full"
-              value={checkFrom}
-              onChange={(e) => {
-                setCheckFrom(e.target.value)
-                setPage(1)
-              }}
-            />
-            <span className="text-center text-xs text-muted-foreground">至</span>
-            <Input
-              type="date"
-              className="h-9 w-full"
-              value={checkTo}
-              onChange={(e) => {
-                setCheckTo(e.target.value)
-                setPage(1)
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="space-y-1.5 sm:col-span-2 xl:ml-auto xl:w-[360px]">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-muted-foreground">快速搜索</span>
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={resetFilters}
-              title="清空筛选条件"
-              className="text-muted-foreground"
-            >
-              <RotateCcw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-              重置
-            </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              className="h-9 min-w-0 flex-1"
-              placeholder="发票号 / 货号 / Load# / 支票号 / 备注"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") applySearch()
-              }}
-            />
-            <Button variant="outline" size="sm" className="h-9 shrink-0" onClick={applySearch}>
-              <Search className="mr-1 h-4 w-4" />
-              搜索
-            </Button>
-          </div>
-        </div>
-      </div>
       </section>
 
       {/* 宽屏表格；低于 2xl 分辨率切换为卡片视图 */}
