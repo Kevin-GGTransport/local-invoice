@@ -19,6 +19,19 @@ export async function requireSession(): Promise<{
   return { session, error: null }
 }
 
+/** 管理端鉴权：无 session 返回 401；非 admin 角色返回 403 */
+export async function requireAdmin(): Promise<{
+  session: Session | null
+  error: NextResponse | null
+}> {
+  const { session, error } = await requireSession()
+  if (error) return { session: null, error }
+  if (session?.user?.role !== "admin") {
+    return { session: null, error: jsonError("需要管理员权限", 403) }
+  }
+  return { session, error: null }
+}
+
 /** session.user.id（JWT sub，字符串数字）→ BigInt，无效时 null */
 export function userIdBigint(session: Session | null): bigint | null {
   const id = session?.user?.id

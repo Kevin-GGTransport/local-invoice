@@ -4,10 +4,13 @@
  */
 
 import { prisma } from '@/lib/prisma'
-import { ACCOUNTING_COMPANY_INVOICE_PREFIX } from '@/lib/finance/accounting-invoice-companies'
 
 export async function getNextAccountingInvoiceNumber(company: string, date: Date = new Date()): Promise<string> {
-  const prefix = ACCOUNTING_COMPANY_INVOICE_PREFIX[company]
+  const companyRow = await prisma.companies.findUnique({ where: { code: company } })
+  if (!companyRow) {
+    throw new Error(`公司「${company}」不存在，请在基础管理 → 公司管理中维护`)
+  }
+  const prefix = companyRow.invoice_prefix
   if (!prefix) {
     throw new Error(`公司「${company}」未配置发票号前缀，请手动填写发票号`)
   }

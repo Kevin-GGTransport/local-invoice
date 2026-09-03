@@ -71,11 +71,7 @@ import { AccountingInvoicesBatchPdf } from "@/components/finance/accounting-invo
 import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
 import type { PaginatedData } from "@/lib/api/types"
 import { openPdf } from "@/lib/utils/open-pdf"
-import {
-  ACCOUNTING_COMPANY_OPTIONS,
-  ACCOUNTING_FROM_TO_OPTIONS,
-  ACCOUNTING_PDF_TEMPLATE_COMPANIES,
-} from "@/lib/finance/accounting-invoice-companies"
+import { ACCOUNTING_FROM_TO_OPTIONS } from "@/lib/finance/accounting-invoice-companies"
 
 /** 列表行（API 返回 JSON：BigInt id 已转 string，Decimal 为 string） */
 type Row = {
@@ -185,6 +181,9 @@ export function AccountingInvoiceTable() {
   const [searchInput, setSearchInput] = React.useState("")
   const [appliedSearch, setAppliedSearch] = React.useState("")
   const [companies, setCompanies] = React.useState<string[]>([])
+  const [companyOptions, setCompanyOptions] = React.useState<
+    { code: string; name: string; has_active_template: boolean }[]
+  >([])
   const [fromTo, setFromTo] = React.useState("")
   const [dateFrom, setDateFrom] = React.useState("")
   const [dateTo, setDateTo] = React.useState("")
@@ -194,6 +193,12 @@ export function AccountingInvoiceTable() {
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editingRecord, setEditingRecord] = React.useState<Record<string, unknown> | null>(null)
   const [detailLoading, setDetailLoading] = React.useState(false)
+
+  React.useEffect(() => {
+    void fetchJson<{ code: string; name: string; has_active_template: boolean }[]>("/api/companies")
+      .then(setCompanyOptions)
+      .catch(() => setCompanyOptions([]))
+  }, [])
 
   const refresh = React.useCallback(() => setReloadFlag((f) => f + 1), [])
 
@@ -336,12 +341,14 @@ export function AccountingInvoiceTable() {
   }, [])
 
   const handleRowPrint = React.useCallback((row: Row) => {
-    if (!row.company || !ACCOUNTING_PDF_TEMPLATE_COMPANIES.includes(row.company)) {
+    const hasTemplate =
+      companyOptions.find((c) => c.code === row.company)?.has_active_template ?? false
+    if (!row.company || !hasTemplate) {
       toast.error(`公司「${row.company || "未知"}」暂无 PDF 模版`)
       return
     }
     openPdf(`/api/finance/accounting-invoices/${row.id}/pdf`)
-  }, [])
+  }, [companyOptions])
 
   const renderRowActions = React.useCallback(
     (r: Row) => (
@@ -659,14 +666,14 @@ export function AccountingInvoiceTable() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  {ACCOUNTING_COMPANY_OPTIONS.map((opt) => (
+                  {companyOptions.map((opt) => (
                     <DropdownMenuCheckboxItem
-                      key={opt.value}
-                      checked={companies.includes(opt.value)}
-                      onCheckedChange={(checked) => toggleCompany(opt.value, checked === true)}
+                      key={opt.code}
+                      checked={companies.includes(opt.code)}
+                      onCheckedChange={(checked) => toggleCompany(opt.code, checked === true)}
                       onSelect={(e) => e.preventDefault()}
                     >
-                      {opt.label}
+                      {opt.name}（{opt.code}）
                     </DropdownMenuCheckboxItem>
                   ))}
                 </DropdownMenuContent>

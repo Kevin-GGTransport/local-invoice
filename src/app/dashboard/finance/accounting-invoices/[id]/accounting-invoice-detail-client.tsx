@@ -11,7 +11,6 @@ import { ArrowLeft, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
-import { ACCOUNTING_PDF_TEMPLATE_COMPANIES } from "@/lib/finance/accounting-invoice-companies"
 import { fetchJson } from "@/lib/api/client"
 import { openPdf } from "@/lib/utils/open-pdf"
 
@@ -21,6 +20,7 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
   const router = useRouter()
   const [record, setRecord] = React.useState<Record<string, unknown> | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const [companies, setCompanies] = React.useState<{ code: string; has_active_template: boolean }[]>([])
 
   React.useEffect(() => {
     let cancelled = false
@@ -39,9 +39,16 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
     }
   }, [id])
 
+  React.useEffect(() => {
+    void fetchJson<{ code: string; has_active_template: boolean }[]>("/api/companies")
+      .then(setCompanies)
+      .catch(() => setCompanies([]))
+  }, [])
+
   const company = record?.company != null ? String(record.company) : ""
   const invoiceNumber = record?.invoice_number != null ? String(record.invoice_number) : ""
-  const hasTemplate = ACCOUNTING_PDF_TEMPLATE_COMPANIES.includes(company)
+  const hasTemplate =
+    companies.find((c) => c.code === company)?.has_active_template ?? false
 
   const handlePrint = () => {
     if (!hasTemplate) {

@@ -1,14 +1,20 @@
 /**
- * 陆运账单 PDF 生成入口
- * 按记录的公司字段从注册表取模版渲染；未注册模版的公司返回 unsupported
- * 合计 = 明细行金额之和（无明细行的历史数据回退主表单行字段）
+ * 陆运账单 PDF 生成入口（数据驱动）
+ * 按记录的公司代码查询当前启用的账单模版，经共享渲染核心生成 PDF；
+ * 无启用模版的公司返回 unsupported。历史数据无明细行时回退主表单行字段。
  */
 
 import React from 'react'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/prisma'
-import { ACCOUNTING_INVOICE_PDF_TEMPLATES } from './accounting-invoice-pdf-registry'
-import type { AccountingInvoicePdfPayload, AccountingInvoicePdfLine } from './accounting-invoice-pdf-types'
+import type {
+  TemplateBinding,
+  TemplateGrid,
+  TemplatePageConfig,
+  TemplateRenderData,
+} from '@/lib/templates/types'
+import { renderTemplateData } from '@/lib/templates/render-template-data'
+import { GenericTemplateDocument } from './generic-template-pdf'
 
 export type AccountingInvoicePdfResult =
   | { status: 'ok'; buffer: Buffer; invoiceNumber: string; company: string }
@@ -43,11 +49,14 @@ export async function generateAccountingInvoicePdf(id: bigint): Promise<Accounti
   })
   if (!row) return { status: 'not_found' }
 
-  const Template = ACCOUNTING_INVOICE_PDF_TEMPLATES[row.company]
-  if (!Template) return { status: 'unsupported', company: row.company }
+  const template = await prisma.invoice_templates.findFirst({
+    where: { status: 'active', company: { code: row.company } },
+    orderBy: { updated_at: 'desc' },
+  })
+  if (!template) return { status: 'unsupported', company: row.company }
 
   const dbLines = row.accounting_invoice_lines ?? []
-  const lines: AccountingInvoicePdfLine[] =
+  const lines: TemplateRenderData['lines'] =
     dbLines.length > 0
       ? dbLines.map((line) => ({
           description: line.description ?? '',
@@ -55,8 +64,7 @@ export async function generateAccountingInvoicePdf(id: bigint): Promise<Accounti
           unitPrice: formatMoney(line.unit_price),
           amount: formatMoney(line.amount),
         }))
-      : // 历史数据：无明细行时回退主表单行字段
-        [
+      : [
           {
             description: row.description ?? '',
             quantity: formatNumber(row.quantity),
@@ -65,31 +73,39 @@ export async function generateAccountingInvoicePdf(id: bigint): Promise<Accounti
           },
         ]
 
-  // 合计：明细行之和；无明细行时用主表 invoice_price
   const total =
     dbLines.length > 0
       ? dbLines.reduce((sum, line) => sum + Number(line.amount ?? 0), 0)
       : Number(row.invoice_price ?? 0)
   const totalStr = formatMoney(Math.round(total * 100) / 100)
 
-  const payload: AccountingInvoicePdfPayload = {
-    company: row.company,
+  const data: TemplateRenderData = {
     invoiceNumber: row.invoice_number,
     invoiceDate: formatDate(row.invoice_date),
     loadNumber: row.broker_load_number ?? '',
     billTo: row.bill_to ?? '',
-    invoicePrice: totalStr,
-    amount: totalStr,
-    lines,
+    total: totalStr,
     pickupDate: formatDate(row.pickup_date),
     pickupCompany: row.pickup_company ?? '',
     pickupAddress: row.pickup_address ?? '',
     dropDate: formatDate(row.drop_date),
     dropCompany: row.drop_company ?? '',
     dropAddress: row.drop_address ?? '',
+    lines,
   }
 
-  const buf = await renderToBuffer(<Template data={payload} />)
+  const rendered = renderTemplateData(
+    template.grid_config as unknown as TemplateGrid,
+    template.binding_config as unknown as TemplateBinding,
+    data
+  )
+
+  const buf = await renderToBuffer(
+    <GenericTemplateDocument
+      pageConfig={template.page_config as unknown as TemplatePageConfig}
+      grid={rendered}
+    />
+  )
   const buffer = Buffer.isBuffer(buf) ? buf : Buffer.from(buf as ArrayBuffer)
   return { status: 'ok', buffer, invoiceNumber: row.invoice_number, company: row.company }
 }

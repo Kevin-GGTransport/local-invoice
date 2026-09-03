@@ -1,10 +1,9 @@
 "use client"
 
 /**
- * 陆运账单 模版编辑表单（所见即所得）
- * 选公司 → 呈现该公司的 PDF 模版复刻版式，在版式上直接填写数据；
- * 本功能只管理 PDF 上打印的字段；其余对账字段（同一张表的
- * master_order_number/contract_price/check_* 等）由其他功能维护，不在此编辑。
+ * 陆运账单 开票表单（结构化表单 + 模版实时预览）
+ * 左侧维护 PDF 打印字段；右侧按公司当前启用模版实时渲染最终效果。
+ * 无启用模版的公司仅保存记录（可在 Excel 清单中导出），不出 PDF。
  */
 
 import React from "react"
@@ -20,13 +19,16 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import { Loader2, Printer, CheckCircle2 } from "lucide-react"
-import {
-  ACCOUNTING_COMPANY_OPTIONS,
-  ACCOUNTING_PDF_TEMPLATE_COMPANIES,
-} from "@/lib/finance/accounting-invoice-companies"
+import { Loader2, Printer, CheckCircle2, Plus, Trash2 } from "lucide-react"
 import { fetchJson } from "@/lib/api/client"
 import { openPdf } from "@/lib/utils/open-pdf"
+import { TemplatePreview } from "@/components/templates/template-preview"
+import { renderTemplateData } from "@/lib/templates/render-template-data"
+import type {
+  TemplateBinding,
+  TemplateGrid,
+  TemplatePageConfig,
+} from "@/lib/templates/types"
 
 type RowData = Record<string, unknown> | null | undefined
 
@@ -61,6 +63,22 @@ interface FormValues {
   drop_address: string
 }
 
+interface CompanyOption {
+  id: string
+  code: string
+  name: string
+  is_active: boolean
+  has_active_template: boolean
+}
+
+interface ActiveTemplate {
+  id: string
+  name: string
+  page_config: TemplatePageConfig
+  grid_config: TemplateGrid
+  binding_config: TemplateBinding
+}
+
 function str(value: unknown): string {
   if (value == null) return ""
   return String(value)
@@ -78,8 +96,8 @@ function toNumber(value: string): number | null {
   return Number.isNaN(n) ? null : n
 }
 
-function fmtMoney(value: string): string {
-  const n = toNumber(value)
+function fmtMoney(value: string | number | null): string {
+  const n = typeof value === "number" ? value : toNumber(String(value ?? ""))
   if (n == null) return ""
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
@@ -88,7 +106,7 @@ function emptyLine(): FormLine {
   return { description: "", quantity: "", unitPrice: "", amount: "" }
 }
 
-/** 行有效金额：Qty × Rate 齐全时自动算，否则取手填金额（YG 的 Amount 列为只读自动计算） */
+/** 行有效金额：Qty × Rate 齐全时自动算，否则取手填金额 */
 function lineAmountValue(line: FormLine): number | null {
   const qty = toNumber(line.quantity)
   const rate = toNumber(line.unitPrice)
@@ -96,7 +114,6 @@ function lineAmountValue(line: FormLine): number | null {
   return toNumber(line.amount)
 }
 
-/** 明细合计（空行忽略） */
 function sumLines(lines: FormLine[]): number | null {
   let total = 0
   let has = false
@@ -109,418 +126,11 @@ function sumLines(lines: FormLine[]): number | null {
   return has ? Math.round(total * 100) / 100 : null
 }
 
-/** 模版上的小号输入框样式 */
-const tplInputCls = "h-7 border-slate-300 bg-white px-1.5 text-[13px] shadow-none"
-const tplDateCls = "h-7 border-slate-300 bg-white px-1.5 text-[12px] shadow-none"
-
-interface EditorProps {
-  values: FormValues
-  setField: (key: keyof Omit<FormValues, "lines">, value: string) => void
-  setLines: React.Dispatch<React.SetStateAction<FormLine[]>>
-  /** 新建时 Invoice 日期留空且不可编辑；保存后（编辑态）可填写 */
-  invoiceDateDisabled: boolean
-}
-
-/** 明细行增删按钮条（模版编辑器共用） */
-function LineActions({ onAdd }: { onAdd: () => void }) {
-  return (
-    <div className="mt-2 flex justify-end">
-      <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={onAdd}>
-        + 添加明细行
-      </Button>
-    </div>
-  )
-}
-
-function RemoveLineButton({ onRemove }: { onRemove: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onRemove}
-      title="删除此行"
-      className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded border border-slate-300 text-slate-500 hover:border-destructive hover:text-destructive"
-    >
-      ×
-    </button>
-  )
-}
-
-/** AA 模版（ALREADY ARRIVED LOGISTICS INC，橙色） */
-function AaEditor({ values, setField, setLines, invoiceDateDisabled }: EditorProps) {
-  return (
-    <div>
-      {/* 页眉橙色横条 */}
-      <div className="flex items-center justify-between bg-[#F6921E] px-4 py-2">
-        <span className="text-sm font-bold">ALREADY ARRIVED LOGISTICS INC</span>
-        <span className="text-3xl font-bold italic text-[#1C4587]">INVOICE</span>
-      </div>
-
-      {/* 公司信息（左） + INVOICE NO./DATE/Load no.（右） */}
-      <div className="mt-3 flex items-start justify-between">
-        <div className="text-xs leading-5">
-          <p>ALREADY ARRIVED LOGISTICS INC</p>
-          <p>4011 Berdina Rd</p>
-          <p>Castro Valley CA 94546</p>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          {(
-            [
-              ["INVOICE NO.", "invoice_number", "留空自动生成", "text"],
-              ["DATE", "invoice_date", "", "date"],
-              ["Load no.", "broker_load_number", "", "text"],
-            ] as const
-          ).map(([label, key, placeholder, type]) => (
-            <div key={key} className="flex w-64 items-center">
-              <span className="w-24 shrink-0 text-right text-xs font-bold">{label}</span>
-              <Input
-                type={type}
-                value={values[key]}
-                onChange={(e) => setField(key, e.target.value)}
-                placeholder={placeholder}
-                disabled={invoiceDateDisabled && key === "invoice_date"}
-                title={
-                  invoiceDateDisabled && key === "invoice_date"
-                    ? "新建时留空，保存后可编辑"
-                    : undefined
-                }
-                className={`${type === "date" ? tplDateCls : tplInputCls} ml-2 flex-1`}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* TO */}
-      <div className="mt-3 flex items-center gap-2">
-        <span className="text-sm font-bold">TO</span>
-        <Input
-          value={values.bill_to}
-          onChange={(e) => setField("bill_to", e.target.value)}
-          placeholder="客户名"
-          className={`${tplInputCls} w-64`}
-        />
-      </div>
-
-      {/* PICKUPS | DROPS 黑框 */}
-      <div className="mt-3 grid grid-cols-2 border-2 border-black">
-        <div className="space-y-1.5 border-r-2 border-black p-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold">PICKUPS</span>
-            <Input
-              type="date"
-              value={values.pickup_date}
-              onChange={(e) => setField("pickup_date", e.target.value)}
-              className={`${tplDateCls} w-32`}
-            />
-          </div>
-          <Input
-            value={values.pickup_company}
-            onChange={(e) => setField("pickup_company", e.target.value)}
-            placeholder="取货公司"
-            className={tplInputCls}
-          />
-          <Textarea
-            value={values.pickup_address}
-            onChange={(e) => setField("pickup_address", e.target.value)}
-            placeholder="取货地址（可多行）"
-            className="min-h-[42px] border-slate-300 bg-white px-1.5 text-[12px] shadow-none"
-          />
-        </div>
-        <div className="space-y-1.5 p-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold">DROPS</span>
-            <Input
-              type="date"
-              value={values.drop_date}
-              onChange={(e) => setField("drop_date", e.target.value)}
-              className={`${tplDateCls} w-32`}
-            />
-          </div>
-          <Input
-            value={values.drop_company}
-            onChange={(e) => setField("drop_company", e.target.value)}
-            placeholder="交货公司"
-            className={tplInputCls}
-          />
-          <Textarea
-            value={values.drop_address}
-            onChange={(e) => setField("drop_address", e.target.value)}
-            placeholder="交货地址（可多行）"
-            className="min-h-[42px] border-slate-300 bg-white px-1.5 text-[12px] shadow-none"
-          />
-        </div>
-      </div>
-
-      {/* 明细表（可增删多行） */}
-      <div className="mt-3 border border-[#F0B27A]">
-        <div className="grid grid-cols-[1fr_170px_28px] bg-[#FDE5CD] text-xs font-bold">
-          <div className="border-r border-[#F0B27A] px-2 py-1.5">DESCRIPTION</div>
-          <div className="border-r border-[#F0B27A] px-2 py-1.5 text-right">TOTAL</div>
-          <div />
-        </div>
-        {values.lines.map((line, index) => (
-          <div
-            key={index}
-            className="grid grid-cols-[1fr_170px_28px] border-t border-[#F0B27A]"
-          >
-            <Input
-              value={line.description}
-              onChange={(e) =>
-                setLines((prev) => prev.map((l, i) => (i === index ? { ...l, description: e.target.value } : l)))
-              }
-              placeholder="如 Carrier Charge"
-              className={`${tplInputCls} rounded-none border-0 focus-visible:ring-0`}
-            />
-            <Input
-              value={line.amount}
-              onChange={(e) =>
-                setLines((prev) => prev.map((l, i) => (i === index ? { ...l, amount: e.target.value } : l)))
-              }
-              placeholder="0.00"
-              className={`${tplInputCls} rounded-none border-0 border-l border-[#F0B27A] text-right focus-visible:ring-0`}
-            />
-            <div className="flex items-center justify-center border-l border-[#F0B27A]">
-              <RemoveLineButton onRemove={() => setLines((prev) => prev.filter((_, i) => i !== index))} />
-            </div>
-          </div>
-        ))}
-        <div className="h-8 border-t border-[#F0B27A]" />
-      </div>
-      <LineActions onAdd={() => setLines((prev) => [...prev, emptyLine()])} />
-
-      {/* TOTAL DUE */}
-      <div className="mt-4 flex items-center justify-end gap-3">
-        <span className="text-base font-bold">TOTAL DUE</span>
-        <span className="min-w-[110px] bg-[#F6921E] px-4 py-1.5 text-right text-base font-bold text-white">
-          {sumLines(values.lines) == null ? "$0.00" : fmtMoney(String(sumLines(values.lines)))}
-        </span>
-      </div>
-
-      {/* 页脚 */}
-      <div className="mt-6 flex items-end justify-between text-[10px] leading-4 text-neutral-600">
-        <div>
-          <p className="font-bold">DIRECT ALL INQUIRIES TO:</p>
-          <p className="text-black">ALREADY ARRIVED LOGISTICS INC</p>
-          <p>PHONE: 510-330-9581</p>
-          <p>EMAIL: Alreadyarrivedlogistics@gmail.com</p>
-        </div>
-        <p className="text-xs font-bold text-black">THANK YOU FOR YOUR BUSINESS!</p>
-      </div>
-    </div>
-  )
-}
-
-/** YG 模版（YG Trucking LLC，粉色） */
-function YgEditor({ values, setField, setLines, invoiceDateDisabled }: EditorProps) {
-  const total = sumLines(values.lines)
-  const amount = total == null ? "$0.00" : fmtMoney(String(total))
-
-  return (
-    <div>
-      {/* 页眉粉色横条 */}
-      <div className="flex items-center justify-between bg-[#F9CBD3] px-4 py-2">
-        <span className="text-base font-bold">YG Trucking LLC</span>
-        <span className="text-base">Invoice</span>
-      </div>
-
-      {/* 地址（左） + Date/Invoice# 2×2 小表（右） */}
-      <div className="mt-3 flex items-start justify-between">
-        <div className="pt-1 text-xs leading-5">
-          <p>PO Box 6213</p>
-          <p>Hayward CA 94545</p>
-        </div>
-        <div className="border border-black text-xs">
-          <div className="grid grid-cols-2">
-            <div className="border-r border-b border-black px-3 py-1 font-bold">Date</div>
-            <div className="border-b border-black px-3 py-1 font-bold">Invoice #</div>
-            <div className="border-r border-black p-0.5">
-              <Input
-                type="date"
-                value={values.invoice_date}
-                onChange={(e) => setField("invoice_date", e.target.value)}
-                disabled={invoiceDateDisabled}
-                title={invoiceDateDisabled ? "新建时留空，保存后可编辑" : undefined}
-                className={`${tplDateCls} w-full rounded-none border-0 focus-visible:ring-0`}
-              />
-            </div>
-            <div className="p-0.5">
-              <Input
-                value={values.invoice_number}
-                onChange={(e) => setField("invoice_number", e.target.value)}
-                placeholder="留空自动生成"
-                className={`${tplInputCls} w-full rounded-none border-0 focus-visible:ring-0`}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Bill To 方框 */}
-      <div className="mt-3 w-72 border border-black p-2">
-        <p className="text-xs">Bill To:</p>
-        <Input
-          value={values.bill_to}
-          onChange={(e) => setField("bill_to", e.target.value)}
-          placeholder="客户名"
-          className={`${tplInputCls} mt-1 rounded-none border-0 px-0 focus-visible:ring-0`}
-        />
-      </div>
-
-      {/* 分页标记 */}
-      <p className="mt-3 text-center text-xs">Page 1 of 1</p>
-
-      {/* 明细表（可增删多行，Amount 自动 = Qty × Rate） */}
-      <div className="mt-1 border border-black text-xs">
-        <div className="grid grid-cols-[1fr_64px_96px_104px_28px] bg-[#F9CBD3] text-center font-bold">
-          <div className="border-r border-black px-2 py-1.5">Description</div>
-          <div className="border-r border-black px-2 py-1.5">Qty</div>
-          <div className="border-r border-black px-2 py-1.5">Rate</div>
-          <div className="border-r border-black px-2 py-1.5">Amount</div>
-          <div />
-        </div>
-        {values.lines.map((line, index) => {
-          const effective = lineAmountValue(line)
-          const lineAmount = effective == null ? "" : fmtMoney(String(effective))
-          const patch = (part: Partial<FormLine>) =>
-            setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...part } : l)))
-          return (
-            <div key={index} className="grid grid-cols-[1fr_64px_96px_104px_28px] border-t border-black">
-              <div className="border-r border-black p-0.5">
-                <Input
-                  value={line.description}
-                  onChange={(e) => patch({ description: e.target.value })}
-                  placeholder="如 Load# 124590"
-                  className={`${tplInputCls} w-full rounded-none border-0 focus-visible:ring-0`}
-                />
-              </div>
-              <div className="border-r border-black p-0.5">
-                <Input
-                  value={line.quantity}
-                  onChange={(e) => patch({ quantity: e.target.value })}
-                  placeholder="1"
-                  className={`${tplInputCls} w-full rounded-none border-0 text-center focus-visible:ring-0`}
-                />
-              </div>
-              <div className="border-r border-black p-0.5">
-                <Input
-                  value={line.unitPrice}
-                  onChange={(e) => patch({ unitPrice: e.target.value })}
-                  placeholder="0.00"
-                  className={`${tplInputCls} w-full rounded-none border-0 text-right focus-visible:ring-0`}
-                />
-              </div>
-              <div className="flex items-center justify-end border-r border-black px-2 py-1.5 font-medium">
-                {lineAmount}
-              </div>
-              <div className="flex items-center justify-center">
-                <RemoveLineButton onRemove={() => setLines((prev) => prev.filter((_, i) => i !== index))} />
-              </div>
-            </div>
-          )
-        })}
-        <div className="h-40 border-t border-black" />
-        {/* Total 行 */}
-        <div className="grid grid-cols-[1fr_64px_96px_104px_28px] border-t border-black text-center">
-          <div className="px-2 py-1.5">Thank you for your business</div>
-          <div className="border-r border-black px-2 py-1.5 font-bold">Total</div>
-          <div className="border-r border-black" />
-          <div className="border-r border-black px-2 py-1.5 text-right font-bold">{amount}</div>
-          <div />
-        </div>
-        {/* Balance Due 行 */}
-        <div className="grid grid-cols-[1fr_104px_28px] border-t border-black">
-          <div className="px-2 py-1.5 text-right text-sm font-bold">Balance Due</div>
-          <div className="border-l border-black px-2 py-1.5 text-right text-sm font-bold">{amount}</div>
-          <div className="border-l border-black" />
-        </div>
-      </div>
-      <LineActions onAdd={() => setLines((prev) => [...prev, emptyLine()])} />
-
-      {/* 页脚 2×2 小表 */}
-      <div className="mt-6 w-80 border border-black text-xs">
-        <div className="grid grid-cols-2">
-          <div className="border-r border-b border-black px-3 py-1 font-bold">Phone#</div>
-          <div className="border-b border-black px-3 py-1 font-bold">Email:</div>
-          <div className="border-r border-black px-3 py-1">(707) 293-4042</div>
-          <div className="px-3 py-1">dispatch@ygtrucking.llc</div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/** 无专属模版公司的普通编辑器 */
-function FallbackEditor({ values, setField, setLines, invoiceDateDisabled }: EditorProps) {
-  const fields: Array<{ key: keyof Omit<FormValues, "lines">; label: string; type?: "date" }> = [
-    { key: "invoice_number", label: "Invoice Number" },
-    { key: "invoice_date", label: "Invoice 日期", type: "date" },
-    { key: "bill_to", label: "Bill To" },
-    { key: "broker_load_number", label: "Load #" },
-  ]
-  return (
-    <div>
-      <p className="mb-3 text-xs text-muted-foreground">
-        该公司暂无专属 PDF 模版，以下开票信息仅保存记录（可在 Excel 清单中导出）
-      </p>
-      <div className="grid grid-cols-4 gap-3">
-        {fields.map((f) => (
-          <div key={f.key} className="space-y-1">
-            <Label className="text-xs">{f.label}</Label>
-            <Input
-              type={f.type === "date" ? "date" : "text"}
-              value={values[f.key]}
-              onChange={(e) => setField(f.key, e.target.value)}
-              disabled={invoiceDateDisabled && f.key === "invoice_date"}
-              title={
-                invoiceDateDisabled && f.key === "invoice_date"
-                  ? "新建时留空，保存后可编辑"
-                  : undefined
-              }
-              className={tplInputCls}
-            />
-          </div>
-        ))}
-      </div>
-      {/* 明细行（可增删） */}
-      <div className="mt-3 space-y-2">
-        {values.lines.map((line, index) => (
-          <div key={index} className="flex items-center gap-2">
-            <Input
-              value={line.description}
-              onChange={(e) =>
-                setLines((prev) => prev.map((l, i) => (i === index ? { ...l, description: e.target.value } : l)))
-              }
-              placeholder="明细描述"
-              className={`${tplInputCls} flex-1`}
-            />
-            <Input
-              value={line.amount}
-              onChange={(e) =>
-                setLines((prev) => prev.map((l, i) => (i === index ? { ...l, amount: e.target.value } : l)))
-              }
-              placeholder="金额"
-              className={`${tplInputCls} w-28 text-right`}
-            />
-            <RemoveLineButton onRemove={() => setLines((prev) => prev.filter((_, i) => i !== index))} />
-          </div>
-        ))}
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium">
-            合计：{sumLines(values.lines) == null ? "$0.00" : fmtMoney(String(sumLines(values.lines)))}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            onClick={() => setLines((prev) => [...prev, emptyLine()])}
-          >
-            + 添加明细行
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
+function formatDateInput(v: string): string {
+  if (!v) return ""
+  const [y, m, d] = v.split("-")
+  if (!y || !m || !d) return ""
+  return `${m}/${d}/${y}`
 }
 
 /** 编辑回显：把接口返回的明细行转成表单结构 */
@@ -541,6 +151,9 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
   const [loading, setLoading] = React.useState(false)
   const [savedId, setSavedId] = React.useState<string | null>(null)
   const [savedInfo, setSavedInfo] = React.useState<{ id: string; invoiceNumber: string } | null>(null)
+  const [companies, setCompanies] = React.useState<CompanyOption[]>([])
+  const [activeTemplate, setActiveTemplate] = React.useState<ActiveTemplate | null>(null)
+  const [templateLoading, setTemplateLoading] = React.useState(false)
 
   const [values, setValues] = React.useState<FormValues>(() => ({
     company: str(data?.company),
@@ -561,12 +174,11 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
     setValues((prev) => ({ ...prev, [key]: value }))
   }, [])
 
-  // 明细行独立派发器（编辑器直接对 lines 数组做增删改）
   const setLines = React.useCallback<React.Dispatch<React.SetStateAction<FormLine[]>>>(
     (action) => {
       setValues((prev) => ({
         ...prev,
-        lines: typeof action === 'function' ? action(prev.lines) : action,
+        lines: typeof action === "function" ? action(prev.lines) : action,
       }))
     },
     []
@@ -575,10 +187,40 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
   const effectiveId = data?.id != null ? String(data.id) : savedId
   const isEditing = effectiveId != null
 
+  // 公司下拉：新建只可选启用公司；编辑时当前公司（即使已停用）保持在列表里
+  React.useEffect(() => {
+    void fetchJson<CompanyOption[]>("/api/companies")
+      .then((list) => setCompanies(list))
+      .catch(() => toast.error("加载公司列表失败"))
+  }, [])
+
+  // 选中公司 → 拉取当前启用模版用于右侧预览
+  React.useEffect(() => {
+    let cancelled = false
+    const company = values.company
+    void (async () => {
+      const t = company
+        ? await fetchJson<ActiveTemplate | null>(
+            `/api/invoice-templates/active?company=${encodeURIComponent(company)}`
+          ).catch(() => null)
+        : null
+      if (!cancelled) {
+        setActiveTemplate(t)
+        setTemplateLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [values.company])
+
+  const companyHasTemplate =
+    companies.find((c) => c.code === values.company)?.has_active_template ?? false
+
   const handlePrint = () => {
     if (!effectiveId) return
-    if (!ACCOUNTING_PDF_TEMPLATE_COMPANIES.includes(values.company)) {
-      toast.error(`公司「${values.company || "未选择"}」暂无 PDF 模版`)
+    if (!companyHasTemplate) {
+      toast.error(`公司「${values.company || "未选择"}」暂无启用的 PDF 模版`)
       return
     }
     openPdf(`/api/finance/accounting-invoices/${effectiveId}/pdf`)
@@ -594,7 +236,6 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
     try {
       const dateOrNull = (v: string) => (v.trim() === "" ? null : v.trim())
 
-      // 明细行：Amount = Qty × Rate（齐全时自动算，与界面显示同一规则）
       const linesPayload = values.lines.map((line) => ({
         description: line.description.trim() || null,
         quantity: toNumber(line.quantity),
@@ -648,49 +289,234 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
     }
   }
 
-  const editorProps: EditorProps = {
-    values,
-    setField,
-    setLines,
-    // 新建（尚未保存）时 Invoice 日期保持为空且不可编辑；保存后进入编辑态可填写
-    invoiceDateDisabled: !isEditing,
-  }
+  // —— 实时预览数据（与 PDF 服务同一格式化规则） ——
+  const previewGrid = React.useMemo(() => {
+    if (!activeTemplate) return null
+    const total = sumLines(values.lines)
+    return renderTemplateData(activeTemplate.grid_config, activeTemplate.binding_config, {
+      invoiceNumber: values.invoice_number,
+      invoiceDate: formatDateInput(values.invoice_date),
+      loadNumber: values.broker_load_number,
+      billTo: values.bill_to,
+      total: total == null ? "$0.00" : fmtMoney(total),
+      pickupDate: formatDateInput(values.pickup_date),
+      pickupCompany: values.pickup_company,
+      pickupAddress: values.pickup_address,
+      dropDate: formatDateInput(values.drop_date),
+      dropCompany: values.drop_company,
+      dropAddress: values.drop_address,
+      lines: values.lines.map((l) => ({
+        description: l.description,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice ? fmtMoney(l.unitPrice) : "",
+        amount: lineAmountValue(l) == null ? "" : fmtMoney(lineAmountValue(l)),
+      })),
+    })
+  }, [activeTemplate, values])
+
+  const inputCls = "bg-background"
+
+  const renderField = (
+    key: keyof Omit<FormValues, "lines" | "company">,
+    label: string,
+    type: "text" | "date" = "text",
+    placeholder?: string,
+  ) => (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}</Label>
+      <Input
+        type={type}
+        value={values[key]}
+        onChange={(e) => setField(key, e.target.value)}
+        disabled={type === "date" && key === "invoice_date" && !isEditing}
+        title={type === "date" && key === "invoice_date" && !isEditing ? "新建时留空，保存后可编辑" : undefined}
+        placeholder={placeholder}
+        className={inputCls}
+      />
+    </div>
+  )
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {/* 公司选择（决定模版） */}
+      {/* 公司选择（决定模版与发票号前缀） */}
       <div className="flex items-center gap-3">
         <Label className="shrink-0 text-sm">
           公司 <span className="text-destructive">*</span>
         </Label>
         <Select value={values.company} onValueChange={(v) => setField("company", v)}>
-          <SelectTrigger className="w-56">
+          <SelectTrigger className="w-64">
             <SelectValue placeholder="选择公司（决定 PDF 模版与发票号前缀）" />
           </SelectTrigger>
           <SelectContent>
-            {ACCOUNTING_COMPANY_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-                {ACCOUNTING_PDF_TEMPLATE_COMPANIES.includes(opt.value) ? "（有模版）" : ""}
-              </SelectItem>
-            ))}
+            {companies
+              .filter((c) => c.is_active || c.code === values.company)
+              .map((opt) => (
+                <SelectItem key={opt.id} value={opt.code}>
+                  {opt.name}（{opt.code}）{opt.has_active_template ? "（有模版）" : ""}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
       </div>
 
-      {/* 模版编辑器 / 占位提示 */}
-      {!values.company ? (
-        <div className="flex min-h-[200px] items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
-          请先选择公司，将呈现该公司的 Invoice 模版
-        </div>
-      ) : values.company === "AA" ? (
-        <AaEditor {...editorProps} />
-      ) : values.company === "YG" ? (
-        <YgEditor {...editorProps} />
-      ) : (
-        <FallbackEditor {...editorProps} />
-      )}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        {/* 左：结构化表单 */}
+        <div className="space-y-4">
+          <section className="space-y-3 rounded-lg border bg-card p-4">
+            <h3 className="text-sm font-semibold">开票信息</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {renderField("invoice_number", "Invoice Number", "text", "留空自动按公司前缀生成")}
+              {renderField("invoice_date", "Invoice 日期", "date")}
+              {renderField("broker_load_number", "Load #")}
+              {renderField("bill_to", "Bill To（收款方）")}
+            </div>
+          </section>
 
+          <section className="space-y-3 rounded-lg border bg-card p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">明细行</h3>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setLines((prev) => [...prev, emptyLine()])}
+              >
+                <Plus className="mr-1 size-3.5" />
+                添加明细行
+              </Button>
+            </div>
+            {values.lines.length === 0 && (
+              <p className="text-xs text-muted-foreground">暂无明细行，至少添加一行用于打印</p>
+            )}
+            <div className="space-y-2">
+              {values.lines.map((line, index) => (
+                <div key={index} className="flex items-end gap-2">
+                  <div className="flex-1 space-y-1">
+                    {index === 0 && <Label className="text-xs">描述</Label>}
+                    <Input
+                      value={line.description}
+                      onChange={(e) =>
+                        setLines((prev) =>
+                          prev.map((l, i) => (i === index ? { ...l, description: e.target.value } : l))
+                        )
+                      }
+                      placeholder="如 Carrier Charge"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div className="w-20 space-y-1">
+                    {index === 0 && <Label className="text-xs">Qty</Label>}
+                    <Input
+                      value={line.quantity}
+                      onChange={(e) =>
+                        setLines((prev) =>
+                          prev.map((l, i) => (i === index ? { ...l, quantity: e.target.value } : l))
+                        )
+                      }
+                      className={`${inputCls} text-right`}
+                    />
+                  </div>
+                  <div className="w-24 space-y-1">
+                    {index === 0 && <Label className="text-xs">Rate</Label>}
+                    <Input
+                      value={line.unitPrice}
+                      onChange={(e) =>
+                        setLines((prev) =>
+                          prev.map((l, i) => (i === index ? { ...l, unitPrice: e.target.value } : l))
+                        )
+                      }
+                      className={`${inputCls} text-right`}
+                    />
+                  </div>
+                  <div className="w-28 space-y-1">
+                    {index === 0 && <Label className="text-xs">Amount</Label>}
+                    <Input
+                      value={lineAmountValue(line) == null ? line.amount : fmtMoney(lineAmountValue(line))}
+                      onChange={(e) =>
+                        setLines((prev) =>
+                          prev.map((l, i) => (i === index ? { ...l, amount: e.target.value } : l))
+                        )
+                      }
+                      placeholder="Qty×Rate 自动算"
+                      className={`${inputCls} text-right`}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-9 shrink-0 text-destructive hover:text-destructive"
+                    onClick={() => setLines((prev) => prev.filter((_, i) => i !== index))}
+                    aria-label="删除明细行"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end">
+              <span className="text-sm font-medium">
+                合计：{sumLines(values.lines) == null ? "$0.00" : fmtMoney(sumLines(values.lines))}
+              </span>
+            </div>
+          </section>
+
+          <section className="space-y-3 rounded-lg border bg-card p-4">
+            <h3 className="text-sm font-semibold">取货 / 交货</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">PICKUPS</p>
+                {renderField("pickup_date", "取货日期", "date")}
+                {renderField("pickup_company", "取货公司")}
+                <div className="space-y-1">
+                  <Label className="text-xs">取货地址</Label>
+                  <Textarea
+                    value={values.pickup_address}
+                    onChange={(e) => setField("pickup_address", e.target.value)}
+                    className="min-h-[60px] bg-background"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">DROPS</p>
+                {renderField("drop_date", "交货日期", "date")}
+                {renderField("drop_company", "交货公司")}
+                <div className="space-y-1">
+                  <Label className="text-xs">交货地址</Label>
+                  <Textarea
+                    value={values.drop_address}
+                    onChange={(e) => setField("drop_address", e.target.value)}
+                    className="min-h-[60px] bg-background"
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {/* 右：模版实时预览 */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">模版实时预览</h3>
+            {templateLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+          </div>
+          {!values.company ? (
+            <div className="flex min-h-[200px] items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
+              选择公司后显示 PDF 模版预览
+            </div>
+          ) : !activeTemplate ? (
+            <div className="flex min-h-[200px] items-center justify-center rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+              该公司暂无启用的 PDF 模版
+              <br />
+              开票信息仅保存记录（可在 Excel 清单中导出）
+            </div>
+          ) : previewGrid ? (
+            <div className="max-h-[720px]">
+              <TemplatePreview grid={previewGrid} scale={0.78} />
+            </div>
+          ) : null}
+        </div>
+      </div>
 
       {/* 操作区 */}
       {savedInfo ? (
@@ -705,12 +531,8 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
               variant="outline"
               size="sm"
               onClick={handlePrint}
-              disabled={!ACCOUNTING_PDF_TEMPLATE_COMPANIES.includes(values.company)}
-              title={
-                ACCOUNTING_PDF_TEMPLATE_COMPANIES.includes(values.company)
-                  ? "新标签页打开 PDF"
-                  : "该公司暂无 PDF 模版"
-              }
+              disabled={!companyHasTemplate}
+              title={companyHasTemplate ? "新标签页打开 PDF" : "该公司暂无启用的 PDF 模版"}
             >
               <Printer className="mr-2 h-4 w-4" />
               打印 PDF
