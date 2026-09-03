@@ -925,7 +925,7 @@ export function AccountingInvoiceTable() {
 
       {/* 新建/编辑弹窗：复用模版编辑表单 */}
       <Dialog open={dialogOpen} onOpenChange={(open) => (open ? setDialogOpen(true) : closeDialog())}>
-        <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
+        <DialogContent className="max-h-[92vh] w-[min(96vw,80rem)] max-w-7xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingRecord ? "编辑陆运账单" : "新建陆运账单"}</DialogTitle>
           </DialogHeader>

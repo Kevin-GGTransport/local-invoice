@@ -103,7 +103,7 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
         </Button>
       </div>
 
-      <div className="mx-auto w-full max-w-5xl">
+      <div className="mx-auto w-full max-w-7xl">
         <AccountingInvoiceForm
           data={record}
           cancelLabel="返回列表"
