@@ -475,7 +475,7 @@ export function TemplatesClient() {
                   {showSample ? "查看原始样张" : "查看示例数据效果"}
                 </Button>
               </div>
-              <div className="max-h-[560px]">
+              <div className="max-h-[560px] overflow-auto">
                 <TemplatePreview
                   grid={showSample && renderedGrid ? renderedGrid : detail.grid_config}
                   onCellClick={

@@ -494,8 +494,8 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
           </section>
         </div>
 
-        {/* 右：模版实时预览 */}
-        <div className="space-y-2">
+        {/* 右：模版实时预览（粘性定位 + 独立滚动，始终可见完整版面） */}
+        <div className="space-y-2 xl:sticky xl:top-20 xl:max-h-[calc(100dvh-6.5rem)] xl:self-start xl:overflow-auto">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">模版实时预览</h3>
             {templateLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
@@ -511,9 +511,7 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
               开票信息仅保存记录（可在 Excel 清单中导出）
             </div>
           ) : previewGrid ? (
-            <div className="max-h-[720px]">
-              <TemplatePreview grid={previewGrid} scale={0.78} />
-            </div>
+            <TemplatePreview grid={previewGrid} scale={0.72} />
           ) : null}
         </div>
       </div>

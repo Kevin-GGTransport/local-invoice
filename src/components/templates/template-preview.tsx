@@ -80,6 +80,8 @@ export function TemplatePreview({
 
   return (
     <div className={cn("overflow-auto rounded-md border bg-white p-3", className)}>
+      {/* 外层按缩放后尺寸占位：transform 只缩视觉不缩布局，包一层保证滚动/裁切行为正确 */}
+      <div style={{ width: totalW * PT_TO_PX * scale, height: totalH * PT_TO_PX * scale }}>
       <div
         style={{
           position: "relative",
@@ -117,6 +119,7 @@ export function TemplatePreview({
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );
