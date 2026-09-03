@@ -39,6 +39,8 @@ interface AccountingInvoiceFormProps {
   onCancel?: () => void
   /** 取消按钮文案（详情页复用本表单时传"返回列表"） */
   cancelLabel?: string
+  /** 弹窗内使用：预览列不做粘性定位，跟随弹窗整体滚动 */
+  inDialog?: boolean
 }
 
 interface FormLine {
@@ -147,7 +149,7 @@ function initLines(data: RowData): FormLine[] {
   })
 }
 
-export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel = "取消" }: AccountingInvoiceFormProps) {
+export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel = "取消", inDialog = false }: AccountingInvoiceFormProps) {
   const [loading, setLoading] = React.useState(false)
   const [savedId, setSavedId] = React.useState<string | null>(null)
   const [savedInfo, setSavedInfo] = React.useState<{ id: string; invoiceNumber: string } | null>(null)
@@ -494,8 +496,14 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
           </section>
         </div>
 
-        {/* 右：模版实时预览（粘性定位 + 独立滚动，始终可见完整版面） */}
-        <div className="space-y-2 xl:sticky xl:top-20 xl:max-h-[calc(100dvh-6.5rem)] xl:self-start xl:overflow-auto">
+        {/* 右：模版实时预览（整页：粘性定位 + 独立滚动；弹窗：跟随弹窗滚动） */}
+        <div
+          className={
+            inDialog
+              ? "space-y-2"
+              : "space-y-2 xl:sticky xl:top-20 xl:max-h-[calc(100dvh-6.5rem)] xl:self-start xl:overflow-auto"
+          }
+        >
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">模版实时预览</h3>
             {templateLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}

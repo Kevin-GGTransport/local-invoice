@@ -938,6 +938,7 @@ export function AccountingInvoiceTable() {
             <AccountingInvoiceForm
               key={String(editingRecord?.id ?? "new")}
               data={editingRecord}
+              inDialog
               onSuccess={() => {
                 closeDialog()
                 refresh()
