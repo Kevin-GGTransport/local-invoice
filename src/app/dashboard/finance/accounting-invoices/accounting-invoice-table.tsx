@@ -102,8 +102,6 @@ type Row = {
 
 type ListData = PaginatedData<Row>
 
-type DateFilterType = "invoice" | "check"
-
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
@@ -188,7 +186,6 @@ export function AccountingInvoiceTable() {
   const [appliedSearch, setAppliedSearch] = React.useState("")
   const [companies, setCompanies] = React.useState<string[]>([])
   const [fromTo, setFromTo] = React.useState("")
-  const [dateType, setDateType] = React.useState<DateFilterType>("invoice")
   const [dateFrom, setDateFrom] = React.useState("")
   const [dateTo, setDateTo] = React.useState("")
 
@@ -211,17 +208,10 @@ export function AccountingInvoiceTable() {
     if (appliedSearch) params.set("search", appliedSearch)
     if (companies.length > 0) params.set("company", companies.join(","))
     if (fromTo) params.set("from_to", fromTo)
-    if (dateFrom) {
-      params.set(
-        dateType === "invoice" ? "invoice_date_from" : "check_date_from",
-        dateFrom
-      )
-    }
-    if (dateTo) {
-      params.set(dateType === "invoice" ? "invoice_date_to" : "check_date_to", dateTo)
-    }
+    if (dateFrom) params.set("invoice_date_from", dateFrom)
+    if (dateTo) params.set("invoice_date_to", dateTo)
     return params.toString()
-  }, [page, pageSize, sorting, appliedSearch, companies, fromTo, dateType, dateFrom, dateTo])
+  }, [page, pageSize, sorting, appliedSearch, companies, fromTo, dateFrom, dateTo])
 
   React.useEffect(() => {
     let cancelled = false
@@ -447,7 +437,6 @@ export function AccountingInvoiceTable() {
     setAppliedSearch("")
     setCompanies([])
     setFromTo("")
-    setDateType("invoice")
     setDateFrom("")
     setDateTo("")
     setPage(1)
@@ -538,28 +527,6 @@ export function AccountingInvoiceTable() {
         ),
         cell: (info) => fmtMoney(info.getValue()),
       }),
-      columnHelper.accessor("check_date", {
-        header: ({ column }) => (
-          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-            支票日期
-            <SortIcon id={column.id} sorting={sorting} />
-          </button>
-        ),
-        cell: (info) => fmtDate(info.getValue()),
-      }),
-      columnHelper.accessor("check_amount", {
-        header: ({ column }) => (
-          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-            支票金额
-            <SortIcon id={column.id} sorting={sorting} />
-          </button>
-        ),
-        cell: (info) => fmtMoney(info.getValue()),
-      }),
-      columnHelper.accessor("check_number", { header: "支票号", cell: (info) => info.getValue() ?? "" }),
-      columnHelper.accessor("deduction", { header: "扣", cell: (info) => info.getValue() ?? "" }),
-      columnHelper.accessor("rts", { header: "RTS", cell: (info) => info.getValue() ?? "" }),
-      columnHelper.accessor("difference", { header: "差额", cell: (info) => info.getValue() ?? "" }),
       columnHelper.accessor("notes", { header: "备注", cell: (info) => info.getValue() ?? "" }),
       columnHelper.display({
         id: "actions",
@@ -732,36 +699,9 @@ export function AccountingInvoiceTable() {
                 aria-label="时间筛选"
                 className="flex w-full min-w-0 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 shadow-xs sm:w-auto"
               >
-                <div
-                  role="tablist"
-                  aria-label="时间类型"
-                  className="flex shrink-0 items-center rounded-md bg-muted p-0.5"
-                >
-                  {(
-                    [
-                      ["invoice", "Invoice日期"],
-                      ["check", "支票日期"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      role="tab"
-                      aria-selected={dateType === value}
-                      onClick={() => {
-                        setDateType(value)
-                        setPage(1)
-                      }}
-                      className={
-                        dateType === value
-                          ? "rounded-[5px] bg-background px-2 py-1 text-xs font-medium text-foreground shadow-xs"
-                          : "rounded-[5px] px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                      }
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <span className="shrink-0 px-1 text-xs font-medium text-muted-foreground">
+                  Invoice日期
+                </span>
 
                 <Input
                   type="date"
@@ -795,7 +735,7 @@ export function AccountingInvoiceTable() {
               <Input
                 aria-label="搜索账单"
                 className="h-8 min-w-0 flex-1 rounded-none border-0 px-1 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0"
-                placeholder="发票号 / 货号 / Load# / 支票号 / 备注"
+                placeholder="发票号 / 货号 / Load# / 备注"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -920,17 +860,10 @@ export function AccountingInvoiceTable() {
                 <CardField label="货号" value={fmtText(row.order_number)} />
                 <CardField label="合同日期" value={fmtDate(row.contract_date) || "—"} />
                 <CardField label="合同价格" value={fmtMoney(row.contract_price) || "—"} />
-                <CardField label="支票日期" value={fmtDate(row.check_date) || "—"} />
-                <CardField label="支票金额" value={fmtMoney(row.check_amount) || "—"} />
-                <CardField label="支票号" value={fmtText(row.check_number)} />
                 <CardField label="Broker公司" value={fmtText(row.broker_company)} />
               </dl>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-                <span className="text-xs text-muted-foreground">
-                  扣 {fmtText(row.deduction)} · RTS {fmtText(row.rts)} · 差额{" "}
-                  {fmtText(row.difference)}
-                </span>
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">
                 {renderRowActions(row)}
               </div>
             </article>

@@ -2,6 +2,8 @@ import { z } from 'zod'
 
 /**
  * 陆运账单校验
+ * 开账单功能只管理 PDF 上打印的字段；对账字段（总货号/合同价格/支票等，
+ * 虽在同一张表）由其他功能维护，不在此 schema 中 —— 传入也会被剥离忽略。
  * 日期字段为 string（CRUD api-handler 自动把 *_date 转 Date）
  * 金额字段同时接受 number 与数字字符串：行内编辑（EntityTable）对 currency/number
  * 字段原样发送输入框字符串（"925"/""），preprocess 统一转 number|null
@@ -23,22 +25,9 @@ const moneyField = z.preprocess(
 export const accountingInvoiceCreateSchema = z.object({
   company: z.string().min(1, '请选择公司').max(20),
   invoice_number: z.string().min(1, '发票号不能为空').max(50),
-  master_order_number: z.string().max(100).optional().nullable(),
-  order_number: z.string().max(100).optional().nullable(),
-  contract_date: z.string().optional().nullable(),
-  contract_price: moneyField,
-  broker_company: z.string().max(200).optional().nullable(),
   broker_load_number: z.string().max(100).optional().nullable(),
-  from_to: z.string().max(50).optional().nullable(),
   invoice_date: z.string().optional().nullable(),
   invoice_price: moneyField,
-  check_date: z.string().optional().nullable(),
-  check_amount: moneyField,
-  check_number: z.string().max(100).optional().nullable(),
-  deduction: z.string().max(200).optional().nullable(),
-  rts: z.string().max(200).optional().nullable(),
-  difference: z.string().max(200).optional().nullable(),
-  notes: z.string().optional().nullable(),
   bill_to: z.string().max(200).optional().nullable(),
   description: z.string().optional().nullable(),
   quantity: moneyField,

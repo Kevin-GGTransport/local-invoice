@@ -3,7 +3,8 @@
 /**
  * 陆运账单 模版编辑表单（所见即所得）
  * 选公司 → 呈现该公司的 PDF 模版复刻版式，在版式上直接填写数据；
- * 对账字段（不印在 PDF 上）在下方折叠卡片；保存后可立即打印 PDF。
+ * 本功能只管理 PDF 上打印的字段；其余对账字段（同一张表的
+ * master_order_number/contract_price/check_* 等）由其他功能维护，不在此编辑。
  */
 
 import React from "react"
@@ -18,16 +19,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
 import { toast } from "sonner"
-import { Loader2, Printer, ChevronDown, CheckCircle2 } from "lucide-react"
+import { Loader2, Printer, CheckCircle2 } from "lucide-react"
 import {
   ACCOUNTING_COMPANY_OPTIONS,
-  ACCOUNTING_FROM_TO_OPTIONS,
   ACCOUNTING_PDF_TEMPLATE_COMPANIES,
 } from "@/lib/finance/accounting-invoice-companies"
 import { fetchJson } from "@/lib/api/client"
@@ -64,19 +59,6 @@ interface FormValues {
   drop_date: string
   drop_company: string
   drop_address: string
-  master_order_number: string
-  order_number: string
-  contract_date: string
-  contract_price: string
-  broker_company: string
-  from_to: string
-  check_date: string
-  check_amount: string
-  check_number: string
-  deduction: string
-  rts: string
-  difference: string
-  notes: string
 }
 
 function str(value: unknown): string {
@@ -135,6 +117,8 @@ interface EditorProps {
   values: FormValues
   setField: (key: keyof Omit<FormValues, "lines">, value: string) => void
   setLines: React.Dispatch<React.SetStateAction<FormLine[]>>
+  /** 新建时 Invoice 日期留空且不可编辑；保存后（编辑态）可填写 */
+  invoiceDateDisabled: boolean
 }
 
 /** 明细行增删按钮条（模版编辑器共用） */
@@ -162,7 +146,7 @@ function RemoveLineButton({ onRemove }: { onRemove: () => void }) {
 }
 
 /** AA 模版（ALREADY ARRIVED LOGISTICS INC，橙色） */
-function AaEditor({ values, setField, setLines }: EditorProps) {
+function AaEditor({ values, setField, setLines, invoiceDateDisabled }: EditorProps) {
   return (
     <div>
       {/* 页眉橙色横条 */}
@@ -193,6 +177,12 @@ function AaEditor({ values, setField, setLines }: EditorProps) {
                 value={values[key]}
                 onChange={(e) => setField(key, e.target.value)}
                 placeholder={placeholder}
+                disabled={invoiceDateDisabled && key === "invoice_date"}
+                title={
+                  invoiceDateDisabled && key === "invoice_date"
+                    ? "新建时留空，保存后可编辑"
+                    : undefined
+                }
                 className={`${type === "date" ? tplDateCls : tplInputCls} ml-2 flex-1`}
               />
             </div>
@@ -321,7 +311,7 @@ function AaEditor({ values, setField, setLines }: EditorProps) {
 }
 
 /** YG 模版（YG Trucking LLC，粉色） */
-function YgEditor({ values, setField, setLines }: EditorProps) {
+function YgEditor({ values, setField, setLines, invoiceDateDisabled }: EditorProps) {
   const total = sumLines(values.lines)
   const amount = total == null ? "$0.00" : fmtMoney(String(total))
 
@@ -348,6 +338,8 @@ function YgEditor({ values, setField, setLines }: EditorProps) {
                 type="date"
                 value={values.invoice_date}
                 onChange={(e) => setField("invoice_date", e.target.value)}
+                disabled={invoiceDateDisabled}
+                title={invoiceDateDisabled ? "新建时留空，保存后可编辑" : undefined}
                 className={`${tplDateCls} w-full rounded-none border-0 focus-visible:ring-0`}
               />
             </div>
@@ -458,7 +450,7 @@ function YgEditor({ values, setField, setLines }: EditorProps) {
 }
 
 /** 无专属模版公司的普通编辑器 */
-function FallbackEditor({ values, setField, setLines }: EditorProps) {
+function FallbackEditor({ values, setField, setLines, invoiceDateDisabled }: EditorProps) {
   const fields: Array<{ key: keyof Omit<FormValues, "lines">; label: string; type?: "date" }> = [
     { key: "invoice_number", label: "Invoice Number" },
     { key: "invoice_date", label: "Invoice 日期", type: "date" },
@@ -478,6 +470,12 @@ function FallbackEditor({ values, setField, setLines }: EditorProps) {
               type={f.type === "date" ? "date" : "text"}
               value={values[f.key]}
               onChange={(e) => setField(f.key, e.target.value)}
+              disabled={invoiceDateDisabled && f.key === "invoice_date"}
+              title={
+                invoiceDateDisabled && f.key === "invoice_date"
+                  ? "新建时留空，保存后可编辑"
+                  : undefined
+              }
               className={tplInputCls}
             />
           </div>
@@ -525,71 +523,6 @@ function FallbackEditor({ values, setField, setLines }: EditorProps) {
   )
 }
 
-/** 对账信息（不印在 PDF 上）折叠卡片 */
-function AccountingFieldsCard({ values, setField }: EditorProps) {
-  const textFields: Array<{ key: keyof Omit<FormValues, "lines">; label: string; type?: "date" | "money" }> = [
-    { key: "master_order_number", label: "总货号" },
-    { key: "order_number", label: "货号" },
-    { key: "contract_date", label: "合同日期", type: "date" },
-    { key: "contract_price", label: "合同价格", type: "money" },
-    { key: "broker_company", label: "Broker公司" },
-    { key: "check_date", label: "支票日期", type: "date" },
-    { key: "check_amount", label: "支票金额", type: "money" },
-    { key: "check_number", label: "支票号" },
-    { key: "deduction", label: "扣" },
-    { key: "rts", label: "RTS" },
-    { key: "difference", label: "差额" },
-  ]
-
-  return (
-    <Collapsible defaultOpen={false} className="border-t pt-3">
-      <CollapsibleTrigger className="flex w-full items-center justify-between text-sm font-medium text-muted-foreground hover:text-foreground">
-        <span>对账信息（不印在 PDF 上）</span>
-        <ChevronDown className="h-4 w-4 transition-transform [[data-state=open]>&]:rotate-180" />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pt-3">
-        <div className="grid grid-cols-4 gap-x-4 gap-y-2.5 rounded-md bg-muted/40 p-4">
-          {textFields.map((f) => (
-            <div key={f.key} className="space-y-1">
-              <Label className="text-xs">{f.label}</Label>
-              <Input
-                type={f.type === "date" ? "date" : f.type === "money" ? "number" : "text"}
-                step={f.type === "money" ? "0.01" : undefined}
-                value={values[f.key]}
-                onChange={(e) => setField(f.key, e.target.value)}
-                className="h-8 bg-background text-[13px]"
-              />
-            </div>
-          ))}
-          <div className="space-y-1">
-            <Label className="text-xs">From - To</Label>
-            <Select value={values.from_to} onValueChange={(v) => setField("from_to", v)}>
-              <SelectTrigger className="h-8 bg-background text-[13px]">
-                <SelectValue placeholder="选择线路" />
-              </SelectTrigger>
-              <SelectContent>
-                {ACCOUNTING_FROM_TO_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="col-span-4 space-y-1">
-            <Label className="text-xs">备注</Label>
-            <Textarea
-              value={values.notes}
-              onChange={(e) => setField("notes", e.target.value)}
-              className="min-h-[52px] bg-background text-[13px]"
-            />
-          </div>
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
-
 /** 编辑回显：把接口返回的明细行转成表单结构 */
 function initLines(data: RowData): FormLine[] {
   const raw = Array.isArray(data?.accounting_invoice_lines) ? data.accounting_invoice_lines : []
@@ -622,19 +555,6 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
     drop_date: dateStr(data?.drop_date),
     drop_company: str(data?.drop_company),
     drop_address: str(data?.drop_address),
-    master_order_number: str(data?.master_order_number),
-    order_number: str(data?.order_number),
-    contract_date: dateStr(data?.contract_date),
-    contract_price: data?.contract_price == null ? "" : String(data.contract_price),
-    broker_company: str(data?.broker_company),
-    from_to: str(data?.from_to),
-    check_date: dateStr(data?.check_date),
-    check_amount: data?.check_amount == null ? "" : String(data.check_amount),
-    check_number: str(data?.check_number),
-    deduction: str(data?.deduction),
-    rts: str(data?.rts),
-    difference: str(data?.difference),
-    notes: str(data?.notes),
   }))
 
   const setField = React.useCallback((key: keyof Omit<FormValues, "lines">, value: string) => {
@@ -706,19 +626,6 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
         drop_date: dateOrNull(values.drop_date),
         drop_company: values.drop_company.trim() || null,
         drop_address: values.drop_address.trim() || null,
-        master_order_number: values.master_order_number.trim() || null,
-        order_number: values.order_number.trim() || null,
-        contract_date: dateOrNull(values.contract_date),
-        contract_price: toNumber(values.contract_price),
-        broker_company: values.broker_company.trim() || null,
-        from_to: values.from_to || null,
-        check_date: dateOrNull(values.check_date),
-        check_amount: toNumber(values.check_amount),
-        check_number: values.check_number.trim() || null,
-        deduction: values.deduction.trim() || null,
-        rts: values.rts.trim() || null,
-        difference: values.difference.trim() || null,
-        notes: values.notes.trim() || null,
       }
 
       const url = isEditing
@@ -741,7 +648,13 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
     }
   }
 
-  const editorProps: EditorProps = { values, setField, setLines }
+  const editorProps: EditorProps = {
+    values,
+    setField,
+    setLines,
+    // 新建（尚未保存）时 Invoice 日期保持为空且不可编辑；保存后进入编辑态可填写
+    invoiceDateDisabled: !isEditing,
+  }
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -778,8 +691,6 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
         <FallbackEditor {...editorProps} />
       )}
 
-      {/* 对账信息 */}
-      <AccountingFieldsCard {...editorProps} />
 
       {/* 操作区 */}
       {savedInfo ? (

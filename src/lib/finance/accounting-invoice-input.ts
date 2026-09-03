@@ -5,9 +5,7 @@
 import type { Prisma } from "@prisma/client"
 
 const DATE_KEYS = new Set([
-  "contract_date",
   "invoice_date",
-  "check_date",
   "pickup_date",
   "drop_date",
 ])

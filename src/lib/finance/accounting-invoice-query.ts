@@ -4,13 +4,12 @@
  */
 import type { Prisma } from "@prisma/client"
 
-/** 快速搜索的模糊匹配字段（与源 config.list.searchFields 一致） */
+/** 快速搜索的模糊匹配字段 */
 export const ACCOUNTING_INVOICE_SEARCH_FIELDS = [
   "invoice_number",
   "master_order_number",
   "order_number",
   "broker_load_number",
-  "check_number",
   "notes",
 ] as const
 
@@ -41,9 +40,9 @@ function dateParam(value: string | null, endOfDay = false): Date | null {
 
 /**
  * 解析查询参数 → where：
- *   search 关键词（6 字段不区分大小写模糊）
+ *   search 关键词（5 字段不区分大小写模糊）
  *   company 多选（逗号分隔）、from_to 单选
- *   invoice_date_from/to、check_date_from/to 日期区间
+ *   invoice_date_from/to 日期区间
  */
 export function buildAccountingInvoiceWhere(
   params: URLSearchParams
@@ -63,12 +62,6 @@ export function buildAccountingInvoiceWhere(
   const invoiceLte = dateParam(params.get("invoice_date_to"), true)
   if (invoiceGte || invoiceLte) {
     where.invoice_date = { ...(invoiceGte ? { gte: invoiceGte } : {}), ...(invoiceLte ? { lte: invoiceLte } : {}) }
-  }
-
-  const checkGte = dateParam(params.get("check_date_from"))
-  const checkLte = dateParam(params.get("check_date_to"), true)
-  if (checkGte || checkLte) {
-    where.check_date = { ...(checkGte ? { gte: checkGte } : {}), ...(checkLte ? { lte: checkLte } : {}) }
   }
 
   const search = params.get("search")?.trim()

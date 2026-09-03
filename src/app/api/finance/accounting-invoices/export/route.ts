@@ -2,7 +2,7 @@
  * GET /api/finance/accounting-invoices/export
  * 导出陆运账单 Excel（「Accouting 清单」三行表头格式）
  *
- * 查询参数与列表页完全一致（search/company/from_to/Invoice日期/支票日期），同源构建 where；
+ * 查询参数与列表页完全一致（search/company/from_to/Invoice日期），同源构建 where；
  * 另支持 ids（勾选导出，优先于筛选）、sort/order
  */
 
