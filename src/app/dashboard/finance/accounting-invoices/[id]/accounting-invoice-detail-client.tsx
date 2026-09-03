@@ -13,6 +13,7 @@ import { toast } from "sonner"
 import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
 import { ACCOUNTING_PDF_TEMPLATE_COMPANIES } from "@/lib/finance/accounting-invoice-companies"
 import { fetchJson } from "@/lib/api/client"
+import { openPdf } from "@/lib/utils/open-pdf"
 
 const LIST_URL = "/dashboard/finance/accounting-invoices"
 
@@ -47,11 +48,7 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
       toast.error(`公司「${company || "未知"}」暂无 PDF 模版`)
       return
     }
-    window.open(
-      `/api/finance/accounting-invoices/${id}/pdf?t=${Date.now()}`,
-      "_blank",
-      "noopener,noreferrer"
-    )
+    openPdf(`/api/finance/accounting-invoices/${id}/pdf`)
   }
 
   if (error) {

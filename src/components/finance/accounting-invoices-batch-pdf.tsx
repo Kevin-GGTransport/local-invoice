@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { FileStack } from "lucide-react"
 import { toast } from "sonner"
 import { ACCOUNTING_PDF_TEMPLATE_COMPANIES } from "@/lib/finance/accounting-invoice-companies"
+import { openPdf } from "@/lib/utils/open-pdf"
 
 type AccountingInvoiceRow = {
   id?: string | number | bigint | null
@@ -30,11 +31,7 @@ export function AccountingInvoicesBatchPdf({ selectedRows }: { selectedRows: Acc
     }
 
     const ids = [...new Set(rows.map((row) => String(row.id)))]
-    window.open(
-      `/api/finance/accounting-invoices/batch-pdf?ids=${encodeURIComponent(ids.join(","))}&t=${Date.now()}`,
-      "_blank",
-      "noopener,noreferrer"
-    )
+    openPdf(`/api/finance/accounting-invoices/batch-pdf?ids=${encodeURIComponent(ids.join(","))}`)
     toast.success(`已打开合并陆运账单 PDF（${ids.length} 张）`)
   }
 

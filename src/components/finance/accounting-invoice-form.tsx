@@ -31,6 +31,7 @@ import {
   ACCOUNTING_PDF_TEMPLATE_COMPANIES,
 } from "@/lib/finance/accounting-invoice-companies"
 import { fetchJson } from "@/lib/api/client"
+import { openPdf } from "@/lib/utils/open-pdf"
 
 type RowData = Record<string, unknown> | null | undefined
 
@@ -660,7 +661,7 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
       toast.error(`公司「${values.company || "未选择"}」暂无 PDF 模版`)
       return
     }
-    window.open(`/api/finance/accounting-invoices/${effectiveId}/pdf?t=${Date.now()}`, "_blank", "noopener,noreferrer")
+    openPdf(`/api/finance/accounting-invoices/${effectiveId}/pdf`)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

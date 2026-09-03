@@ -70,6 +70,7 @@ import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-f
 import { AccountingInvoicesBatchPdf } from "@/components/finance/accounting-invoices-batch-pdf"
 import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
 import type { PaginatedData } from "@/lib/api/types"
+import { openPdf } from "@/lib/utils/open-pdf"
 import {
   ACCOUNTING_COMPANY_OPTIONS,
   ACCOUNTING_FROM_TO_OPTIONS,
@@ -349,11 +350,7 @@ export function AccountingInvoiceTable() {
       toast.error(`公司「${row.company || "未知"}」暂无 PDF 模版`)
       return
     }
-    window.open(
-      `/api/finance/accounting-invoices/${row.id}/pdf?t=${Date.now()}`,
-      "_blank",
-      "noopener,noreferrer"
-    )
+    openPdf(`/api/finance/accounting-invoices/${row.id}/pdf`)
   }, [])
 
   const renderRowActions = React.useCallback(
