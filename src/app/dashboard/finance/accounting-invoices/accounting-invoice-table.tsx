@@ -50,6 +50,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -64,6 +65,7 @@ import {
   RotateCcw,
   Search,
   Trash2,
+  X,
 } from "lucide-react"
 import { toast } from "sonner"
 import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
@@ -71,7 +73,7 @@ import { AccountingInvoicesBatchPdf } from "@/components/finance/accounting-invo
 import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
 import type { PaginatedData } from "@/lib/api/types"
 import { openPdf } from "@/lib/utils/open-pdf"
-import { ACCOUNTING_FROM_TO_OPTIONS } from "@/lib/finance/accounting-invoice-companies"
+import { ACCOUNTING_BILLING_CATEGORY_OPTIONS } from "@/lib/finance/accounting-invoice-companies"
 
 /** 列表行（API 返回 JSON：BigInt id 已转 string，Decimal 为 string） */
 type Row = {
@@ -83,7 +85,8 @@ type Row = {
   contract_price: string | null
   broker_company: string | null
   broker_load_number: string | null
-  from_to: string | null
+  billing_category: string | null
+  tonu: boolean
   invoice_number: string
   invoice_date: string | null
   invoice_price: string | null
@@ -115,6 +118,14 @@ function fmtMoney(value: string | null) {
 
 function fmtText(value: string | null) {
   return value == null || value === "" ? "—" : value
+}
+
+function TonuIcon({ value }: { value: boolean }) {
+  return value ? (
+    <Check className="mx-auto size-4 text-emerald-600" aria-label="TONU：是" />
+  ) : (
+    <X className="mx-auto size-4 text-rose-600" aria-label="TONU：否" />
+  )
 }
 
 function CardField({ label, value }: { label: string; value: string }) {
@@ -184,7 +195,7 @@ export function AccountingInvoiceTable() {
   const [companyOptions, setCompanyOptions] = React.useState<
     { code: string; name: string; has_active_template: boolean }[]
   >([])
-  const [fromTo, setFromTo] = React.useState("")
+  const [billingCategory, setBillingCategory] = React.useState("")
   const [dateFrom, setDateFrom] = React.useState("")
   const [dateTo, setDateTo] = React.useState("")
 
@@ -212,11 +223,11 @@ export function AccountingInvoiceTable() {
     }
     if (appliedSearch) params.set("search", appliedSearch)
     if (companies.length > 0) params.set("company", companies.join(","))
-    if (fromTo) params.set("from_to", fromTo)
+    if (billingCategory) params.set("billing_category", billingCategory)
     if (dateFrom) params.set("invoice_date_from", dateFrom)
     if (dateTo) params.set("invoice_date_to", dateTo)
     return params.toString()
-  }, [page, pageSize, sorting, appliedSearch, companies, fromTo, dateFrom, dateTo])
+  }, [page, pageSize, sorting, appliedSearch, companies, billingCategory, dateFrom, dateTo])
 
   React.useEffect(() => {
     let cancelled = false
@@ -443,7 +454,7 @@ export function AccountingInvoiceTable() {
     setSearchInput("")
     setAppliedSearch("")
     setCompanies([])
-    setFromTo("")
+    setBillingCategory("")
     setDateFrom("")
     setDateTo("")
     setPage(1)
@@ -506,7 +517,12 @@ export function AccountingInvoiceTable() {
       }),
       columnHelper.accessor("broker_company", { header: "Broker公司", cell: (info) => info.getValue() ?? "" }),
       columnHelper.accessor("broker_load_number", { header: "Load #", cell: (info) => info.getValue() ?? "" }),
-      columnHelper.accessor("from_to", { header: "From - To", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.accessor("billing_category", { header: "账单分类", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.accessor("tonu", {
+        header: "TONU",
+        size: 56,
+        cell: (info) => <TonuIcon value={info.getValue()} />,
+      }),
       columnHelper.accessor("invoice_number", {
         header: ({ column }) => (
           <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
@@ -680,21 +696,21 @@ export function AccountingInvoiceTable() {
               </DropdownMenu>
 
               <Select
-                value={fromTo || "__all__"}
+                value={billingCategory || "__all__"}
                 onValueChange={(v) => {
-                  setFromTo(v === "__all__" ? "" : v)
+                  setBillingCategory(v === "__all__" ? "" : v)
                   setPage(1)
                 }}
               >
                 <SelectTrigger
                   className="h-9 w-full bg-background sm:w-[150px]"
-                  aria-label="运输线路"
+                  aria-label="账单分类"
                 >
-                  <SelectValue placeholder="运输线路" />
+                  <SelectValue placeholder="账单分类" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__all__">全部线路</SelectItem>
-                  {ACCOUNTING_FROM_TO_OPTIONS.map((opt) => (
+                  <SelectItem value="__all__">全部分类</SelectItem>
+                  {ACCOUNTING_BILLING_CATEGORY_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>
                       {opt.label}
                     </SelectItem>
@@ -849,7 +865,7 @@ export function AccountingInvoiceTable() {
                     {fmtText(row.invoice_number)}
                   </h2>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {fmtText(row.from_to)}
+                    {fmtText(row.billing_category)}
                   </p>
                 </div>
                 <Checkbox
@@ -868,6 +884,12 @@ export function AccountingInvoiceTable() {
                 <CardField label="合同日期" value={fmtDate(row.contract_date) || "—"} />
                 <CardField label="合同价格" value={fmtMoney(row.contract_price) || "—"} />
                 <CardField label="Broker公司" value={fmtText(row.broker_company)} />
+                <div className="min-w-0">
+                  <dt className="text-[11px] text-muted-foreground">TONU</dt>
+                  <dd className="mt-0.5 flex h-5 items-center justify-start">
+                    <TonuIcon value={row.tonu} />
+                  </dd>
+                </div>
               </dl>
 
               <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">

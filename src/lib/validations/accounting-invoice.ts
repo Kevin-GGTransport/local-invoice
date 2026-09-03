@@ -26,6 +26,8 @@ export const accountingInvoiceCreateSchema = z.object({
   company: z.string().min(1, '请选择公司').max(20),
   invoice_number: z.string().min(1, '发票号不能为空').max(50),
   broker_load_number: z.string().max(100).optional().nullable(),
+  billing_category: z.string().max(50).optional().nullable(),
+  tonu: z.boolean().optional(),
   invoice_date: z.string().optional().nullable(),
   invoice_price: moneyField,
   bill_to: z.string().max(200).optional().nullable(),

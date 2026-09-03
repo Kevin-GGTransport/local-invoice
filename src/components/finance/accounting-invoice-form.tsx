@@ -24,6 +24,12 @@ import { fetchJson } from "@/lib/api/client"
 import { openPdf } from "@/lib/utils/open-pdf"
 import { TemplatePreview } from "@/components/templates/template-preview"
 import { renderTemplateData } from "@/lib/templates/render-template-data"
+import {
+  ACCOUNTING_BILLING_CATEGORY_OPTIONS,
+  billingCategoryPayloadValue,
+  fromBillingCategorySelectValue,
+  toBillingCategorySelectValue,
+} from "@/lib/finance/accounting-invoice-companies"
 import type {
   TemplateBinding,
   TemplateGrid,
@@ -50,6 +56,7 @@ interface FormLine {
 
 interface FormValues {
   company: string
+  billing_category: string
   invoice_number: string
   invoice_date: string
   broker_load_number: string
@@ -152,6 +159,7 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
 
   const [values, setValues] = React.useState<FormValues>(() => ({
     company: str(data?.company),
+    billing_category: str(data?.billing_category),
     invoice_number: str(data?.invoice_number),
     invoice_date: dateStr(data?.invoice_date),
     broker_load_number: str(data?.broker_load_number),
@@ -250,6 +258,7 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
 
       const payload = {
         company: values.company,
+        billing_category: billingCategoryPayloadValue(values.billing_category),
         invoice_number: values.invoice_number.trim(),
         invoice_date: dateOrNull(values.invoice_date),
         broker_load_number: values.broker_load_number.trim() || null,
@@ -310,6 +319,10 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
   }, [activeTemplate, values])
 
   const inputCls = "bg-background"
+
+  const isLegacyBillingCategory =
+    values.billing_category !== "" &&
+    !ACCOUNTING_BILLING_CATEGORY_OPTIONS.some((option) => option.value === values.billing_category)
 
   const renderField = (
     key: keyof Omit<FormValues, "lines" | "company">,
@@ -376,6 +389,30 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
               {renderField("invoice_date", "Invoice 日期", "date")}
               {renderField("broker_load_number", "Load #")}
               {renderField("bill_to", "Bill To（收款方）")}
+              <div className="space-y-1">
+                <Label className="text-xs">账单分类</Label>
+                <Select
+                  value={toBillingCategorySelectValue(values.billing_category)}
+                  onValueChange={(value) => setField("billing_category", fromBillingCategorySelectValue(value))}
+                >
+                  <SelectTrigger className={inputCls} aria-label="账单分类">
+                    <SelectValue placeholder="选择账单分类" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={toBillingCategorySelectValue("")}>未分类</SelectItem>
+                    {isLegacyBillingCategory && (
+                      <SelectItem value={toBillingCategorySelectValue(values.billing_category)}>
+                        {values.billing_category}（历史分类）
+                      </SelectItem>
+                    )}
+                    {ACCOUNTING_BILLING_CATEGORY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={toBillingCategorySelectValue(option.value)}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </section>
 

@@ -2,7 +2,7 @@
  * GET /api/finance/accounting-invoices/export
  * 导出陆运账单 Excel（「Accouting 清单」三行表头格式）
  *
- * 查询参数与列表页完全一致（search/company/from_to/Invoice日期），同源构建 where；
+ * 查询参数与列表页完全一致（search/company/billing_category/Invoice日期），同源构建 where；
  * 另支持 ids（勾选导出，优先于筛选）、sort/order
  */
 
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
         contract_price: row.contract_price == null ? null : Number(row.contract_price),
         broker_company: row.broker_company,
         broker_load_number: row.broker_load_number,
-        from_to: row.from_to,
+        billing_category: row.billing_category,
         invoice_number: row.invoice_number,
         invoice_date: row.invoice_date,
         invoice_price: row.invoice_price == null ? null : Number(row.invoice_price),

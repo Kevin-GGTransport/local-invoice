@@ -41,7 +41,7 @@ function dateParam(value: string | null, endOfDay = false): Date | null {
 /**
  * 解析查询参数 → where：
  *   search 关键词（5 字段不区分大小写模糊）
- *   company 多选（逗号分隔）、from_to 单选
+ *   company 多选（逗号分隔）、billing_category 单选
  *   invoice_date_from/to 日期区间
  */
 export function buildAccountingInvoiceWhere(
@@ -55,8 +55,8 @@ export function buildAccountingInvoiceWhere(
     .filter(Boolean)
   if (companies.length > 0) where.company = { in: companies }
 
-  const fromTo = params.get("from_to")?.trim()
-  if (fromTo) where.from_to = fromTo
+  const billingCategory = params.get("billing_category")?.trim()
+  if (billingCategory) where.billing_category = billingCategory
 
   const invoiceGte = dateParam(params.get("invoice_date_from"))
   const invoiceLte = dateParam(params.get("invoice_date_to"), true)

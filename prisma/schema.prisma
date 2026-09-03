@@ -30,7 +30,8 @@ model accounting_invoices {
   contract_price           Decimal?                   @db.Decimal(12, 2)
   broker_company           String?                    @db.VarChar(200)
   broker_load_number       String?                    @db.VarChar(100)
-  from_to                  String?                    @db.VarChar(50)
+  billing_category         String?                    @db.VarChar(50)
+  tonu                     Boolean                    @default(false)
   invoice_number           String                     @unique @db.VarChar(50)
   invoice_date             DateTime?                  @db.Date
   invoice_price            Decimal?                   @db.Decimal(12, 2)
