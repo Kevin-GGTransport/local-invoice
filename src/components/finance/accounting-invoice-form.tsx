@@ -45,8 +45,6 @@ interface AccountingInvoiceFormProps {
 
 interface FormLine {
   description: string
-  quantity: string
-  unitPrice: string
   amount: string
 }
 
@@ -105,14 +103,11 @@ function fmtMoney(value: string | number | null): string {
 }
 
 function emptyLine(): FormLine {
-  return { description: "", quantity: "", unitPrice: "", amount: "" }
+  return { description: "", amount: "" }
 }
 
-/** 行有效金额：Qty × Rate 齐全时自动算，否则取手填金额 */
+/** 行金额：手填（明细行只有描述与金额两列） */
 function lineAmountValue(line: FormLine): number | null {
-  const qty = toNumber(line.quantity)
-  const rate = toNumber(line.unitPrice)
-  if (qty != null && rate != null) return Math.round(qty * rate * 100) / 100
   return toNumber(line.amount)
 }
 
@@ -142,8 +137,6 @@ function initLines(data: RowData): FormLine[] {
     const l = line as Record<string, unknown>
     return {
       description: str(l.description),
-      quantity: l.quantity == null ? "" : String(l.quantity),
-      unitPrice: l.unit_price == null ? "" : String(l.unit_price),
       amount: l.amount == null ? "" : String(l.amount),
     }
   })
@@ -240,8 +233,8 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
 
       const linesPayload = values.lines.map((line) => ({
         description: line.description.trim() || null,
-        quantity: toNumber(line.quantity),
-        unit_price: toNumber(line.unitPrice),
+        quantity: null,
+        unit_price: null,
         amount: lineAmountValue(line),
       }))
       const linesTotal = (() => {
@@ -309,8 +302,8 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
       dropAddress: values.drop_address,
       lines: values.lines.map((l) => ({
         description: l.description,
-        quantity: l.quantity,
-        unitPrice: l.unitPrice ? fmtMoney(l.unitPrice) : "",
+        quantity: "",
+        unitPrice: "",
         amount: lineAmountValue(l) == null ? "" : fmtMoney(lineAmountValue(l)),
       })),
     })
@@ -367,6 +360,18 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
           <section className="space-y-3 rounded-lg border bg-card p-4">
             <h3 className="text-sm font-semibold">开票信息</h3>
             <div className="grid grid-cols-2 gap-3">
+              {isEditing && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">总货号（系统分配）</Label>
+                  <Input value={str(data?.master_order_number)} disabled className="font-mono" />
+                </div>
+              )}
+              {isEditing && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">货号（系统分配）</Label>
+                  <Input value={str(data?.order_number)} disabled className="font-mono" />
+                </div>
+              )}
               {renderField("invoice_number", "Invoice Number", "text", "留空自动按公司前缀生成")}
               {renderField("invoice_date", "Invoice 日期", "date")}
               {renderField("broker_load_number", "Load #")}
@@ -406,40 +411,16 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
                       className={inputCls}
                     />
                   </div>
-                  <div className="w-20 space-y-1">
-                    {index === 0 && <Label className="text-xs">Qty</Label>}
+                  <div className="w-36 space-y-1">
+                    {index === 0 && <Label className="text-xs">金额</Label>}
                     <Input
-                      value={line.quantity}
-                      onChange={(e) =>
-                        setLines((prev) =>
-                          prev.map((l, i) => (i === index ? { ...l, quantity: e.target.value } : l))
-                        )
-                      }
-                      className={`${inputCls} text-right`}
-                    />
-                  </div>
-                  <div className="w-24 space-y-1">
-                    {index === 0 && <Label className="text-xs">Rate</Label>}
-                    <Input
-                      value={line.unitPrice}
-                      onChange={(e) =>
-                        setLines((prev) =>
-                          prev.map((l, i) => (i === index ? { ...l, unitPrice: e.target.value } : l))
-                        )
-                      }
-                      className={`${inputCls} text-right`}
-                    />
-                  </div>
-                  <div className="w-28 space-y-1">
-                    {index === 0 && <Label className="text-xs">Amount</Label>}
-                    <Input
-                      value={lineAmountValue(line) == null ? line.amount : fmtMoney(lineAmountValue(line))}
+                      value={line.amount}
                       onChange={(e) =>
                         setLines((prev) =>
                           prev.map((l, i) => (i === index ? { ...l, amount: e.target.value } : l))
                         )
                       }
-                      placeholder="Qty×Rate 自动算"
+                      placeholder="0.00"
                       className={`${inputCls} text-right`}
                     />
                   </div>

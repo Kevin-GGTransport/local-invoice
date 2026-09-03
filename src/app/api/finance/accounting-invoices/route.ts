@@ -10,7 +10,10 @@ import {
   buildAccountingInvoiceWhere,
   buildAccountingInvoiceOrderBy,
 } from "@/lib/finance/accounting-invoice-query"
-import { getNextAccountingInvoiceNumber } from "@/lib/finance/next-accounting-invoice-number"
+import {
+  getNextAccountingInvoiceNumber,
+  getNextAccountingOrderNumbers,
+} from "@/lib/finance/next-accounting-invoice-number"
 import {
   normalizeAccountingInvoiceLines,
   sumLineAmounts,
@@ -87,6 +90,10 @@ export async function POST(request: NextRequest) {
     if (createdBy != null) data.created_by = createdBy
 
     const record = await prisma.$transaction(async (tx) => {
+      // 货号/总货号：系统自动递增分配（视为 ID，不可编辑）
+      const orderNumbers = await getNextAccountingOrderNumbers(tx)
+      data.master_order_number = orderNumbers.masterOrderNumber
+      data.order_number = orderNumbers.orderNumber
       const created = await tx.accounting_invoices.create({ data })
       if (normalized.length > 0) {
         await tx.accounting_invoice_lines.createMany({

@@ -3,6 +3,7 @@
  * 例：AA082026005、YG082026060、GG022026106
  */
 
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 
 export async function getNextAccountingInvoiceNumber(company: string, date: Date = new Date()): Promise<string> {
@@ -36,4 +37,30 @@ export async function getNextAccountingInvoiceNumber(company: string, date: Date
   }
 
   return `${key}${String(nextSeq).padStart(3, '0')}`
+}
+
+/**
+ * 货号 / 总货号 —— 系统自动递增分配，视为记录 ID，用户不可编辑
+ * 取两列现有最大纯数字值 +1（空表从 1 开始），两列同值
+ * 接受事务客户端，避免并发创建拿到相同序号
+ */
+export async function getNextAccountingOrderNumbers(
+  tx: Prisma.TransactionClient
+): Promise<{ masterOrderNumber: string; orderNumber: string }> {
+  const rows = await tx.accounting_invoices.findMany({
+    select: { master_order_number: true, order_number: true },
+    take: 1000,
+    orderBy: { id: 'desc' },
+  })
+  let max = 0
+  for (const row of rows) {
+    for (const v of [row.master_order_number, row.order_number]) {
+      if (v == null) continue
+      const t = v.trim()
+      const n = parseInt(t, 10)
+      if (!Number.isNaN(n) && String(n) === t && n > max) max = n
+    }
+  }
+  const next = String(max + 1)
+  return { masterOrderNumber: next, orderNumber: next }
 }
