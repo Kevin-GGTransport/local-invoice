@@ -521,6 +521,7 @@ export function TemplatesClient() {
                   highlightedCells={showSample ? undefined : highlightedCells}
                   selectedCell={selected}
                   scale={0.75}
+                  showCoordinates={!showSample}
                 />
               </div>
             </div>
