@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, ChevronDown, FileSliders, Home, Landmark, Menu, ReceiptText, Route, Settings2, X } from "lucide-react";
+import { BookOpen, Building2, ChevronDown, CircleHelp, FileSliders, Home, Landmark, Menu, ReceiptText, Route, Settings2, X } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,10 @@ const financeChildren = [
 const basicChildren = [
   { href: "/dashboard/companies", label: "公司管理", icon: Building2 },
   { href: "/dashboard/templates", label: "账单模版管理", icon: FileSliders },
+];
+
+const helpChildren = [
+  { href: "/dashboard/help/invoice-templates", label: "账单模版操作手册", icon: BookOpen },
 ];
 
 export function DashboardShell({
@@ -32,6 +36,8 @@ export function DashboardShell({
   const isAdmin = user.role === "admin";
   const basicActive = pathname.startsWith("/dashboard/companies") || pathname.startsWith("/dashboard/templates");
   const [basicOpen, setBasicOpen] = React.useState(basicActive);
+  const helpActive = pathname.startsWith("/dashboard/help");
+  const [helpOpen, setHelpOpen] = React.useState(helpActive);
 
   React.useEffect(() => {
     if (!menuOpen) return;
@@ -190,6 +196,53 @@ export function DashboardShell({
                           "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-white/10 hover:text-white",
                           active &&
                             "bg-amber-400/15 font-medium text-amber-200"
+                        )}
+                      >
+                        <item.icon className="size-4" aria-hidden="true" />
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <button
+              type="button"
+              aria-expanded={helpOpen}
+              aria-controls="help-navigation"
+              onClick={() => setHelpOpen((open) => !open)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white",
+                helpActive && "bg-white/5 font-medium text-white"
+              )}
+            >
+              <CircleHelp className="size-4" aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-left">帮助</span>
+              <ChevronDown
+                className={cn(
+                  "size-4 shrink-0 text-slate-400 transition-transform duration-200",
+                  helpOpen && "rotate-180"
+                )}
+                aria-hidden="true"
+              />
+            </button>
+
+            {helpOpen && (
+              <ul id="help-navigation" className="ml-4 space-y-1 border-l border-white/10 pl-3">
+                {helpChildren.map((item) => {
+                  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        aria-current={active ? "page" : undefined}
+                        onClick={() => setMenuOpen(false)}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-white/10 hover:text-white",
+                          active && "bg-amber-400/15 font-medium text-amber-200"
                         )}
                       >
                         <item.icon className="size-4" aria-hidden="true" />
