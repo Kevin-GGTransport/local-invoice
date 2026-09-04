@@ -105,6 +105,7 @@ type Row = {
 
 type ListData = PaginatedData<Row>
 type SelectedRow = Pick<Row, "id" | "company" | "invoice_number" | "invoice_date">
+type InvoiceTab = "all" | "unsent"
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
@@ -213,6 +214,7 @@ export function AccountingInvoiceTable() {
     { code: string; name: string; has_active_template: boolean }[]
   >([])
   const [billingCategory, setBillingCategory] = React.useState("")
+  const [invoiceTab, setInvoiceTab] = React.useState<InvoiceTab>("all")
   const [dateFrom, setDateFrom] = React.useState("")
   const [dateTo, setDateTo] = React.useState("")
 
@@ -244,10 +246,11 @@ export function AccountingInvoiceTable() {
     if (appliedSearch) params.set("search", appliedSearch)
     if (companies.length > 0) params.set("company", companies.join(","))
     if (billingCategory) params.set("billing_category", billingCategory)
+    if (invoiceTab === "unsent") params.set("invoice_status", "unsent")
     if (dateFrom) params.set("invoice_date_from", dateFrom)
     if (dateTo) params.set("invoice_date_to", dateTo)
     return params.toString()
-  }, [page, pageSize, sorting, appliedSearch, companies, billingCategory, dateFrom, dateTo])
+  }, [page, pageSize, sorting, appliedSearch, companies, billingCategory, invoiceTab, dateFrom, dateTo])
 
   React.useEffect(() => {
     let cancelled = false
@@ -569,6 +572,7 @@ export function AccountingInvoiceTable() {
     setAppliedSearch("")
     setCompanies([])
     setBillingCategory("")
+    setInvoiceTab("all")
     setDateFrom("")
     setDateTo("")
     setPage(1)
@@ -792,6 +796,40 @@ export function AccountingInvoiceTable() {
         </div>
 
         {/* 统一筛选与搜索工具栏 */}
+        <div className="border-t border-slate-800 bg-slate-950 px-3 sm:px-4">
+          <div className="flex" role="tablist" aria-label="账单状态">
+            {([
+              ["all", "全部账单"],
+              ["unsent", "未发账单"],
+            ] as const).map(([value, label]) => {
+              const active = invoiceTab === value
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={`relative px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300 ${
+                    active ? "text-amber-300" : "text-slate-400 hover:text-slate-100"
+                  }`}
+                  onClick={() => {
+                    setInvoiceTab(value)
+                    setPage(1)
+                  }}
+                >
+                  {label}
+                  {active && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-amber-400"
+                    />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         <div className="border-t bg-muted/30 px-3 py-3 sm:px-4">
           <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-wrap items-center gap-2">
@@ -856,6 +894,7 @@ export function AccountingInvoiceTable() {
                   aria-label="开始日期"
                   className="h-7 min-w-24 flex-1 border-0 px-1 text-xs shadow-none focus-visible:border-transparent focus-visible:ring-0 sm:w-32"
                   value={dateFrom}
+                  disabled={invoiceTab === "unsent"}
                   onChange={(e) => {
                     setDateFrom(e.target.value)
                     setPage(1)
@@ -867,6 +906,7 @@ export function AccountingInvoiceTable() {
                   aria-label="结束日期"
                   className="h-7 min-w-24 flex-1 border-0 px-1 text-xs shadow-none focus-visible:border-transparent focus-visible:ring-0 sm:w-32"
                   value={dateTo}
+                  disabled={invoiceTab === "unsent"}
                   onChange={(e) => {
                     setDateTo(e.target.value)
                     setPage(1)

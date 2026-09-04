@@ -34,6 +34,28 @@ describe('buildAccountingInvoiceWhere billing category', () => {
   })
 })
 
+describe('buildAccountingInvoiceWhere invoice status', () => {
+  it('filters unsent invoices by a null Invoice date', () => {
+    const where = buildAccountingInvoiceWhere(
+      new URLSearchParams({ invoice_status: 'unsent' })
+    )
+
+    assert.deepEqual(where, { invoice_date: null })
+  })
+
+  it('gives the unsent tab precedence over stale date-range parameters', () => {
+    const where = buildAccountingInvoiceWhere(
+      new URLSearchParams({
+        invoice_status: 'unsent',
+        invoice_date_from: '2026-09-01',
+        invoice_date_to: '2026-09-04',
+      })
+    )
+
+    assert.deepEqual(where, { invoice_date: null })
+  })
+})
+
 describe('billing category form values', () => {
   it('round-trips arbitrary legacy values without trimming or sentinel collisions', () => {
     for (const legacyValue of [' LA短途 ', '   ', 'billing-category:unclassified']) {
