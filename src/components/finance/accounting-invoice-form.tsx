@@ -57,6 +57,7 @@ interface FormLine {
 interface FormValues {
   company: string
   billing_category: string
+  contract_price: string
   invoice_number: string
   invoice_date: string
   broker_load_number: string
@@ -160,6 +161,7 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
   const [values, setValues] = React.useState<FormValues>(() => ({
     company: str(data?.company),
     billing_category: str(data?.billing_category),
+    contract_price: str(data?.contract_price),
     invoice_number: str(data?.invoice_number),
     invoice_date: dateStr(data?.invoice_date),
     broker_load_number: str(data?.broker_load_number),
@@ -259,6 +261,7 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
       const payload = {
         company: values.company,
         billing_category: billingCategoryPayloadValue(values.billing_category),
+        ...(!isEditing ? { contract_price: toNumber(values.contract_price) } : {}),
         invoice_number: values.invoice_number.trim(),
         invoice_date: dateOrNull(values.invoice_date),
         broker_load_number: values.broker_load_number.trim() || null,
@@ -387,8 +390,19 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
               )}
               {renderField("invoice_number", "Invoice Number", "text", "留空自动按公司前缀生成")}
               {renderField("invoice_date", "Invoice 日期", "date")}
+              <div className="space-y-1">
+                <Label className="text-xs">合同金额{isEditing ? "（创建后不可修改）" : ""}</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={values.contract_price}
+                  onChange={(e) => setField("contract_price", e.target.value)}
+                  disabled={isEditing}
+                  className={inputCls}
+                />
+              </div>
               {renderField("broker_load_number", "Load #")}
-              {renderField("bill_to", "Bill To（收款方）")}
+              {renderField("bill_to", "客户 / Broker 公司（Bill To）")}
               <div className="space-y-1">
                 <Label className="text-xs">账单分类</Label>
                 <Select

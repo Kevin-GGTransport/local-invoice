@@ -2,8 +2,8 @@ import { z } from 'zod'
 
 /**
  * 陆运账单校验
- * 开账单功能只管理 PDF 上打印的字段；对账字段（总货号/合同价格/支票等，
- * 虽在同一张表）由其他功能维护，不在此 schema 中 —— 传入也会被剥离忽略。
+ * 开账单功能只管理 PDF 上打印的字段；对账字段由其他功能维护。
+ * 合同金额例外地允许在创建时设置，但更新 schema 会将它剥离忽略。
  * 日期字段为 string（CRUD api-handler 自动把 *_date 转 Date）
  * 金额字段同时接受 number 与数字字符串：行内编辑（EntityTable）对 currency/number
  * 字段原样发送输入框字符串（"925"/""），preprocess 统一转 number|null
@@ -25,6 +25,7 @@ const moneyField = z.preprocess(
 export const accountingInvoiceCreateSchema = z.object({
   company: z.string().min(1, '请选择公司').max(20),
   invoice_number: z.string().min(1, '发票号不能为空').max(50),
+  contract_price: moneyField,
   broker_load_number: z.string().max(100).optional().nullable(),
   billing_category: z.string().max(50).optional().nullable(),
   tonu: z.boolean().optional(),
@@ -42,7 +43,10 @@ export const accountingInvoiceCreateSchema = z.object({
   drop_address: z.string().max(300).optional().nullable(),
 })
 
-export const accountingInvoiceUpdateSchema = accountingInvoiceCreateSchema.partial()
+// 合同金额只能在创建时设置，已有记录不允许通过更新接口修改。
+export const accountingInvoiceUpdateSchema = accountingInvoiceCreateSchema
+  .omit({ contract_price: true })
+  .partial()
 
 export type AccountingInvoiceCreateInput = z.infer<typeof accountingInvoiceCreateSchema>
 export type AccountingInvoiceUpdateInput = z.infer<typeof accountingInvoiceUpdateSchema>

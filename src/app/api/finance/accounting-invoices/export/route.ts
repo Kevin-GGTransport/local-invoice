@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
         order_number: row.order_number,
         contract_date: row.contract_date,
         contract_price: row.contract_price == null ? null : Number(row.contract_price),
-        broker_company: row.broker_company,
+        bill_to: row.bill_to,
         broker_load_number: row.broker_load_number,
         billing_category: row.billing_category,
         invoice_number: row.invoice_number,

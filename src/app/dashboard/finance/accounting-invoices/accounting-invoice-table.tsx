@@ -83,7 +83,7 @@ type Row = {
   order_number: string | null
   contract_date: string | null
   contract_price: string | null
-  broker_company: string | null
+  bill_to: string | null
   broker_load_number: string | null
   billing_category: string | null
   tonu: boolean
@@ -509,13 +509,13 @@ export function AccountingInvoiceTable() {
       columnHelper.accessor("contract_price", {
         header: ({ column }) => (
           <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-            合同价格
+            合同金额
             <SortIcon id={column.id} sorting={sorting} />
           </button>
         ),
         cell: (info) => fmtMoney(info.getValue()),
       }),
-      columnHelper.accessor("broker_company", { header: "Broker公司", cell: (info) => info.getValue() ?? "" }),
+      columnHelper.accessor("bill_to", { header: "Broker公司", cell: (info) => info.getValue() ?? "" }),
       columnHelper.accessor("broker_load_number", { header: "Load #", cell: (info) => info.getValue() ?? "" }),
       columnHelper.accessor("billing_category", { header: "账单分类", cell: (info) => info.getValue() ?? "" }),
       columnHelper.accessor("tonu", {
@@ -882,8 +882,8 @@ export function AccountingInvoiceTable() {
                 <CardField label="总货号" value={fmtText(row.master_order_number)} />
                 <CardField label="货号" value={fmtText(row.order_number)} />
                 <CardField label="合同日期" value={fmtDate(row.contract_date) || "—"} />
-                <CardField label="合同价格" value={fmtMoney(row.contract_price) || "—"} />
-                <CardField label="Broker公司" value={fmtText(row.broker_company)} />
+                <CardField label="合同金额" value={fmtMoney(row.contract_price) || "—"} />
+                <CardField label="Broker公司" value={fmtText(row.bill_to)} />
                 <div className="min-w-0">
                   <dt className="text-[11px] text-muted-foreground">TONU</dt>
                   <dd className="mt-0.5 flex h-5 items-center justify-start">

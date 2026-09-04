@@ -28,7 +28,6 @@ model accounting_invoices {
   order_number             String?                    @db.VarChar(100)
   contract_date            DateTime?                  @db.Date
   contract_price           Decimal?                   @db.Decimal(12, 2)
-  broker_company           String?                    @db.VarChar(200)
   broker_load_number       String?                    @db.VarChar(100)
   billing_category         String?                    @db.VarChar(50)
   tonu                     Boolean                    @default(false)

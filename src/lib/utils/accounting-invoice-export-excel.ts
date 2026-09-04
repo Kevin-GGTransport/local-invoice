@@ -12,7 +12,7 @@ export interface AccountingInvoiceExportRow {
   order_number: string | null
   contract_date: Date | null
   contract_price: number | null
-  broker_company: string | null
+  bill_to: string | null
   broker_load_number: string | null
   billing_category: string | null
   invoice_number: string
@@ -33,7 +33,7 @@ const COLUMNS: Array<{ header: string; width: number; type?: 'date' | 'money' | 
   { header: '公司', width: 10 },
   { header: '货号', width: 8 },
   { header: '合同日期', width: 12, type: 'date' },
-  { header: '合同价格', width: 12, type: 'money' },
+  { header: '合同金额', width: 12, type: 'money' },
   { header: 'Broker公司', width: 14 },
   { header: 'Load #', width: 12 },
   { header: '账单分类', width: 12 },
@@ -144,7 +144,7 @@ export async function generateAccountingInvoiceExportExcel(rows: AccountingInvoi
       row.order_number ?? '',
       toDateCell(row.contract_date),
       row.contract_price ?? '',
-      row.broker_company ?? '',
+      row.bill_to ?? '',
       row.broker_load_number ?? '',
       row.billing_category ?? '',
       row.invoice_number ?? '',
