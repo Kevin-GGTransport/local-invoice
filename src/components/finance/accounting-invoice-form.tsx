@@ -263,7 +263,6 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
         billing_category: billingCategoryPayloadValue(values.billing_category),
         ...(!isEditing ? { contract_price: toNumber(values.contract_price) } : {}),
         invoice_number: values.invoice_number.trim(),
-        invoice_date: dateOrNull(values.invoice_date),
         broker_load_number: values.broker_load_number.trim() || null,
         bill_to: values.bill_to.trim() || null,
         invoice_price: linesTotal,
@@ -339,8 +338,8 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
         type={type}
         value={values[key]}
         onChange={(e) => setField(key, e.target.value)}
-        disabled={type === "date" && key === "invoice_date" && !isEditing}
-        title={type === "date" && key === "invoice_date" && !isEditing ? "新建时留空，保存后可编辑" : undefined}
+        disabled={key === "invoice_date"}
+        title={key === "invoice_date" ? "Invoice 日期由发账单操作设置，设置后不可修改" : undefined}
         placeholder={placeholder}
         className={inputCls}
       />

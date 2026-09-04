@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "type-check": "tsc --noEmit",
-    "test": "tsx --test src/lib/finance/__tests__/accounting-invoice-query.test.ts src/lib/finance/__tests__/accounting-invoice-validation.test.ts src/lib/services/print/__tests__/generic-template-pdf.test.ts src/lib/templates/__tests__/cell-layout.test.ts src/lib/templates/__tests__/parse-xlsx.test.ts src/lib/templates/__tests__/render-template-data.test.ts src/lib/templates/__tests__/template-grid.test.ts",
+    "test": "tsx --test src/lib/finance/__tests__/accounting-invoice-query.test.ts src/lib/finance/__tests__/accounting-invoice-send.test.ts src/lib/finance/__tests__/accounting-invoice-validation.test.ts src/lib/services/print/__tests__/generic-template-pdf.test.ts src/lib/templates/__tests__/cell-layout.test.ts src/lib/templates/__tests__/parse-xlsx.test.ts src/lib/templates/__tests__/render-template-data.test.ts src/lib/templates/__tests__/template-grid.test.ts",
     "db:pull": "prisma db pull",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",

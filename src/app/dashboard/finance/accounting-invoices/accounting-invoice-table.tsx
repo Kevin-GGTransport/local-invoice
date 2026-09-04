@@ -43,6 +43,8 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -64,6 +66,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Send,
   Trash2,
   X,
 } from "lucide-react"
@@ -72,8 +75,9 @@ import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-f
 import { AccountingInvoicesBatchPdf } from "@/components/finance/accounting-invoices-batch-pdf"
 import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
 import type { PaginatedData } from "@/lib/api/types"
-import { openPdf } from "@/lib/utils/open-pdf"
+import { openPdf, reservePdfWindow } from "@/lib/utils/open-pdf"
 import { ACCOUNTING_BILLING_CATEGORY_OPTIONS } from "@/lib/finance/accounting-invoice-companies"
+import { MAX_ACCOUNTING_INVOICE_SEND } from "@/lib/finance/accounting-invoice-send"
 
 /** 列表行（API 返回 JSON：BigInt id 已转 string，Decimal 为 string） */
 type Row = {
@@ -100,6 +104,7 @@ type Row = {
 }
 
 type ListData = PaginatedData<Row>
+type SelectedRow = Pick<Row, "id" | "company" | "invoice_number" | "invoice_date">
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
@@ -118,6 +123,18 @@ function fmtMoney(value: string | null) {
 
 function fmtText(value: string | null) {
   return value == null || value === "" ? "—" : value
+}
+
+function localToday(): string {
+  const now = new Date()
+  const pad = (value: number) => String(value).padStart(2, "0")
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+type SendTarget = {
+  ids: string[]
+  label: string
+  isBatch: boolean
 }
 
 function TonuIcon({ value }: { value: boolean }) {
@@ -200,10 +217,13 @@ export function AccountingInvoiceTable() {
   const [dateTo, setDateTo] = React.useState("")
 
   // 勾选与新建/编辑弹窗
-  const [selected, setSelected] = React.useState<Set<string>>(new Set())
+  const [selected, setSelected] = React.useState<Map<string, SelectedRow>>(new Map())
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editingRecord, setEditingRecord] = React.useState<Record<string, unknown> | null>(null)
   const [detailLoading, setDetailLoading] = React.useState(false)
+  const [sendTarget, setSendTarget] = React.useState<SendTarget | null>(null)
+  const [sendDate, setSendDate] = React.useState(localToday)
+  const [sending, setSending] = React.useState(false)
 
   React.useEffect(() => {
     void fetchJson<{ code: string; name: string; has_active_template: boolean }[]>("/api/companies")
@@ -240,6 +260,13 @@ export function AccountingInvoiceTable() {
         )
         if (cancelled) return
         setRows(data.rows)
+        setSelected((prev) => {
+          const next = new Map(prev)
+          for (const row of data.rows) {
+            if (next.has(row.id)) next.set(row.id, row)
+          }
+          return next
+        })
         setTotal(data.pagination.total)
         // 删除后落在空页时回退到最后一页
         if (data.rows.length === 0 && page > 1 && data.pagination.total > 0) {
@@ -269,23 +296,23 @@ export function AccountingInvoiceTable() {
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id))
   const toggleAll = React.useCallback(() => {
     setSelected((prev) => {
-      const next = new Set(prev)
+      const next = new Map(prev)
       if (rows.every((r) => next.has(r.id))) rows.forEach((r) => next.delete(r.id))
-      else rows.forEach((r) => next.add(r.id))
+      else rows.forEach((r) => next.set(r.id, r))
       return next
     })
   }, [rows])
-  const toggleRow = React.useCallback((id: string) => {
+  const toggleRow = React.useCallback((row: Row) => {
     setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      const next = new Map(prev)
+      if (next.has(row.id)) next.delete(row.id)
+      else next.set(row.id, row)
       return next
     })
   }, [])
   const selectedRows = React.useMemo(
-    () => rows.filter((r) => selected.has(r.id)).map((r) => ({ id: r.id, company: r.company })),
-    [rows, selected]
+    () => [...selected.values()],
+    [selected]
   )
 
   // —— 行操作 ——
@@ -298,7 +325,7 @@ export function AccountingInvoiceTable() {
         })
         toast.success("已删除")
         setSelected((prev) => {
-          const next = new Set(prev)
+          const next = new Map(prev)
           next.delete(row.id)
           return next
         })
@@ -315,16 +342,92 @@ export function AccountingInvoiceTable() {
     if (!window.confirm(`确定删除选中的 ${selected.size} 条账单？`)) return
     try {
       await fetchJson<{ count: number }>(
-        `/api/finance/accounting-invoices/batch-delete?ids=${encodeURIComponent([...selected].join(","))}`,
+        `/api/finance/accounting-invoices/batch-delete?ids=${encodeURIComponent([...selected.keys()].join(","))}`,
         { method: "DELETE" }
       )
       toast.success(`已删除 ${selected.size} 条账单`)
-      setSelected(new Set())
+      setSelected(new Map())
       refresh()
     } catch (error) {
       toast.error(getErrorMessage(error, "批量删除失败"))
     }
   }, [selected, refresh])
+
+  const openSendDialog = React.useCallback((target: SendTarget) => {
+    setSendDate(localToday())
+    setSendTarget(target)
+  }, [])
+
+  const openSingleSend = React.useCallback((row: Row) => {
+    if (row.invoice_date) {
+      toast.error(`账单「${row.invoice_number}」已于 ${fmtDate(row.invoice_date)} 发送`)
+      return
+    }
+    openSendDialog({ ids: [row.id], label: row.invoice_number, isBatch: false })
+  }, [openSendDialog])
+
+  const openBatchSend = React.useCallback(() => {
+    if (selected.size === 0) {
+      toast.error("请先勾选要发送的账单")
+      return
+    }
+    if (selected.size > MAX_ACCOUNTING_INVOICE_SEND) {
+      toast.error(`一次最多发送 ${MAX_ACCOUNTING_INVOICE_SEND} 条`)
+      return
+    }
+    const alreadySent = [...selected.values()].filter((row) => row.invoice_date != null)
+    if (alreadySent.length > 0) {
+      toast.error(`以下账单已发送：${alreadySent.map((row) => row.invoice_number).join("、")}`)
+      return
+    }
+    openSendDialog({
+      ids: [...selected.keys()],
+      label: `${selected.size} 条账单`,
+      isBatch: true,
+    })
+  }, [selected, openSendDialog])
+
+  const handleSend = React.useCallback(async () => {
+    if (!sendTarget || !sendDate) return
+    const popup = reservePdfWindow()
+    if (!popup) {
+      toast.error("浏览器拦截了弹出窗口，请允许后重试")
+      return
+    }
+
+    setSending(true)
+    try {
+      const result = await fetchJson<{ count: number; ids: string[]; invoice_date: string }>(
+        "/api/finance/accounting-invoices/send",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: sendTarget.ids, invoice_date: sendDate }),
+        }
+      )
+      const pdfUrl = result.ids.length === 1
+        ? `/api/finance/accounting-invoices/${result.ids[0]}/pdf`
+        : `/api/finance/accounting-invoices/batch-pdf?ids=${encodeURIComponent(result.ids.join(","))}`
+      popup.location.assign(pdfUrl)
+      toast.success(`已发送 ${result.count} 条账单`)
+      if (sendTarget.isBatch) {
+        setSelected(new Map())
+      } else {
+        setSelected((prev) => {
+          const next = new Map(prev)
+          result.ids.forEach((id) => next.delete(id))
+          return next
+        })
+      }
+      setSendTarget(null)
+      refresh()
+    } catch (error) {
+      popup.close()
+      toast.error(getErrorMessage(error, "发账单失败"))
+    } finally {
+      setSending(false)
+    }
+  }, [sendTarget, sendDate, refresh])
 
   const openCreate = React.useCallback(() => {
     setEditingRecord(null)
@@ -368,6 +471,17 @@ export function AccountingInvoiceTable() {
           variant="ghost"
           size="icon"
           className="h-8 w-8"
+          title={r.invoice_date ? `已于 ${fmtDate(r.invoice_date)} 发送` : "发账单"}
+          aria-label={r.invoice_date ? `${r.invoice_number} 已发送` : `发送 ${r.invoice_number}`}
+          disabled={r.invoice_date != null}
+          onClick={() => openSingleSend(r)}
+        >
+          <Send className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
           title="查看详情"
           aria-label={`查看 ${r.invoice_number}`}
           onClick={() => router.push(`/dashboard/finance/accounting-invoices/${r.id}`)}
@@ -406,7 +520,7 @@ export function AccountingInvoiceTable() {
         </Button>
       </div>
     ),
-    [router, handleRowPrint, openEdit, handleRowDelete]
+    [router, openSingleSend, handleRowPrint, openEdit, handleRowDelete]
   )
 
   // —— 导出 ——
@@ -435,7 +549,7 @@ export function AccountingInvoiceTable() {
       return
     }
     await downloadExport(
-      `/api/finance/accounting-invoices/export?ids=${encodeURIComponent([...selected].join(","))}`,
+      `/api/finance/accounting-invoices/export?ids=${encodeURIComponent([...selected.keys()].join(","))}`,
       `陆运账单_选中_${new Date().toISOString().slice(0, 10)}.xlsx`,
       `成功导出 ${selected.size} 条数据`
     )
@@ -481,7 +595,7 @@ export function AccountingInvoiceTable() {
         cell: ({ row }) => (
           <Checkbox
             checked={selected.has(row.original.id)}
-            onCheckedChange={() => toggleRow(row.original.id)}
+            onCheckedChange={() => toggleRow(row.original)}
             aria-label="选择该行"
           />
         ),
@@ -553,7 +667,7 @@ export function AccountingInvoiceTable() {
       columnHelper.accessor("notes", { header: "备注", cell: (info) => info.getValue() ?? "" }),
       columnHelper.display({
         id: "actions",
-        size: 140,
+        size: 176,
         header: "操作",
         cell: ({ row }) => {
           const r = row.original
@@ -626,15 +740,26 @@ export function AccountingInvoiceTable() {
               </Button>
               <AccountingInvoicesBatchPdf selectedRows={selectedRows} />
               {selected.size > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-                  onClick={handleBatchDelete}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  批量删除
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                    onClick={openBatchSend}
+                  >
+                    <Send className="mr-2 h-4 w-4" />
+                    批量发账单
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                    onClick={handleBatchDelete}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    批量删除
+                  </Button>
+                </>
               )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -870,7 +995,7 @@ export function AccountingInvoiceTable() {
                 </div>
                 <Checkbox
                   checked={selected.has(row.id)}
-                  onCheckedChange={() => toggleRow(row.id)}
+                  onCheckedChange={() => toggleRow(row)}
                   aria-label={`选择 ${row.invoice_number}`}
                   className="mt-1"
                 />
@@ -968,6 +1093,44 @@ export function AccountingInvoiceTable() {
               onCancel={closeDialog}
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={sendTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !sending) setSendTarget(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{sendTarget?.isBatch ? "批量发账单" : "发账单"}</DialogTitle>
+            <DialogDescription>
+              确认后将为 {sendTarget?.label ?? "选中账单"} 设置 Invoice 日期并打开 PDF。
+              日期设置后不可修改。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <label htmlFor="send-invoice-date" className="text-sm font-medium">
+              Invoice 日期
+            </label>
+            <Input
+              id="send-invoice-date"
+              type="date"
+              value={sendDate}
+              onChange={(event) => setSendDate(event.target.value)}
+              disabled={sending}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSendTarget(null)} disabled={sending}>
+              取消
+            </Button>
+            <Button onClick={() => void handleSend()} disabled={sending || !sendDate}>
+              {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              {sending ? "正在发送..." : "确认发送"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

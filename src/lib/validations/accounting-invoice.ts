@@ -29,7 +29,6 @@ export const accountingInvoiceCreateSchema = z.object({
   broker_load_number: z.string().max(100).optional().nullable(),
   billing_category: z.string().max(50).optional().nullable(),
   tonu: z.boolean().optional(),
-  invoice_date: z.string().optional().nullable(),
   invoice_price: moneyField,
   bill_to: z.string().max(200).optional().nullable(),
   description: z.string().optional().nullable(),
