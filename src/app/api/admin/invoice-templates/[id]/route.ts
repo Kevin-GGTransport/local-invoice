@@ -99,3 +99,24 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     return handleDbError(err, "保存模版失败")
   }
 }
+
+export async function DELETE(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const { error } = await requireAdmin()
+  if (error) return error
+
+  const { id } = await ctx.params
+  if (!/^\d+$/.test(id)) return jsonError("无效的模版 ID", 400)
+
+  try {
+    const existing = await prisma.invoice_templates.findUnique({
+      where: { id: BigInt(id) },
+      select: { id: true, name: true, status: true },
+    })
+    if (!existing) return jsonError("模版不存在", 404)
+
+    await prisma.invoice_templates.delete({ where: { id: existing.id } })
+    return jsonOk({ id: existing.id, name: existing.name, status: existing.status })
+  } catch (err) {
+    return handleDbError(err, "删除模版失败")
+  }
+}

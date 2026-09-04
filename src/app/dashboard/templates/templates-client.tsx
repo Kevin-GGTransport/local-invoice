@@ -7,7 +7,7 @@
  */
 
 import React from "react";
-import { Eye, FileUp, Loader2, Megaphone, Save, X } from "lucide-react";
+import { Eye, FileUp, Loader2, Megaphone, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -104,6 +104,7 @@ export function TemplatesClient() {
   const [bindField, setBindField] = React.useState<string>("__none__");
   const [saving, setSaving] = React.useState(false);
   const [previewingId, setPreviewingId] = React.useState<string | null>(null);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [publishing, setPublishing] = React.useState(false);
   const [showSample, setShowSample] = React.useState(false);
 
@@ -300,6 +301,26 @@ export function TemplatesClient() {
     }
   };
 
+  const handleDelete = async (row: TemplateListRow) => {
+    const activeWarning =
+      row.status === "active" ? "\n该模版正在使用，删除后该公司将暂无可用的账单 PDF 模版。" : "";
+    if (!window.confirm(`确定删除模版「${row.name}」吗？${activeWarning}\n此操作无法撤销。`)) {
+      return;
+    }
+
+    setDeletingId(row.id);
+    try {
+      await fetchJson(`/api/admin/invoice-templates/${row.id}`, { method: "DELETE" });
+      if (detail?.id === row.id) setDetail(null);
+      toast.success(`已删除模版：${row.name}`);
+      await Promise.all([loadTemplates(), loadCompanies()]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "删除模版失败");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -379,7 +400,7 @@ export function TemplatesClient() {
               <TableHead>公司</TableHead>
               <TableHead>状态</TableHead>
               <TableHead>更新时间</TableHead>
-              <TableHead className="w-56">操作</TableHead>
+              <TableHead className="w-72">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -434,6 +455,20 @@ export function TemplatesClient() {
                           <Loader2 className="mr-1 size-3.5 animate-spin" />
                         ) : null}
                         试打预览
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => void handleDelete(row)}
+                        disabled={deletingId === row.id}
+                      >
+                        {deletingId === row.id ? (
+                          <Loader2 className="mr-1 size-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="mr-1 size-3.5" />
+                        )}
+                        删除
                       </Button>
                     </div>
                   </TableCell>
