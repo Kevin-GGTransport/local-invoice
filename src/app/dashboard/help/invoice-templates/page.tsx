@@ -10,6 +10,7 @@ import {
   Lightbulb,
   Megaphone,
   MousePointer2,
+  PenLine,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -20,18 +21,20 @@ import { cn } from "@/lib/utils";
 const steps = [
   { number: "01", title: "准备样张", description: "整理 Excel 格式、合并格和占位行", icon: FileSpreadsheet },
   { number: "02", title: "上传解析", description: "选择公司后上传 .xlsx 生成草稿", icon: Upload },
-  { number: "03", title: "绑定字段", description: "绑定发票号、日期、地址与金额", icon: MousePointer2 },
-  { number: "04", title: "绑定明细", description: "设置行区域及 Description / Amount 列", icon: Grid3X3 },
-  { number: "05", title: "试打发布", description: "检查 PDF 后发布为该公司启用版", icon: Megaphone },
+  { number: "03", title: "编辑版式", description: "在网格中直接修改文字、样式与行列", icon: PenLine },
+  { number: "04", title: "绑定字段", description: "选中字段后点击目标单元格", icon: MousePointer2 },
+  { number: "05", title: "绑定明细", description: "设置行区域及 Description / Amount 列", icon: Grid3X3 },
+  { number: "06", title: "试打发布", description: "检查 PDF 后发布为该公司启用版", icon: Megaphone },
 ] as const;
 
 const toc = [
   ["prepare", "1. 准备 Excel 样张"],
   ["upload", "2. 上传并解析"],
-  ["fields", "3. 绑定基础字段"],
-  ["lines", "4. 绑定明细数据"],
-  ["publish", "5. 试打与发布"],
-  ["maintain", "6. 版本维护与删除"],
+  ["grid", "3. 编辑网格版式"],
+  ["fields", "4. 绑定基础字段"],
+  ["lines", "5. 绑定明细数据"],
+  ["publish", "6. 试打与发布"],
+  ["maintain", "7. 版本维护与删除"],
   ["troubleshooting", "常见问题"],
 ] as const;
 
@@ -110,7 +113,7 @@ export default function InvoiceTemplateHelpPage() {
               账单模版操作手册
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300 sm:text-base">
-              从 Excel 样张到可用的账单 PDF：按顺序完成上传、字段绑定、明细区域配置、试打和发布。
+              从 Excel 样张到可用的账单 PDF：上传解析后在网格中编辑版式、绑定字段与明细，试打确认后发布启用。
             </p>
           </div>
           <Button asChild className="bg-amber-400 text-slate-950 hover:bg-amber-300">
@@ -122,7 +125,7 @@ export default function InvoiceTemplateHelpPage() {
         </div>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {steps.map((step) => (
           <div key={step.number} className="rounded-xl border bg-card p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
@@ -164,34 +167,48 @@ export default function InvoiceTemplateHelpPage() {
               <li>打开「基础管理 → 账单模版管理」。</li>
               <li>选择模版所属公司，输入容易识别的模版名称。</li>
               <li>选择 .xlsx 样张，点击「上传解析」。</li>
-              <li>解析成功后会生成「草稿」，点击「绑定字段」开始配置。</li>
+              <li>解析成功后会生成「草稿」，点击「编辑」进入配置。</li>
             </ol>
+            <Callout>已有相近模版且只想小改时，可跳过上传：在列表中点击该模版的「复制为草稿」，直接在复制出的草稿上编辑。</Callout>
             <Callout tone="warning">同一公司可以有多个草稿，但同一时间只有一个启用模版。</Callout>
           </Section>
 
-          <Section id="fields" number="03" title="绑定基础字段">
-            <ol className="list-decimal space-y-2 pl-5">
-              <li>在左侧样张网格中点击要填入数据的单元格。</li>
-              <li>参考顶部列标 A、B、C 和左侧行号，确认选中坐标。</li>
-              <li>在「字段绑定」中选择业务字段，点击「绑定」。</li>
-              <li>重复操作，完成发票号、发票日期、Load No.、Bill To、PICKUPS、DROPS 和 Total。</li>
-            </ol>
-            <Callout>同一字段可绑定到多个单元格。如果选错，在已绑定字段右侧点击「解绑」后重新操作。</Callout>
+          <Section id="grid" number="03" title="编辑网格版式">
+            <p>解析完成后，草稿模版的网格可以直接编辑，小的版式差异不必重新上传样张。</p>
+            <Checklist items={[
+              "双击单元格编辑文字，Enter 保存、Esc 取消。",
+              "用工具栏在选中位置上方插行、左侧插列，或删除选中的行、列。",
+              "设置字号、粗体、水平 / 垂直对齐和自动换行。",
+              "调整文字颜色、填充颜色，或一键添加全部边框。",
+              "合并选中的多个单元格，或对合并格取消合并。",
+              "拖动列标右侧、行号下方的边界，调整列宽与行高。",
+            ]} />
+            <Callout tone="warning">编辑不会自动保存，修改后需点击「保存模版」。存在未保存修改时，关闭或切换模版会弹出确认；意外离开后重新打开，可选择恢复上次的本地修改。</Callout>
+            <Callout>只有「草稿」状态的模版可以编辑，已发布 / 已归档模版为只读。网格上限为 80 行 × 30 列。</Callout>
           </Section>
 
-          <Section id="lines" number="04" title="绑定明细数据">
+          <Section id="fields" number="04" title="绑定基础字段">
+            <ol className="list-decimal space-y-2 pl-5">
+              <li>在右侧「字段绑定」列表中点击选择一个业务字段，选中后会高亮显示。</li>
+              <li>在左侧样张网格中点击要填入数据的单元格，即完成绑定。可参考顶部列标 A、B、C 和左侧行号确认坐标。</li>
+              <li>同一字段需要落到多个单元格时，点击该字段旁的「添加位置」，再点选目标单元格。</li>
+              <li>重复操作，完成发票号、发票日期、Load No.、Bill To、PICKUPS、DROPS 和 Total。</li>
+            </ol>
+            <Callout>绑错时在「已绑定」区域点击「解绑」移除；「定位」可在网格中高亮查看该字段当前落点。</Callout>
+          </Section>
+
+          <Section id="lines" number="05" title="绑定明细数据">
             <p>明细区域会按账单实际数据重复生成，配置时要同时确定「行区域」和「字段列」。</p>
             <ol className="list-decimal space-y-2 pl-5">
-              <li>点击明细表第一个占位行，点击「选中行设为起始」。</li>
-              <li>点击最后一个占位行，点击「选中行设为结束」。</li>
-              <li>点击 Description 所在列，在 Description 一行点击「用 X 列」。</li>
+              <li>点击明细表第一个占位行，点击「选中行设为起始」；再点击最后一个占位行，点击「选中行设为结束」。也可以直接填写起始 / 结束行号，或拖动左侧行号选择范围。</li>
+              <li>在右侧点击选中 Description 列角色，再点击目标列（或该列中任意单元格）完成绑定。</li>
               <li>用相同方式绑定 Amount / Total；Qty 和 Rate 可按样张需要选择绑定。</li>
               <li>设置「最少行数」。实际数据不足时会自动补空行，超出时会自动增加。</li>
             </ol>
-            <Callout tone="warning">Description 和 Amount / Total 是发布必填列，不能绑定到同一列。蓝色网格是当前明细区域，发布前必须检查范围是否准确。</Callout>
+            <Callout tone="warning">带 * 的 Description 和 Amount / Total 是发布必填列，不能绑定到同一列。蓝色网格是当前明细区域，发布前必须检查范围是否准确。</Callout>
           </Section>
 
-          <Section id="publish" number="05" title="试打、保存与发布">
+          <Section id="publish" number="06" title="试打、保存与发布">
             <div className="grid gap-3 sm:grid-cols-3">
               {[
                 [Eye, "查看示例数据", "在网格中快速检查数据是否落在正确位置。"],
@@ -208,6 +225,7 @@ export default function InvoiceTemplateHelpPage() {
                 );
               })}
             </div>
+            <Callout>配置过程中可随时点击「保存模版」暂存进度，草稿不会影响当前启用版本的正常开票。</Callout>
             <Checklist items={[
               "所有基础字段都落在预期单元格内。",
               "PICKUPS / DROPS 日期、公司和地址没有越界或遮挡。",
@@ -216,8 +234,9 @@ export default function InvoiceTemplateHelpPage() {
             ]} />
           </Section>
 
-          <Section id="maintain" number="06" title="版本维护与删除">
-            <p>发布新模版后，同公司原来的启用版会自动变为「已归档」。已发布或已归档模版不能再修改绑定，需要调整时请重新上传样张生成新草稿。</p>
+          <Section id="maintain" number="07" title="版本维护与删除">
+            <p>发布新模版后，同公司原来的启用版会自动变为「已归档」。已发布 / 已归档模版为只读状态，仅供查看和试打预览。</p>
+            <p>需要调整版式时，在模版列表或详情中点击「复制为草稿」：系统会复制出一份「原名称 - 新版本」的草稿，在草稿上修改并发布后即可安全替换当前版本，无需重新上传样张。</p>
             <div className="flex gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-red-950 dark:border-red-900 dark:bg-red-950/30 dark:text-red-100">
               <Trash2 className="mt-1 size-4 shrink-0" aria-hidden="true" />
               <p>删除操作无法撤销。删除「启用中」的模版后，该公司将无法生成账单 PDF，应先发布替代版本。</p>
@@ -228,10 +247,13 @@ export default function InvoiceTemplateHelpPage() {
             <h2 className="mb-4 text-lg font-semibold tracking-tight sm:text-xl">常见问题</h2>
             <div className="divide-y">
               {[
-                ["上传后版式不一致", "检查原 Excel 是否使用了图片、文本框、条件格式或非实心填充。建议使用标准单元格样式。"],
-                ["字段显示在错误位置", "根据行号和列标重新选择单元格，先解绑错误坐标，再重新绑定。"],
-                ["明细数据落在第一列或列对不上", "清除明细绑定后重新设置。确保每个字段都使用选中列明确绑定，不要重复使用同一列。"],
-                ["日期或编号太长", "系统会对不换行的窄单元格自动缩小字号。如果仍难以阅读，请在 Excel 样张中加宽该列。"],
+                ["上传后版式不一致", "检查原 Excel 是否使用了图片、文本框、条件格式或非实心填充。建议使用标准单元格样式；解析后的小差异可直接在草稿编辑器中调整字号、对齐、边框和合并格。"],
+                ["字段显示在错误位置", "在「已绑定」区域点击「解绑」移除错误坐标，重新选择字段后再点击正确单元格。"],
+                ["明细数据落在第一列或列对不上", "清除明细绑定后重新设置。绑定列时先在右侧选中列角色，再点击目标列，不要重复使用同一列。"],
+                ["日期或编号太长", "系统会对不换行的窄单元格自动缩小字号。仍难以阅读时，可在草稿编辑器中直接加宽该列或调小字号。"],
+                ["无法合并单元格", "合并要求选区内至少两个单元格，且只能保留一个非空内容；选区不能与已有合并格、字段绑定或明细列交叉，请先解绑或调整明细绑定。"],
+                ["想修改已发布的模版", "已发布 / 已归档模版为只读。点击「复制为草稿」得到新草稿，修改后发布即可安全替换当前版本。"],
+                ["关闭页面后修改会丢失吗", "重新打开该模版时会提示恢复未保存的本地修改。本地恢复只保留在当前浏览器中，请养成及时「保存模版」的习惯。"],
                 ["无法发布", "检查是否已配置明细起止行，并绑定 Description 和 Amount / Total 两个必填列。"],
               ].map(([question, answer]) => (
                 <div key={question} className="py-4 first:pt-0 last:pb-0">
