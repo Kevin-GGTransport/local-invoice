@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { reconciliationSummary } from "@/lib/finance/accounting-invoice-reconciliation"
+import { buildReconciliationWhere, validateReconciliationQuery } from "@/lib/finance/accounting-invoice-reconciliation-query"
 import {
   createReconciliationsSchema,
   reconciliationDateToUtc,
@@ -14,20 +14,43 @@ import {
   userIdBigint,
 } from "@/lib/api-helpers"
 
-function serializeInvoice(row: Awaited<ReturnType<typeof findRows>>[number]) {
-  const active = row.accounting_invoice_reconciliations.filter((item) => item.voided_at == null)
+function serializeReconciliation(row: Awaited<ReturnType<typeof findRows>>[number]) {
+  const invoice = row.accounting_invoice
   return {
-    ...row,
-    ...reconciliationSummary(row.invoice_price, active.map((item) => item.check_amount)),
+    id: row.id,
+    invoice_id: row.accounting_invoice_id,
+    master_order_number: invoice.master_order_number,
+    company: invoice.company,
+    order_number: invoice.order_number,
+    bill_to: invoice.bill_to,
+    broker_load_number: invoice.broker_load_number,
+    billing_category: invoice.billing_category,
+    invoice_number: invoice.invoice_number,
+    check_date: row.check_date,
+    check_amount: row.check_amount,
+    check_number: row.check_number,
+    notes: row.notes,
+    voided_at: row.voided_at,
+    void_reason: row.void_reason,
+    created_at: row.created_at,
+    created_by: row.created_by,
   }
 }
 
-async function findRows(args: Parameters<typeof prisma.accounting_invoices.findMany>[0]) {
-  return prisma.accounting_invoices.findMany({
+async function findRows(args: Parameters<typeof prisma.accounting_invoice_reconciliations.findMany>[0]) {
+  return prisma.accounting_invoice_reconciliations.findMany({
     ...args,
     include: {
-      accounting_invoice_reconciliations: {
-        orderBy: [{ check_date: "desc" }, { id: "desc" }],
+      accounting_invoice: {
+        select: {
+          master_order_number: true,
+          company: true,
+          order_number: true,
+          bill_to: true,
+          broker_load_number: true,
+          billing_category: true,
+          invoice_number: true,
+        },
       },
     },
   })
@@ -39,46 +62,28 @@ export async function GET(request: NextRequest) {
 
   try {
     const params = request.nextUrl.searchParams
+    const queryError = validateReconciliationQuery(params)
+    if (queryError) return jsonError(queryError, 400)
     const page = Math.max(1, Number(params.get("page")) || 1)
     const pageSize = Math.min(200, Math.max(1, Number(params.get("pageSize")) || 50))
-    const status = params.get("status") ?? "unreconciled"
-    const search = params.get("search")?.trim()
-    const company = params.get("company")?.trim()
-
-    const where = {
-      ...(company ? { company } : {}),
-      ...(search ? {
-        OR: [
-          "invoice_number",
-          "master_order_number",
-          "order_number",
-          "broker_load_number",
-          "bill_to",
-        ].map((field) => ({ [field]: { contains: search, mode: "insensitive" as const } })),
-      } : {}),
-      ...(status === "unreconciled" ? {
-        accounting_invoice_reconciliations: { none: { voided_at: null } },
-      } : status === "reconciled" ? {
-        accounting_invoice_reconciliations: { some: { voided_at: null } },
-      } : {}),
-    }
+    const where = buildReconciliationWhere(params)
 
     const [rows, total] = await Promise.all([
       findRows({
         where,
-        orderBy: [{ invoice_date: "desc" }, { id: "desc" }],
+        orderBy: [{ check_date: "desc" }, { id: "desc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      prisma.accounting_invoices.count({ where }),
+      prisma.accounting_invoice_reconciliations.count({ where }),
     ])
 
     return jsonOk({
-      rows: rows.map(serializeInvoice),
+      rows: rows.map(serializeReconciliation),
       pagination: { total, page, pageSize },
     })
   } catch (err) {
-    return handleDbError(err, "查询销账列表失败")
+    return handleDbError(err, "查询销账记录失败")
   }
 }
 

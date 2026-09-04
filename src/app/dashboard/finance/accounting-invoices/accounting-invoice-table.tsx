@@ -56,11 +56,13 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleDollarSign,
   Database,
   Download,
   Eye,
   FileSpreadsheet,
   FileText,
+  History,
   Loader2,
   Pencil,
   Plus,
@@ -73,6 +75,7 @@ import {
 import { toast } from "sonner"
 import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
 import { AccountingInvoicesBatchPdf } from "@/components/finance/accounting-invoices-batch-pdf"
+import { ReconciliationFormDialog } from "@/components/finance/reconciliation-form-dialog"
 import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
 import type { PaginatedData } from "@/lib/api/types"
 import { openPdf, reservePdfWindow } from "@/lib/utils/open-pdf"
@@ -226,6 +229,7 @@ export function AccountingInvoiceTable() {
   const [sendTarget, setSendTarget] = React.useState<SendTarget | null>(null)
   const [sendDate, setSendDate] = React.useState(localToday)
   const [sending, setSending] = React.useState(false)
+  const [reconciliationTarget, setReconciliationTarget] = React.useState<Row | null>(null)
 
   React.useEffect(() => {
     void fetchJson<{ code: string; name: string; has_active_template: boolean }[]>("/api/companies")
@@ -470,6 +474,26 @@ export function AccountingInvoiceTable() {
   const renderRowActions = React.useCallback(
     (r: Row) => (
       <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          title="新增销账"
+          aria-label={`为 ${r.invoice_number} 新增销账`}
+          onClick={() => setReconciliationTarget(r)}
+        >
+          <CircleDollarSign className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          title="查看销账记录"
+          aria-label={`查看 ${r.invoice_number} 的销账记录`}
+          onClick={() => router.push(`/dashboard/finance/reconciliation?invoice_id=${r.id}`)}
+        >
+          <History className="h-4 w-4" />
+        </Button>
         <Button
           variant="ghost"
           size="icon"
@@ -1173,6 +1197,12 @@ export function AccountingInvoiceTable() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ReconciliationFormDialog
+        invoice={reconciliationTarget}
+        open={reconciliationTarget != null}
+        onOpenChange={(open) => { if (!open) setReconciliationTarget(null) }}
+      />
     </div>
   )
 }

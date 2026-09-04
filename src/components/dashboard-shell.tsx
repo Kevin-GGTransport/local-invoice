@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 const financeChildren = [
   { href: "/dashboard/finance/accounting-invoices", label: "陆运账单", icon: ReceiptText },
-  { href: "/dashboard/finance/reconciliation", label: "销账", icon: CircleDollarSign },
+  { href: "/dashboard/finance/reconciliation", label: "销账记录", icon: CircleDollarSign },
 ];
 
 const basicChildren = [
