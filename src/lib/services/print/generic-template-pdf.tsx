@@ -29,6 +29,7 @@ function fontFamily(style: { bold?: boolean; italic?: boolean }, base: string): 
 /**
  * react-pdf 会把窄单元格中的文字自动换行，而 Excel 样张中的日期/编号通常是单行。
  * 对未开启 wrap 的单元格做保守的字宽估算，必要时缩小字号以完整放入格内。
+ * 单元格内换行（Alt+Enter、未带 wrapText 标志）视为多行排版：按最长一行估宽。
  */
 export function fitSingleLineFontSize(
   text: string,
@@ -40,12 +41,16 @@ export function fitSingleLineFontSize(
   if (!text || availableWidth === 0) return requestedSize
 
   let emWidth = 0
-  for (const char of text) {
-    if (/\d/.test(char)) emWidth += 0.56
-    else if (/[A-Z]/.test(char)) emWidth += 0.65
-    else if (/[a-z]/.test(char)) emWidth += 0.5
-    else if (/\s/.test(char)) emWidth += 0.28
-    else emWidth += 0.3
+  for (const line of text.split(/\r?\n/)) {
+    let lineEm = 0
+    for (const char of line) {
+      if (/\d/.test(char)) lineEm += 0.56
+      else if (/[A-Z]/.test(char)) lineEm += 0.65
+      else if (/[a-z]/.test(char)) lineEm += 0.5
+      else if (/\s/.test(char)) lineEm += 0.28
+      else lineEm += 0.3
+    }
+    emWidth = Math.max(emWidth, lineEm)
   }
   if (bold) emWidth *= 1.05
 
@@ -136,7 +141,8 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
                     color: s.color ?? pageConfig.textColor,
                     textAlign: s.halign ?? 'left',
                     width: '100%',
-                    maxLines: s.wrap ? undefined : 1,
+                    // 含显式换行符的多行单元格不限制行数，避免 maxLines 截掉第二行
+                    maxLines: s.wrap || cell.text.includes('\n') ? undefined : 1,
                   }}
                 >
                   {cell.text}

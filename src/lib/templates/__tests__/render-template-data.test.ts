@@ -129,4 +129,9 @@ describe('fitSingleLineFontSize', () => {
   it('宽度充足时保留样张原字号', () => {
     assert.equal(fitSingleLineFontSize('08/19/2026', 10, 87.8), 10)
   })
+
+  it('含单元格内换行的文本按最长一行估宽，不按拼接总宽缩小字号', () => {
+    // 两行各约 39pt，拼接总宽约 80.8pt；格宽 85pt 时最长一行放得下，应保留原字号
+    assert.equal(fitSingleLineFontSize('AAAAAA\nBBBBBB', 10, 85), 10)
+  })
 })
