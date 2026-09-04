@@ -14,6 +14,7 @@ import {
   unmergeAt,
   validateTemplateGrid,
 } from "../template-grid";
+import { validateBindingForPublish } from "../types";
 import type { TemplateBinding, TemplateGrid } from "../types";
 
 function makeGrid(): TemplateGrid {
@@ -201,5 +202,54 @@ test("不能删除最后一行列或超过模板上限", () => {
   assert.match(
     insertColumn({ ...oneCell, colWidths: Array(30).fill(40) }, emptyBinding(), 0).error ?? "",
     /最多支持 30 列/
+  );
+});
+
+test("字段绑定位于明细区域内时校验报错（渲染时会被数据行覆盖）", () => {
+  const grid: TemplateGrid = {
+    colWidths: [40, 40],
+    rowHeights: [15, 15],
+    cells: [
+      { row: 0, col: 0, rowSpan: 1, colSpan: 1, text: "TOTAL", style: {} },
+      { row: 1, col: 0, rowSpan: 1, colSpan: 1, text: "", style: {} },
+      { row: 1, col: 1, rowSpan: 1, colSpan: 1, text: "", style: {} },
+    ],
+  };
+  const inside: TemplateBinding = {
+    fields: { total: { cells: [{ row: 1, col: 0 }], format: "money" } },
+    lineItems: { startRow: 1, endRow: 1, columns: { description: 0, amount: 1 }, minRows: 1 },
+  };
+  assert.ok(
+    validateTemplateGrid(grid, inside).some((e) => e.includes("明细区域")),
+    "区域内绑定应报错"
+  );
+  const outside: TemplateBinding = {
+    ...inside,
+    fields: { total: { cells: [{ row: 0, col: 0 }], format: "money" } },
+  };
+  assert.equal(
+    validateTemplateGrid(grid, outside).some((e) => e.includes("明细区域")),
+    false,
+    "区域外绑定不应报错"
+  );
+});
+
+test("发布校验同样拒绝明细区域内的字段绑定", () => {
+  const bad: TemplateBinding = {
+    fields: { invoice_number: { cells: [{ row: 4, col: 4 }], format: "text" } },
+    lineItems: { startRow: 4, endRow: 4, columns: { description: 1, amount: 4 }, minRows: 10 },
+  };
+  assert.ok(
+    validateBindingForPublish(bad).some((e) => e.includes("明细区域")),
+    "G&G 误绑形态（invoice_number 在明细区域内）应被发布校验拦截"
+  );
+  const good: TemplateBinding = {
+    fields: { invoice_number: { cells: [{ row: 2, col: 4 }], format: "text" } },
+    lineItems: { startRow: 16, endRow: 30, columns: { description: 1, amount: 4 }, minRows: 15 },
+  };
+  assert.equal(
+    validateBindingForPublish(good).some((e) => e.includes("明细区域")),
+    false,
+    "区域外绑定应通过发布校验"
   );
 });

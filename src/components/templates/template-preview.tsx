@@ -335,16 +335,15 @@ export function TemplatePreview({
               );
             })}
           </div>
-          {/* 文本层 z-10：盒宽与字号来自 cell-layout（溢出扩展 + 缩字号），与 PDF 一致 */}
+          {/* 文本层 z-10：盒位置/宽度与字号来自 cell-layout（左/右溢出 + 缩字号），与 PDF 一致 */}
           <div className="absolute inset-0 z-10" style={{ pointerEvents: "none" }} aria-hidden="true">
             {grid.cells
               .filter((cell) => cell.text)
               .map((cell, i) => {
-                const { left, top, width, height } = cellRect(cell);
-                const { textBoxWidth, fontSize } = layoutCellText(
+                const { top, height } = cellRect(cell);
+                const { textBoxLeft, textBoxWidth, fontSize } = layoutCellText(
                   grid,
                   cell,
-                  width,
                   cell.style.fontSize ?? 10
                 );
                 return (
@@ -352,7 +351,7 @@ export function TemplatePreview({
                     key={`tx-${cell.row}:${cell.col}-${i}`}
                     style={{
                       ...cellTextStyle(cell.style, fontSize),
-                      left: left * PT_TO_PX,
+                      left: textBoxLeft * PT_TO_PX,
                       top: top * PT_TO_PX,
                       width: textBoxWidth * PT_TO_PX,
                       height: height * PT_TO_PX,

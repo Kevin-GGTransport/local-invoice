@@ -1,7 +1,7 @@
 /**
  * 账单模版 —— 单元格文本排版共享模型（纯函数，无 react-pdf 依赖）
  * HTML 预览与 PDF 渲染器共同消费，保证「编辑看到的 = 打印出来的」：
- * 1. Excel 式右溢出：左对齐单行文本可横向溢出到右侧连续空单元格；
+ * 1. Excel 式溢出：左对齐单行文本向右、右对齐单行文本向左，横穿连续空单元格；
  * 2. 单行缩字号：溢出后仍放不下时按文本盒宽度保守估宽收缩字号。
  */
 
@@ -41,17 +41,41 @@ export function fitSingleLineFontSize(
   return Math.max(5.5, Math.min(requestedSize, (requestedSize * availableWidth) / estimatedWidth));
 }
 
-/** 该单元格是否参与 Excel 式右侧溢出排版（Excel 仅左对齐文本向右溢出） */
-export function canOverflowRight(cell: TemplateCell): boolean {
-  const s = cell.style;
+/** 单元格是否具备溢出排版的基础条件（Excel 仅单行、未换行的文本会溢出） */
+function canOverflowBase(cell: TemplateCell): boolean {
   if (!cell.text) return false;
   if (/\r|\n/.test(cell.text)) return false;
-  if (s.wrap) return false;
-  return s.halign === undefined || s.halign === "left";
+  return !cell.style.wrap;
+}
+
+/** 该单元格是否参与 Excel 式右侧溢出排版（左对齐文本向右溢出） */
+export function canOverflowRight(cell: TemplateCell): boolean {
+  return canOverflowBase(cell) && (cell.style.halign === undefined || cell.style.halign === "left");
+}
+
+/** 该单元格是否参与 Excel 式左侧溢出排版（右对齐文本向左溢出） */
+export function canOverflowLeft(cell: TemplateCell): boolean {
+  return canOverflowBase(cell) && cell.style.halign === "right";
+}
+
+/** 候选列在源格覆盖的每一行 [row, row+rowSpan) 上是否都没有文本 */
+function columnEmptyWithinRows(grid: TemplateGrid, cell: TemplateCell, col: number): boolean {
+  for (let row = cell.row; row < cell.row + cell.rowSpan; row += 1) {
+    const anchor = findAnchorAt(grid, row, col);
+    if (anchor && anchor.text.trim()) return false;
+  }
+  return true;
+}
+
+/** 列前缀和：prefix[i] = 前 i 列累计宽度（pt） */
+function columnPrefix(grid: TemplateGrid): number[] {
+  const prefix: number[] = [0];
+  for (const w of grid.colWidths) prefix.push(prefix[prefix.length - 1] + w);
+  return prefix;
 }
 
 /**
- * 溢出扩展后的文本盒宽度（pt）：向右穿过源格行跨度内全部为空文本的连续列，
+ * 右溢出扩展后的文本盒宽度（pt）：向右穿过源格行跨度内全部为空文本的连续列，
  * 止于首个带文本的单元格或网格右缘。不满足溢出条件时原样返回 baseWidth。
  */
 export function overflowTextWidth(
@@ -62,24 +86,15 @@ export function overflowTextWidth(
   if (!canOverflowRight(cell)) return baseWidth;
   const colCount = grid.colWidths.length;
   let endCol = cell.col + cell.colSpan; // 源格自身跨列时，从自身右边界之后开始扫描
-  let blocked = false;
-  while (!blocked && endCol < colCount) {
-    // 候选列必须在源格覆盖的每一行上都无文本（空装饰格 / 空合并格放行）
-    for (let row = cell.row; row < cell.row + cell.rowSpan; row += 1) {
-      const anchor = findAnchorAt(grid, row, endCol);
-      if (anchor && anchor.text.trim()) {
-        blocked = true;
-        break;
-      }
-    }
-    if (!blocked) endCol += 1;
-  }
+  while (endCol < colCount && columnEmptyWithinRows(grid, cell, endCol)) endCol += 1;
   let width = 0;
   for (let col = cell.col; col < endCol; col += 1) width += grid.colWidths[col] ?? 0;
   return Math.max(width, baseWidth);
 }
 
 export interface CellTextLayout {
+  /** 文本盒左缘（pt，网格原点起）：左溢出时向左扩展，否则为格左缘 */
+  textBoxLeft: number;
   /** 文本盒宽度（pt）：溢出扩展后或原始宽度 */
   textBoxWidth: number;
   /** 建议字号（pt）：wrap 保持原值，否则按 textBoxWidth 收缩 */
@@ -88,19 +103,39 @@ export interface CellTextLayout {
   overflowed: boolean;
 }
 
-/** 两个渲染器统一调用的入口：一次算出文本盒宽度 + 建议字号 */
+/**
+ * 两个渲染器统一调用的入口：基于网格几何一次算出文本盒位置、宽度与建议字号。
+ * 左对齐/未设置对齐 → 向右溢出；右对齐 → 向左溢出；居中不溢出。
+ */
 export function layoutCellText(
   grid: TemplateGrid,
   cell: TemplateCell,
-  baseWidth: number,
   requestedFontSize: number
 ): CellTextLayout {
-  const textBoxWidth = overflowTextWidth(grid, cell, baseWidth);
+  const prefix = columnPrefix(grid);
+  const colCount = grid.colWidths.length;
+  const clamp = (i: number) => Math.min(Math.max(i, 0), prefix.length - 1);
+  const ownLeft = clamp(cell.col);
+  const ownRight = clamp(cell.col + cell.colSpan);
+
+  let startCol = ownLeft;
+  let endCol = ownRight;
+  if (canOverflowRight(cell)) {
+    while (endCol < colCount && columnEmptyWithinRows(grid, cell, endCol)) endCol += 1;
+  } else if (canOverflowLeft(cell)) {
+    while (startCol > 0 && columnEmptyWithinRows(grid, cell, startCol - 1)) startCol -= 1;
+  }
+
+  const textBoxLeft = prefix[clamp(startCol)];
+  const ownWidth = prefix[ownRight] - prefix[ownLeft];
+  // 扩展盒不小于自身格宽（防御列宽为 0 等异常几何）
+  const textBoxWidth = Math.max(prefix[clamp(endCol)] - textBoxLeft, ownWidth);
   return {
+    textBoxLeft,
     textBoxWidth,
     fontSize: cell.style.wrap
       ? requestedFontSize
       : fitSingleLineFontSize(cell.text, requestedFontSize, textBoxWidth, cell.style.bold),
-    overflowed: textBoxWidth > baseWidth + 0.05,
+    overflowed: textBoxWidth > ownWidth + 0.05 || textBoxLeft < prefix[ownLeft] - 0.05,
   };
 }

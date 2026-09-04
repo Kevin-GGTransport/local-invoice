@@ -137,6 +137,14 @@ export function validateBindingForPublish(binding: TemplateBinding): string[] {
     return errors
   }
   if (li.endRow < li.startRow) errors.push('明细区域结束行不能小于起始行')
+  // 明细区域渲染时会被整块替换为数据行，区域内不能有字段绑定（会被丢弃）
+  for (const field of TEMPLATE_FIELDS) {
+    for (const cell of binding.fields[field.key]?.cells ?? []) {
+      if (cell.row >= li.startRow && cell.row <= li.endRow) {
+        errors.push(`${field.label} 的绑定位于明细区域内，打印时会被明细数据覆盖，请移出后重试`)
+      }
+    }
+  }
   if (li.columns.description == null) errors.push('明细区域必须绑定 Description 列')
   if (li.columns.amount == null) errors.push('明细区域必须绑定 Amount/TOTAL 列')
   if (li.minRows < 1) errors.push('明细最少行数不能小于 1')

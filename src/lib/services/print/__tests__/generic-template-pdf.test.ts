@@ -119,4 +119,44 @@ describe('GenericTemplateDocument', () => {
     const stream = await renderPdfStream(grid)
     assert.match(stream, /\/F\d+ 5\.5 Tf/, '右邻居有文本时应按原格宽缩号到 5.5pt 下限')
   })
+
+  it('AA 行 8 场景：右对齐窄日期向左溢出到空列，与宽日期同样输出 10pt', async () => {
+    // 网格 285.3×20pt < A4 内容区 → scale = 1，Tf 字号即实际字号
+    const grid: TemplateGrid = {
+      colWidths: [40, 120, 37.5, 87.8],
+      rowHeights: [20],
+      cells: [
+        { row: 0, col: 0, rowSpan: 1, colSpan: 1, text: 'PICKUPS', style: { bold: true, fontSize: 11 } },
+        { row: 0, col: 1, rowSpan: 1, colSpan: 1, text: '', style: {} },
+        {
+          row: 0,
+          col: 2,
+          rowSpan: 1,
+          colSpan: 1,
+          // AA 模板 pickup 日期：37.5pt 窄格、右对齐、左侧空列
+          text: '08/19/2026',
+          style: { halign: 'right', fontSize: 10 },
+        },
+        {
+          row: 0,
+          col: 3,
+          rowSpan: 1,
+          colSpan: 1,
+          // AA 模板 drop 日期：87.8pt 宽格、右对齐
+          text: '08/20/2026',
+          style: { halign: 'right', fontSize: 10 },
+        },
+      ],
+    }
+    const text = await renderPdfText(grid)
+    assert.ok(text.includes('08/19/2026'), `PDF 应包含 pickup 日期，实际文本：${text}`)
+    assert.ok(text.includes('08/20/2026'), `PDF 应包含 drop 日期，实际文本：${text}`)
+    const stream = await renderPdfStream(grid)
+    const tenPtCount = (stream.match(/\/F\d+ 10 Tf/g) ?? []).length
+    assert.ok(
+      tenPtCount >= 2,
+      `两个日期都应以 10pt 输出（实际 10pt 文本段 ${tenPtCount} 个），流片段：${stream.slice(0, 500)}`
+    )
+    assert.doesNotMatch(stream, /\/F\d+ (5\.5|6\.\d+) Tf/, '日期不应再被缩号')
+  })
 })

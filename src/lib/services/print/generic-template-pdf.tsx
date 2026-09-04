@@ -101,16 +101,15 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
               />
             )
           })}
-          {/* 第二遍：文本（盒宽可为溢出扩展宽度，画在空邻居填充之上） */}
+          {/* 第二遍：文本（盒可为左/右溢出扩展宽度，画在空邻居填充之上） */}
           {grid.cells
             .filter((cell) => cell.text)
             .map((cell, i) => {
-              const { left, top, width, height } = cellRect(cell)
+              const { top, height } = cellRect(cell)
               const s = cell.style
-              const { textBoxWidth, fontSize } = layoutCellText(
+              const { textBoxLeft, textBoxWidth, fontSize } = layoutCellText(
                 grid,
                 cell,
-                width / scale,
                 s.fontSize ?? pageConfig.baseFontSize
               )
               return (
@@ -118,7 +117,7 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
                   key={`tx-${i}`}
                   style={{
                     position: 'absolute',
-                    left,
+                    left: textBoxLeft * scale,
                     top,
                     width: textBoxWidth * scale,
                     height,

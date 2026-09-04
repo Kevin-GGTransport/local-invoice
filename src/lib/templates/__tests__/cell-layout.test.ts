@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  canOverflowLeft,
   canOverflowRight,
   fitSingleLineFontSize,
   layoutCellText,
@@ -30,6 +31,20 @@ describe("canOverflowRight", () => {
     assert.equal(canOverflowRight(cell(0, 0, "text", { halign: "center" })), false);
     assert.equal(canOverflowRight(cell(0, 0, "text", { halign: "right" })), false);
     assert.equal(canOverflowRight(cell(0, 0, "", {})), false);
+  });
+});
+
+describe("canOverflowLeft", () => {
+  it("右对齐的单行非 wrap 文本可向左溢出", () => {
+    assert.equal(canOverflowLeft(cell(0, 0, "text", { halign: "right" })), true);
+  });
+
+  it("wrap、含换行、左对齐/居中、空文本的单元格不左溢出", () => {
+    assert.equal(canOverflowLeft(cell(0, 0, "text", { halign: "right", wrap: true })), false);
+    assert.equal(canOverflowLeft(cell(0, 0, "a\nb", { halign: "right" })), false);
+    assert.equal(canOverflowLeft(cell(0, 0, "text", { halign: "left" })), false);
+    assert.equal(canOverflowLeft(cell(0, 0, "text", { halign: "center" })), false);
+    assert.equal(canOverflowLeft(cell(0, 0, "", { halign: "right" })), false);
   });
 });
 
@@ -116,7 +131,7 @@ describe("fitSingleLineFontSize", () => {
 });
 
 describe("layoutCellText", () => {
-  it("G&G 页脚场景：溢出后放得下则保留 11pt 原字号", () => {
+  it("G&G 页脚场景：右溢出后放得下则保留 11pt 原字号", () => {
     const g = grid(
       [85.5, 141.8],
       [
@@ -124,13 +139,72 @@ describe("layoutCellText", () => {
         cell(0, 1, "", { fill: "#CECDE9" }),
       ]
     );
-    const layout = layoutCellText(g, g.cells[0], 85.5, 11);
+    const layout = layoutCellText(g, g.cells[0], 11);
     assert.equal(layout.overflowed, true);
+    assert.equal(layout.textBoxLeft, 0);
     assert.equal(layout.textBoxWidth, 227.3);
     assert.equal(layout.fontSize, 11);
   });
 
-  it("溢出后仍放不下时按扩展宽度收缩字号且不低于 5.5", () => {
+  it("AA 日期场景：右对齐日期向左溢出到空列，保留 10pt 且右缘贴原格边框", () => {
+    // 列宽模拟 AA 行 8：PICKUPS(39.8) | 空列(159.8) | 日期槽(37.5) | DROPS(90)
+    const g = grid(
+      [39.8, 159.8, 37.5, 90],
+      [
+        cell(0, 0, "PICKUPS", { bold: true, fontSize: 11 }),
+        cell(0, 2, "08/19/2026", { halign: "right", fontSize: 10 }),
+        cell(0, 3, "DROPS", { bold: true, fontSize: 11 }),
+      ]
+    );
+    const layout = layoutCellText(g, g.cells[1], 10);
+    assert.equal(layout.overflowed, true);
+    // 左溢出：盒左缘从 197.1 退到 39.8，宽度 = 159.8 + 37.5
+    assert.equal(Math.round(layout.textBoxLeft * 10) / 10, 39.8);
+    assert.equal(Math.round(layout.textBoxWidth * 10) / 10, 197.3);
+    assert.equal(layout.fontSize, 10);
+    // PICKUPS 标签右溢入同一空列，同样保留 11pt
+    const label = layoutCellText(g, g.cells[0], 11);
+    assert.equal(label.fontSize, 11);
+    assert.equal(Math.round(label.textBoxWidth * 10) / 10, 199.6);
+  });
+
+  it("左溢出遇到带文本的左邻居即停止", () => {
+    const g = grid(
+      [100, 50],
+      [
+        cell(0, 0, "blocker", { halign: "left" }),
+        cell(0, 1, "08/19/2026", { halign: "right" }),
+      ]
+    );
+    const layout = layoutCellText(g, g.cells[1], 10);
+    assert.equal(layout.overflowed, false);
+    assert.equal(layout.textBoxWidth, 50);
+    assert.ok(layout.fontSize < 10);
+  });
+
+  it("网格左缘的右对齐格无处左溢出", () => {
+    const g = grid([50], [cell(0, 0, "08/19/2026", { halign: "right" })]);
+    const layout = layoutCellText(g, g.cells[0], 10);
+    assert.equal(layout.textBoxLeft, 0);
+    assert.equal(layout.textBoxWidth, 50);
+  });
+
+  it("左溢出后仍放不下时按扩展宽度收缩字号且不低于 5.5", () => {
+    const longText = "A VERY LONG RIGHT ALIGNED TEXT THAT CANNOT FIT EVEN AFTER LEFT OVERFLOW";
+    const g = grid(
+      [50, 50],
+      [
+        cell(0, 0, "", {}),
+        cell(0, 1, longText, { halign: "right", fontSize: 12 }),
+      ]
+    );
+    const layout = layoutCellText(g, g.cells[1], 12);
+    assert.equal(layout.textBoxWidth, 100);
+    assert.ok(layout.fontSize < 12);
+    assert.ok(layout.fontSize >= 5.5);
+  });
+
+  it("溢出后仍放不下时按扩展宽度收缩字号且不低于 5.5（右溢出方向）", () => {
     const longText = "A VERY VERY LONG FOOTER TEXT THAT CANNOT FIT EVEN WITH OVERFLOW";
     const g = grid(
       [50, 50],
@@ -139,7 +213,7 @@ describe("layoutCellText", () => {
         cell(0, 1, ""),
       ]
     );
-    const layout = layoutCellText(g, g.cells[0], 50, 12);
+    const layout = layoutCellText(g, g.cells[0], 12);
     assert.equal(layout.textBoxWidth, 100);
     assert.ok(layout.fontSize < 12);
     assert.ok(layout.fontSize >= 5.5);
@@ -147,7 +221,7 @@ describe("layoutCellText", () => {
 
   it("wrap 单元格不缩字号也不溢出", () => {
     const g = grid([50], [cell(0, 0, "some long wrapping text", { fontSize: 11, wrap: true })]);
-    const layout = layoutCellText(g, g.cells[0], 50, 11);
+    const layout = layoutCellText(g, g.cells[0], 11);
     assert.equal(layout.textBoxWidth, 50);
     assert.equal(layout.fontSize, 11);
     assert.equal(layout.overflowed, false);
