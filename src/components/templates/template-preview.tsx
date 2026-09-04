@@ -76,6 +76,8 @@ export interface TemplatePreviewProps {
   scale?: number;
   /** 显示 Excel 式行号与列标（绑定向导用） */
   showCoordinates?: boolean;
+  /** 明细数据区域，用于在绑定时同步标记行与列 */
+  lineItemRegion?: { startRow: number; endRow: number; columns: number[] } | null;
 }
 
 export function TemplatePreview({
@@ -86,6 +88,7 @@ export function TemplatePreview({
   className,
   scale = 1,
   showCoordinates = false,
+  lineItemRegion,
 }: TemplatePreviewProps) {
   const colX: number[] = [0];
   for (const w of grid.colWidths) colX.push(colX[colX.length - 1] + w);
@@ -125,6 +128,8 @@ export function TemplatePreview({
                   "absolute top-0 z-10 flex items-center justify-center border-b border-r text-xs font-semibold",
                   selectedCol === col
                     ? "bg-amber-100 text-amber-800"
+                    : lineItemRegion?.columns.includes(col)
+                      ? "bg-sky-100 text-sky-800"
                     : "bg-slate-100 text-slate-600"
                 )}
                 style={{
@@ -144,6 +149,8 @@ export function TemplatePreview({
                   "absolute left-0 z-10 flex items-center justify-center border-b border-r text-xs font-semibold tabular-nums",
                   selectedRow === row
                     ? "bg-amber-100 text-amber-800"
+                    : lineItemRegion && row >= lineItemRegion.startRow && row <= lineItemRegion.endRow
+                      ? "bg-sky-100 text-sky-800"
                     : "bg-slate-100 text-slate-600"
                 )}
                 style={{
@@ -181,6 +188,9 @@ export function TemplatePreview({
           const clickable = !!onCellClick;
           const highlighted = highlightedCells?.has(key);
           const selected = selectedCell === key;
+          const inLineItemRegion =
+            lineItemRegion && cell.row >= lineItemRegion.startRow && cell.row <= lineItemRegion.endRow;
+          const isLineItemColumn = lineItemRegion?.columns.includes(cell.col);
           return (
             <div
               key={`${key}-${i}`}
@@ -188,6 +198,8 @@ export function TemplatePreview({
               onClick={clickable ? () => onCellClick?.(cell.row, cell.col) : undefined}
               className={cn(
                 clickable && "cursor-pointer hover:z-10 hover:bg-sky-50/80",
+                inLineItemRegion && "after:pointer-events-none after:absolute after:inset-0 after:bg-sky-400/10",
+                inLineItemRegion && isLineItemColumn && "after:bg-sky-400/20",
                 highlighted && "outline-2 outline-offset-[-2px] outline-sky-500",
                 selected && "outline-2 outline-offset-[-2px] outline-amber-500 ring-2 ring-amber-300"
               )}

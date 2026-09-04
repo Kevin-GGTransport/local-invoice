@@ -48,7 +48,7 @@ const patchSchema = z.object({
             description: z.number().int().min(0).nullable().optional(),
             quantity: z.number().int().min(0).nullable().optional(),
             unitPrice: z.number().int().min(0).nullable().optional(),
-            amount: z.number().int().min(0),
+            amount: z.number().int().min(0).optional(),
           }),
           minRows: z.number().int().min(1),
         })

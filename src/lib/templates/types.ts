@@ -82,7 +82,7 @@ export interface LineItemsBinding {
     description?: number
     quantity?: number
     unitPrice?: number
-    amount: number
+    amount?: number
   }
   minRows: number
 }

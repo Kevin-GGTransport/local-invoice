@@ -65,12 +65,11 @@ export function renderTemplateData(
     return [] // 区域内原始占位行丢弃，由生成行替代
   })
 
-  const lineTexts: Record<number, (line: TemplateRenderData['lines'][number] | undefined) => string> = {
-    [li.columns.description ?? -1]: (l) => l?.description ?? '',
-    [li.columns.quantity ?? -2]: (l) => l?.quantity ?? '',
-    [li.columns.unitPrice ?? -3]: (l) => l?.unitPrice ?? '',
-    [li.columns.amount]: (l) => l?.amount ?? '',
-  }
+  const lineTexts: Record<number, (line: TemplateRenderData['lines'][number] | undefined) => string> = {}
+  if (li.columns.description != null) lineTexts[li.columns.description] = (l) => l?.description ?? ''
+  if (li.columns.quantity != null) lineTexts[li.columns.quantity] = (l) => l?.quantity ?? ''
+  if (li.columns.unitPrice != null) lineTexts[li.columns.unitPrice] = (l) => l?.unitPrice ?? ''
+  if (li.columns.amount != null) lineTexts[li.columns.amount] = (l) => l?.amount ?? ''
 
   for (let i = 0; i < dataRows; i++) {
     const line = data.lines[i]

@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 
 import { renderTemplateData, sampleTemplateRenderData } from '../render-template-data'
 import type { TemplateBinding, TemplateGrid } from '../types'
+import { fitSingleLineFontSize } from '../../services/print/generic-template-pdf'
 
 function grid(rows: number, cols: number): TemplateGrid {
   return {
@@ -100,5 +101,32 @@ describe('renderTemplateData', () => {
     g.cells = [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: 'x', style: {} }]
     const out = renderTemplateData(g, null, sampleTemplateRenderData())
     assert.equal(out.cells.length, 1)
+  })
+
+  it('未绑定明细列时不会默认把数据写入第一列', () => {
+    const g = grid(3, 2)
+    g.cells = [
+      { row: 1, col: 0, rowSpan: 1, colSpan: 1, text: 'placeholder', style: {} },
+      { row: 1, col: 1, rowSpan: 1, colSpan: 1, text: '', style: {} },
+    ]
+    const binding: TemplateBinding = {
+      fields: {},
+      lineItems: { startRow: 1, endRow: 1, columns: {}, minRows: 1 },
+    }
+    const out = renderTemplateData(g, binding, sampleTemplateRenderData())
+    assert.equal(out.cells.find((c) => c.row === 1 && c.col === 0)?.text, 'placeholder')
+    assert.equal(out.cells.find((c) => c.row === 1 && c.col === 1)?.text, '')
+  })
+})
+
+describe('fitSingleLineFontSize', () => {
+  it('AA PICKUPS 窄日期格会缩小字号并保持单行', () => {
+    const size = fitSingleLineFontSize('08/19/2026', 10, 37.5)
+    assert.ok(size < 10)
+    assert.ok(size >= 5.5)
+  })
+
+  it('宽度充足时保留样张原字号', () => {
+    assert.equal(fitSingleLineFontSize('08/19/2026', 10, 87.8), 10)
   })
 })

@@ -72,11 +72,22 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const LINE_ROLES = [
-  { key: "description", label: "Description 列" },
-  { key: "quantity", label: "Qty 列（可选）" },
-  { key: "unitPrice", label: "Rate 列（可选）" },
-  { key: "amount", label: "Amount/TOTAL 列（必填）" },
+  { key: "description", label: "Description", required: true },
+  { key: "quantity", label: "Qty", required: false },
+  { key: "unitPrice", label: "Rate", required: false },
+  { key: "amount", label: "Amount / Total", required: true },
 ] as const;
+
+function columnLabel(index: number): string {
+  let value = index + 1;
+  let label = "";
+  while (value > 0) {
+    value -= 1;
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26);
+  }
+  return label;
+}
 
 async function openPreviewPdf(id: string) {
   const res = await fetch(`/api/admin/invoice-templates/${id}/preview-pdf`, { method: "POST" });
@@ -289,6 +300,12 @@ export function TemplatesClient() {
   const renderedGrid = detail
     ? renderTemplateData(detail.grid_config, binding, sampleTemplateRenderData())
     : null;
+  const selectedPosition = selected?.split(":").map(Number);
+  const selectedRow = selectedPosition?.[0];
+  const selectedCol = selectedPosition?.[1];
+  const lineItemColumns = binding.lineItems
+    ? Object.values(binding.lineItems.columns).filter((col): col is number => col != null)
+    : [];
 
   const handleListPreview = async (id: string) => {
     setPreviewingId(id);
@@ -522,6 +539,15 @@ export function TemplatesClient() {
                   selectedCell={selected}
                   scale={0.75}
                   showCoordinates={!showSample}
+                  lineItemRegion={
+                    !showSample && binding.lineItems
+                      ? {
+                          startRow: binding.lineItems.startRow,
+                          endRow: binding.lineItems.endRow,
+                          columns: lineItemColumns,
+                        }
+                      : null
+                  }
                 />
               </div>
             </div>
@@ -589,8 +615,36 @@ export function TemplatesClient() {
                   </div>
                 </div>
 
-                <div className="rounded-md border p-3">
-                  <p className="mb-2 text-sm font-medium">明细行区域（发布必填）</p>
+                <div className="rounded-md border border-sky-200 bg-sky-50/30 p-3">
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium">明细数据绑定</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        先点左侧单元格，再用它的行或列完成绑定。蓝色区域是会被账单明细替换的范围。
+                      </p>
+                    </div>
+                    {binding.lineItems && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 shrink-0 text-destructive hover:text-destructive"
+                        onClick={() => setBinding((b) => ({ ...b, lineItems: null }))}
+                      >
+                        清除明细绑定
+                      </Button>
+                    )}
+                  </div>
+                  <div className="mb-3 rounded-md border bg-background p-2 text-xs">
+                    {selectedRow != null && selectedCol != null ? (
+                      <span>
+                        已选：<span className="font-semibold text-amber-700">{columnLabel(selectedCol)}{selectedRow + 1}</span>
+                        <span className="ml-2 text-muted-foreground">（第 {selectedRow + 1} 行、第 {selectedCol + 1} 列）</span>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">请先点击左侧样张中的一个单元格</span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <Label className="text-xs">起始行（1 起）</Label>
@@ -604,7 +658,7 @@ export function TemplatesClient() {
                           setBinding((b) => {
                             const li =
                               b.lineItems ??
-                              { startRow: v, endRow: v, columns: { amount: 0 }, minRows: 10 };
+                              { startRow: v, endRow: v, columns: {}, minRows: 10 };
                             return {
                               ...b,
                               lineItems: { ...li, startRow: v, endRow: Math.max(li.endRow, v) },
@@ -625,7 +679,7 @@ export function TemplatesClient() {
                           setBinding((b) => {
                             const li =
                               b.lineItems ??
-                              { startRow: 0, endRow: v, columns: { amount: 0 }, minRows: 10 };
+                              { startRow: v, endRow: v, columns: {}, minRows: 10 };
                             return {
                               ...b,
                               lineItems: { ...li, endRow: v, startRow: Math.min(li.startRow, v) },
@@ -635,10 +689,45 @@ export function TemplatesClient() {
                       />
                     </div>
                   </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={selectedRow == null}
+                      onClick={() => {
+                        if (selectedRow == null) return;
+                        setBinding((b) => {
+                          const li = b.lineItems ?? { startRow: selectedRow, endRow: selectedRow, columns: {}, minRows: 10 };
+                          return { ...b, lineItems: { ...li, startRow: selectedRow, endRow: Math.max(li.endRow, selectedRow) } };
+                        });
+                      }}
+                    >
+                      选中行设为起始
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={selectedRow == null}
+                      onClick={() => {
+                        if (selectedRow == null) return;
+                        setBinding((b) => {
+                          const li = b.lineItems ?? { startRow: selectedRow, endRow: selectedRow, columns: {}, minRows: 10 };
+                          return { ...b, lineItems: { ...li, endRow: selectedRow, startRow: Math.min(li.startRow, selectedRow) } };
+                        });
+                      }}
+                    >
+                      选中行设为结束
+                    </Button>
+                  </div>
                   <div className="mt-2 grid gap-2">
                     {LINE_ROLES.map((role) => (
-                      <div key={role.key} className="flex items-center gap-2">
-                        <Label className="w-44 shrink-0 text-xs">{role.label}</Label>
+                      <div key={role.key} className="grid grid-cols-[110px_minmax(0,1fr)_auto] items-center gap-2">
+                        <Label className="text-xs">
+                          {role.label}
+                          {role.required ? <span className="ml-1 text-destructive">*</span> : null}
+                        </Label>
                         <Select
                           value={
                             binding.lineItems?.columns[role.key] != null
@@ -649,7 +738,7 @@ export function TemplatesClient() {
                             setBinding((b) => {
                               const li =
                                 b.lineItems ??
-                                { startRow: 0, endRow: 2, columns: { amount: 0 }, minRows: 10 };
+                                { startRow: selectedRow ?? 0, endRow: selectedRow ?? 0, columns: {}, minRows: 10 };
                               const columns = { ...li.columns } as Record<string, number | undefined>;
                               if (v === "__none__") delete columns[role.key];
                               else columns[role.key] = Number(v);
@@ -670,11 +759,32 @@ export function TemplatesClient() {
                             <SelectItem value="__none__">不绑定</SelectItem>
                             {detail.grid_config.colWidths.map((_, idx) => (
                               <SelectItem key={idx} value={String(idx)}>
-                                第 {idx + 1} 列
+                                {columnLabel(idx)} 列（第 {idx + 1} 列）
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={selectedCol == null}
+                          onClick={() => {
+                            if (selectedCol == null) return;
+                            setBinding((b) => {
+                              const li = b.lineItems ?? {
+                                startRow: selectedRow ?? 0,
+                                endRow: selectedRow ?? 0,
+                                columns: {},
+                                minRows: 10,
+                              };
+                              const columns = { ...li.columns, [role.key]: selectedCol };
+                              return { ...b, lineItems: { ...li, columns } };
+                            });
+                          }}
+                        >
+                          用 {selectedCol == null ? "选中列" : `${columnLabel(selectedCol)} 列`}
+                        </Button>
                       </div>
                     ))}
                   </div>
@@ -690,35 +800,12 @@ export function TemplatesClient() {
                         setBinding((b) => {
                           const li =
                             b.lineItems ??
-                            { startRow: 0, endRow: 2, columns: { amount: 0 }, minRows: v };
+                            { startRow: selectedRow ?? 0, endRow: selectedRow ?? 0, columns: {}, minRows: v };
                           return { ...b, lineItems: { ...li, minRows: v } };
                         });
                       }}
                     />
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    disabled={!selected}
-                    onClick={() => {
-                      if (!selected) return;
-                      const row = Number(selected.split(":")[0]);
-                      setBinding((b) => {
-                        const li =
-                          b.lineItems ??
-                          { startRow: row, endRow: row + 2, columns: { amount: 0 }, minRows: 10 };
-                        return {
-                          ...b,
-                          lineItems: { ...li, startRow: row, endRow: Math.max(li.endRow, row + 2) },
-                        };
-                      });
-                      toast.success(`明细区域起始行设为第 ${row + 1} 行`);
-                    }}
-                  >
-                    用选中单元格行作为起始行
-                  </Button>
                 </div>
 
                 <div className="flex flex-wrap gap-2">

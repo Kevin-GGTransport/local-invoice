@@ -26,6 +26,34 @@ function fontFamily(style: { bold?: boolean; italic?: boolean }, base: string): 
   return prefix
 }
 
+/**
+ * react-pdf 会把窄单元格中的文字自动换行，而 Excel 样张中的日期/编号通常是单行。
+ * 对未开启 wrap 的单元格做保守的字宽估算，必要时缩小字号以完整放入格内。
+ */
+export function fitSingleLineFontSize(
+  text: string,
+  requestedSize: number,
+  cellWidth: number,
+  bold = false
+): number {
+  const availableWidth = Math.max(0, cellWidth - 6)
+  if (!text || availableWidth === 0) return requestedSize
+
+  let emWidth = 0
+  for (const char of text) {
+    if (/\d/.test(char)) emWidth += 0.56
+    else if (/[A-Z]/.test(char)) emWidth += 0.65
+    else if (/[a-z]/.test(char)) emWidth += 0.5
+    else if (/\s/.test(char)) emWidth += 0.28
+    else emWidth += 0.3
+  }
+  if (bold) emWidth *= 1.05
+
+  const estimatedWidth = emWidth * requestedSize
+  if (estimatedWidth <= availableWidth) return requestedSize
+  return Math.max(5.5, Math.min(requestedSize, (requestedSize * availableWidth) / estimatedWidth))
+}
+
 export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDocumentProps) {
   const [pageW, pageH] = PAGE_SIZES[pageConfig.size] ?? PAGE_SIZES.A4
   const margin = pageConfig.margin
@@ -94,16 +122,21 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
                 s.valign === 'bottom' ? 'flex-end' : s.valign === 'middle' ? 'center' : 'flex-start',
             }
             if (!cell.text) return <View key={i} style={boxStyle} />
+            const requestedFontSize = s.fontSize ?? pageConfig.baseFontSize
+            const fittedFontSize = s.wrap
+              ? requestedFontSize
+              : fitSingleLineFontSize(cell.text, requestedFontSize, w / scale, s.bold)
             return (
-              <View key={i} style={boxStyle}>
+              <View key={i} style={[boxStyle, { overflow: 'hidden' }]}>
                 <Text
                   style={{
                     fontFamily: fontFamily(s, pageConfig.fontFamily),
-                    fontSize: (s.fontSize ?? pageConfig.baseFontSize) * scale,
+                    fontSize: fittedFontSize * scale,
                     lineHeight: 1.1,
                     color: s.color ?? pageConfig.textColor,
                     textAlign: s.halign ?? 'left',
                     width: '100%',
+                    maxLines: s.wrap ? undefined : 1,
                   }}
                 >
                   {cell.text}
