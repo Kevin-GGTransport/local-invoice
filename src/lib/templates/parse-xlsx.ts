@@ -6,6 +6,7 @@
  */
 
 import ExcelJS from 'exceljs'
+import { trimGridToContent } from './template-grid'
 import type {
   TemplateCell,
   TemplateCellStyle,
@@ -219,6 +220,8 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
       baseFontSize: 10,
       textColor: '#000000',
     },
-    grid: { colWidths, rowHeights, cells: collected },
+    // 丢弃内容框外的"幽灵样式"空格（Excel 中对大片空白区域设过边框/填充），
+    // 避免编辑器与打印 PDF 出现巨大的空网格
+    grid: trimGridToContent({ colWidths, rowHeights, cells: collected }),
   }
 }

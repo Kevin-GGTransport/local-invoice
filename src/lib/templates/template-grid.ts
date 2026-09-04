@@ -378,6 +378,41 @@ export function unmergeAt(grid: TemplateGrid, row: number, col: number): Templat
   return updateCell(grid, anchor.row, anchor.col, (cell) => ({ ...cell, rowSpan: 1, colSpan: 1 }));
 }
 
+/** 白色填充在白纸上不可见，视为背景而非内容 */
+function isBackgroundFill(fill: string | undefined): boolean {
+  const normalized = fill?.toUpperCase();
+  return !normalized || normalized === "#FFFFFF" || normalized === "#FFF";
+}
+
+/**
+ * 裁剪网格到真实内容范围：有文字或非白填充的单元格定义内容框，
+ * 框外的空样式格（Excel 中对大片空白区域设置过边框/填充的"幽灵样式"）全部丢弃，
+ * 行列尺寸截断到内容框尾部。内容框内部的空格（如明细表预留行）保留。
+ * 没有任何内容格时原样返回；只裁尾部、不裁头部，避免坐标平移破坏绑定。
+ */
+export function trimGridToContent(grid: TemplateGrid): TemplateGrid {
+  const contentCells = grid.cells.filter(
+    (cell) => cell.text.trim() !== "" || !isBackgroundFill(cell.style.fill)
+  );
+  if (contentCells.length === 0) return grid;
+  let endRow = 0;
+  let endCol = 0;
+  for (const cell of contentCells) {
+    endRow = Math.max(endRow, cell.row + cell.rowSpan - 1);
+    endCol = Math.max(endCol, cell.col + cell.colSpan - 1);
+  }
+  const withinBox = (cell: TemplateCell) =>
+    cell.row + cell.rowSpan - 1 <= endRow && cell.col + cell.colSpan - 1 <= endCol;
+  if (grid.rowHeights.length === endRow + 1 && grid.colWidths.length === endCol + 1 && grid.cells.every(withinBox)) {
+    return grid;
+  }
+  return {
+    colWidths: grid.colWidths.slice(0, endCol + 1),
+    rowHeights: grid.rowHeights.slice(0, endRow + 1),
+    cells: grid.cells.filter(withinBox),
+  };
+}
+
 export function validateTemplateGrid(grid: TemplateGrid, binding?: TemplateBinding): string[] {
   const errors: string[] = [];
   if (!Array.isArray(grid.rowHeights) || grid.rowHeights.length < 1 || grid.rowHeights.length > TEMPLATE_MAX_ROWS) {

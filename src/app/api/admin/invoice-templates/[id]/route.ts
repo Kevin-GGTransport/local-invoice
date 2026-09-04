@@ -109,13 +109,16 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   try {
     const existing = await prisma.invoice_templates.findUnique({ where: { id: BigInt(id) } })
     if (!existing) return jsonError("模版不存在", 404)
-    if (existing.status !== "draft") {
-      return jsonError("仅草稿模版可编辑绑定，请重新上传样张生成新版本", 400)
+
+    // 仅改名称时任何状态都允许；改绑定/网格仍限草稿
+    const binding = parsed.data.binding_config as TemplateBinding | undefined
+    const grid = parsed.data.grid_config as TemplateGrid | undefined
+    const editsStructure = Boolean(binding || grid)
+    if (editsStructure && existing.status !== "draft") {
+      return jsonError("仅草稿模版可编辑绑定，请复制为草稿后修改", 400)
     }
 
     // 绑定保存时做结构校验（非发布级校验，允许未完成状态保存）
-    const binding = parsed.data.binding_config as TemplateBinding | undefined
-    const grid = parsed.data.grid_config as TemplateGrid | undefined
     if (binding) {
       if (binding.lineItems && binding.lineItems.endRow < binding.lineItems.startRow) {
         return jsonError("明细区域结束行不能小于起始行", 400)
@@ -131,7 +134,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     }
 
     const result = await prisma.invoice_templates.updateMany({
-      where: { id: BigInt(id), status: "draft" },
+      where: editsStructure ? { id: BigInt(id), status: "draft" } : { id: BigInt(id) },
       data: {
         ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
         ...(binding ? { binding_config: binding as unknown as object } : {}),
@@ -140,7 +143,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
       },
     })
     if (result.count === 0) return jsonError("模版状态已变化，仅草稿模版可保存", 409)
-    return jsonOk({ id, name: parsed.data.name ?? existing.name, status: "draft" })
+    return jsonOk({ id, name: parsed.data.name ?? existing.name, status: existing.status })
   } catch (err) {
     return handleDbError(err, "保存模版失败")
   }

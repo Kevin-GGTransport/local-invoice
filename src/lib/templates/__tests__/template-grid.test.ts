@@ -11,6 +11,7 @@ import {
   resizeColumn,
   resizeRow,
   setCellText,
+  trimGridToContent,
   unmergeAt,
   validateTemplateGrid,
 } from "../template-grid";
@@ -252,4 +253,47 @@ test("发布校验同样拒绝明细区域内的字段绑定", () => {
     false,
     "区域外绑定应通过发布校验"
   );
+});
+
+test("裁剪丢弃内容框外的幽灵样式空格", () => {
+  const bordered = { top: 1, right: 1, bottom: 1, left: 1, color: "#CCCCCC" };
+  // 真实内容：2×2；四周包了一圈带边框/白填充的空格，网格被撑到 4×4
+  const grid: TemplateGrid = {
+    colWidths: [40, 40, 40, 40],
+    rowHeights: [15, 15, 15, 15],
+    cells: [
+      { row: 0, col: 0, rowSpan: 1, colSpan: 1, text: "INVOICE", style: {} },
+      { row: 1, col: 1, rowSpan: 1, colSpan: 1, text: "6500", style: { fill: "#FFFFFF" } },
+      { row: 2, col: 2, rowSpan: 1, colSpan: 1, text: "", style: { borders: bordered } },
+      { row: 3, col: 1, rowSpan: 1, colSpan: 1, text: "", style: { fill: "#FFFFFF" } },
+      { row: 1, col: 3, rowSpan: 1, colSpan: 1, text: "", style: { fill: "#FFFFFF", borders: bordered } },
+    ],
+  };
+  const trimmed = trimGridToContent(grid);
+  assert.equal(trimmed.colWidths.length, 2, "列数截断到内容框");
+  assert.equal(trimmed.rowHeights.length, 2, "行数截断到内容框");
+  assert.equal(trimmed.cells.length, 2, "框外空样式格被丢弃");
+  assert.deepEqual(
+    trimmed.cells.map((cell) => cell.text),
+    ["INVOICE", "6500"]
+  );
+  // 白填充不撑大内容框，非白填充算内容
+  const colored: TemplateGrid = {
+    colWidths: [40, 40],
+    rowHeights: [15, 15],
+    cells: [
+      { row: 0, col: 0, rowSpan: 1, colSpan: 1, text: "Title", style: {} },
+      { row: 1, col: 1, rowSpan: 1, colSpan: 1, text: "", style: { fill: "#000080" } },
+    ],
+  };
+  assert.equal(trimGridToContent(colored), colored, "内容贴边时原样返回");
+});
+
+test("没有任何内容格时裁剪原样返回", () => {
+  const grid: TemplateGrid = {
+    colWidths: [40, 40],
+    rowHeights: [15],
+    cells: [{ row: 0, col: 1, rowSpan: 1, colSpan: 1, text: "", style: { fill: "#FFFFFF" } }],
+  };
+  assert.equal(trimGridToContent(grid), grid, "只有背景格时不裁剪，避免得到空网格");
 });
