@@ -1,5 +1,6 @@
 import React from "react";
 
+import type { GridRange } from "@/lib/templates/template-grid";
 import type { TemplateCellStyle, TemplateGrid } from "@/lib/templates/types";
 import { cn } from "@/lib/utils";
 
@@ -78,6 +79,14 @@ export interface TemplatePreviewProps {
   showCoordinates?: boolean;
   /** 明细数据区域，用于在绑定时同步标记行与列 */
   lineItemRegion?: { startRow: number; endRow: number; columns: number[] } | null;
+  selection?: GridRange | null;
+  onSelectionChange?: (range: GridRange) => void;
+  onCellDoubleClick?: (row: number, col: number) => void;
+  onRowRangeChange?: (startRow: number, endRow: number) => void;
+  onColumnPick?: (col: number) => void;
+  onResizeRow?: (row: number, height: number) => void;
+  onResizeColumn?: (col: number, width: number) => void;
+  fieldBadges?: Map<string, string>;
 }
 
 export function TemplatePreview({
@@ -89,7 +98,62 @@ export function TemplatePreview({
   scale = 1,
   showCoordinates = false,
   lineItemRegion,
+  selection,
+  onSelectionChange,
+  onCellDoubleClick,
+  onRowRangeChange,
+  onColumnPick,
+  onResizeRow,
+  onResizeColumn,
+  fieldBadges,
 }: TemplatePreviewProps) {
+  const dragRef = React.useRef<
+    | { kind: "cells"; row: number; col: number }
+    | { kind: "rows"; row: number }
+    | null
+  >(null);
+  const resizeRef = React.useRef<
+    | { kind: "row"; index: number; start: number; size: number }
+    | { kind: "col"; index: number; start: number; size: number }
+    | null
+  >(null);
+  const clickTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draggedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    const finish = () => {
+      dragRef.current = null;
+      resizeRef.current = null;
+    };
+    const move = (event: PointerEvent) => {
+      const resize = resizeRef.current;
+      if (!resize) return;
+      if (resize.kind === "row") {
+        onResizeRow?.(
+          resize.index,
+          resize.size + (event.clientY - resize.start) / (PT_TO_PX * scale)
+        );
+      } else {
+        onResizeColumn?.(
+          resize.index,
+          resize.size + (event.clientX - resize.start) / (PT_TO_PX * scale)
+        );
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+    };
+  }, [onResizeColumn, onResizeRow, scale]);
+
+  React.useEffect(
+    () => () => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    },
+    []
+  );
   const colX: number[] = [0];
   for (const w of grid.colWidths) colX.push(colX[colX.length - 1] + w);
   const rowY: number[] = [0];
@@ -101,6 +165,10 @@ export function TemplatePreview({
   const selectedCol = selectedParts?.[1];
   const headerHeight = showCoordinates ? COORDINATE_HEADER_HEIGHT : 0;
   const gutterWidth = showCoordinates ? COORDINATE_GUTTER_WIDTH : 0;
+  const selectionLeft = selection ? colX[selection.startCol] * PT_TO_PX : 0;
+  const selectionTop = selection ? rowY[selection.startRow] * PT_TO_PX : 0;
+  const selectionRight = selection ? colX[selection.endCol + 1] * PT_TO_PX : 0;
+  const selectionBottom = selection ? rowY[selection.endRow + 1] * PT_TO_PX : 0;
 
   return (
     <div className={cn("overflow-auto rounded-md border bg-white p-3", className)}>
@@ -138,8 +206,25 @@ export function TemplatePreview({
                   height: headerHeight,
                 }}
                 title={`第 ${col + 1} 列`}
+                role={onColumnPick ? "button" : undefined}
+                tabIndex={onColumnPick ? 0 : undefined}
+                onClick={() => onColumnPick?.(col)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") onColumnPick?.(col);
+                }}
               >
                 {columnLabel(col)}
+                {onResizeColumn ? (
+                  <span
+                    className="absolute right-0 top-0 h-full w-2 cursor-col-resize"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      resizeRef.current = { kind: "col", index: col, start: event.clientX, size: width };
+                    }}
+                    aria-hidden="true"
+                  />
+                ) : null}
               </div>
             ))}
             {grid.rowHeights.map((height, row) => (
@@ -158,8 +243,33 @@ export function TemplatePreview({
                   width: gutterWidth,
                   height: height * PT_TO_PX * scale,
                 }}
+                role={onRowRangeChange ? "button" : undefined}
+                tabIndex={onRowRangeChange ? 0 : undefined}
+                onPointerDown={() => {
+                  if (!onRowRangeChange) return;
+                  dragRef.current = { kind: "rows", row };
+                  onRowRangeChange(row, row);
+                }}
+                onPointerEnter={() => {
+                  const drag = dragRef.current;
+                  if (drag?.kind === "rows") onRowRangeChange?.(drag.row, row);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") onRowRangeChange?.(row, row);
+                }}
               >
                 {row + 1}
+                {onResizeRow ? (
+                  <span
+                    className="absolute bottom-0 left-0 h-2 w-full cursor-row-resize"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      resizeRef.current = { kind: "row", index: row, start: event.clientY, size: height };
+                    }}
+                    aria-hidden="true"
+                  />
+                ) : null}
               </div>
             ))}
           </>
@@ -205,9 +315,78 @@ export function TemplatePreview({
               )}
             >
               {cell.text || "\u00A0"}
+              {fieldBadges?.get(key) ? (
+                <span className="pointer-events-none absolute right-0 top-0 max-w-full truncate rounded-bl bg-sky-600 px-1 py-0.5 text-[8px] font-medium leading-none text-white">
+                  {fieldBadges.get(key)}
+                </span>
+              ) : null}
             </div>
           );
           })}
+          {(onSelectionChange || onCellClick || onCellDoubleClick) &&
+            grid.rowHeights.flatMap((height, row) =>
+              grid.colWidths.map((width, col) => (
+                <div
+                  key={`hit-${row}-${col}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${columnLabel(col)}${row + 1}`}
+                  className="absolute z-20 border border-transparent bg-transparent focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-sky-600"
+                  style={{
+                    left: colX[col] * PT_TO_PX,
+                    top: rowY[row] * PT_TO_PX,
+                    width: width * PT_TO_PX,
+                    height: height * PT_TO_PX,
+                  }}
+                  onPointerDown={() => {
+                    draggedRef.current = false;
+                    dragRef.current = { kind: "cells", row, col };
+                    onSelectionChange?.({ startRow: row, endRow: row, startCol: col, endCol: col });
+                  }}
+                  onPointerEnter={() => {
+                    const drag = dragRef.current;
+                    if (drag?.kind !== "cells") return;
+                    if (drag.row !== row || drag.col !== col) draggedRef.current = true;
+                    onSelectionChange?.({
+                      startRow: Math.min(drag.row, row),
+                      endRow: Math.max(drag.row, row),
+                      startCol: Math.min(drag.col, col),
+                      endCol: Math.max(drag.col, col),
+                    });
+                  }}
+                  onClick={() => {
+                    if (draggedRef.current) return;
+                    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+                    clickTimerRef.current = setTimeout(() => {
+                      onCellClick?.(row, col);
+                      clickTimerRef.current = null;
+                    }, 220);
+                  }}
+                  onDoubleClick={() => {
+                    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+                    clickTimerRef.current = null;
+                    onCellDoubleClick?.(row, col);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      onSelectionChange?.({ startRow: row, endRow: row, startCol: col, endCol: col });
+                      onCellClick?.(row, col);
+                    }
+                  }}
+                />
+              ))
+            )}
+          {selection ? (
+            <div
+              className="pointer-events-none absolute z-30 border-2 border-amber-500 bg-amber-300/10"
+              style={{
+                left: selectionLeft,
+                top: selectionTop,
+                width: selectionRight - selectionLeft,
+                height: selectionBottom - selectionTop,
+              }}
+            />
+          ) : null}
         </div>
       </div>
     </div>

@@ -7,7 +7,7 @@
  */
 
 import React from "react";
-import { Eye, FileUp, Loader2, Megaphone, Save, Trash2, X } from "lucide-react";
+import { Copy, Eye, FileUp, Loader2, Megaphone, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { fetchJson, getApiErrorMessage } from "@/lib/api/client";
+import { TemplateEditor } from "@/components/templates/template-editor";
 import { TemplatePreview } from "@/components/templates/template-preview";
+import { findAnchorAt, patchCellStyle } from "@/lib/templates/template-grid";
 import { renderTemplateData, sampleTemplateRenderData } from "@/lib/templates/render-template-data";
 import {
   TEMPLATE_FIELDS,
@@ -98,6 +100,10 @@ async function openPreviewPdf(id: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+function draftStorageKey(id: string) {
+  return `invoice-template-unsaved:${id}`;
+}
+
 export function TemplatesClient() {
   const [companies, setCompanies] = React.useState<CompanyRow[]>([]);
   const [companyCode, setCompanyCode] = React.useState<string>("__all__");
@@ -111,13 +117,70 @@ export function TemplatesClient() {
 
   const [detail, setDetail] = React.useState<TemplateDetail | null>(null);
   const [binding, setBinding] = React.useState<TemplateBinding>({ fields: {}, lineItems: null });
+  const [grid, setGrid] = React.useState<TemplateGrid | null>(null);
   const [selected, setSelected] = React.useState<string | null>(null);
   const [bindField, setBindField] = React.useState<string>("__none__");
+  const [addBindingPosition, setAddBindingPosition] = React.useState(false);
+  const [activeLineRole, setActiveLineRole] = React.useState<(typeof LINE_ROLES)[number]["key"] | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [previewingId, setPreviewingId] = React.useState<string | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [publishing, setPublishing] = React.useState(false);
   const [showSample, setShowSample] = React.useState(false);
+  const [duplicatingId, setDuplicatingId] = React.useState<string | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = React.useState("");
+
+  const currentSnapshot = React.useMemo(
+    () => JSON.stringify({ grid, binding }),
+    [grid, binding]
+  );
+  const isDirty = Boolean(detail && savedSnapshot && currentSnapshot !== savedSnapshot);
+
+  React.useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (!isDirty) return;
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [isDirty]);
+
+  React.useEffect(() => {
+    if (!isDirty) return;
+    const navigation = (window as Window & {
+      navigation?: {
+        addEventListener: (type: "navigate", listener: (event: Event & { destination?: { url?: string } }) => void) => void;
+        removeEventListener: (type: "navigate", listener: (event: Event & { destination?: { url?: string } }) => void) => void;
+      };
+    }).navigation;
+    if (navigation) {
+      const protectNavigation = (event: Event & { destination?: { url?: string } }) => {
+        if (event.destination?.url === window.location.href) return;
+        if (!window.confirm("当前模版有未保存修改，确定离开吗？")) event.preventDefault();
+      };
+      navigation.addEventListener("navigate", protectNavigation);
+      return () => navigation.removeEventListener("navigate", protectNavigation);
+    }
+    const protectNavigation = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!target || !(target instanceof HTMLAnchorElement)) return;
+      if (target.target === "_blank" || target.href === window.location.href) return;
+      if (!window.confirm("当前模版有未保存修改，确定离开吗？")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    document.addEventListener("click", protectNavigation, true);
+    return () => document.removeEventListener("click", protectNavigation, true);
+  }, [isDirty]);
+
+  React.useEffect(() => {
+    if (!isDirty || !detail || !grid) return;
+    sessionStorage.setItem(
+      draftStorageKey(detail.id),
+      JSON.stringify({ baseSnapshot: savedSnapshot, grid, binding })
+    );
+  }, [binding, detail, grid, isDirty, savedSnapshot]);
 
   const loadCompanies = React.useCallback(async () => {
     const list = await fetchJson<CompanyRow[]>("/api/companies");
@@ -167,12 +230,44 @@ export function TemplatesClient() {
   }, [companyCode]);
 
   const openDetail = async (id: string) => {
+    if (isDirty && !window.confirm("当前模版有未保存修改，确定放弃并打开其他模版吗？")) return;
+    if (isDirty && detail) sessionStorage.removeItem(draftStorageKey(detail.id));
     try {
       const d = await fetchJson<TemplateDetail>(`/api/admin/invoice-templates/${id}`);
       setDetail(d);
-      setBinding(d.binding_config ?? { fields: {}, lineItems: null });
+      const nextBinding = d.binding_config ?? { fields: {}, lineItems: null };
+      const baseSnapshot = JSON.stringify({ grid: d.grid_config, binding: nextBinding });
+      let nextGrid = d.grid_config;
+      let restoredBinding = nextBinding;
+      const stored = sessionStorage.getItem(draftStorageKey(id));
+      if (stored) {
+        try {
+          const recovery = JSON.parse(stored) as {
+            baseSnapshot: string;
+            grid: TemplateGrid;
+            binding: TemplateBinding;
+          };
+          if (
+            recovery.baseSnapshot === baseSnapshot &&
+            window.confirm("检测到这个模版有未保存的本地修改，是否恢复？")
+          ) {
+            nextGrid = recovery.grid;
+            restoredBinding = recovery.binding;
+            toast.success("已恢复未保存的模版修改");
+          } else {
+            sessionStorage.removeItem(draftStorageKey(id));
+          }
+        } catch {
+          sessionStorage.removeItem(draftStorageKey(id));
+        }
+      }
+      setBinding(restoredBinding);
+      setGrid(nextGrid);
+      setSavedSnapshot(baseSnapshot);
       setSelected(null);
       setBindField("__none__");
+      setActiveLineRole(null);
+      setAddBindingPosition(false);
       setShowSample(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "加载模版失败");
@@ -209,15 +304,18 @@ export function TemplatesClient() {
   };
 
   const saveBinding = async (): Promise<boolean> => {
-    if (!detail) return false;
+    if (!detail || !grid) return false;
     setSaving(true);
     try {
       await fetchJson(`/api/admin/invoice-templates/${detail.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ binding_config: binding }),
+        body: JSON.stringify({ grid_config: grid, binding_config: binding }),
       });
-      toast.success("绑定已保存");
+      setSavedSnapshot(JSON.stringify({ grid, binding }));
+      sessionStorage.removeItem(draftStorageKey(detail.id));
+      setDetail((current) => current ? { ...current, grid_config: grid, binding_config: binding } : current);
+      toast.success("模版与绑定已保存");
       await loadTemplates();
       return true;
     } catch (err) {
@@ -260,19 +358,59 @@ export function TemplatesClient() {
     }
   };
 
-  const bindSelectedCell = () => {
-    if (!selected || bindField === "__none__") return;
-    const [row, col] = selected.split(":").map(Number);
+  const bindCell = (row: number, col: number) => {
+    setSelected(`${row}:${col}`);
+    if (activeLineRole) {
+      const lines = binding.lineItems ?? { startRow: row, endRow: row, columns: {}, minRows: 10 };
+      setGrid((current) => {
+        if (!current) return current;
+        let next = current;
+        for (let lineRow = lines.startRow; lineRow <= lines.endRow; lineRow += 1) {
+          if (findAnchorAt(next, lineRow, col)) continue;
+          next = patchCellStyle(
+            next,
+            { startRow: lineRow, endRow: lineRow, startCol: col, endCol: col },
+            { fontSize: detail?.page_config.baseFontSize ?? 10 }
+          );
+        }
+        return next;
+      });
+      setBinding((current) => {
+        const lineItems = current.lineItems ?? { startRow: row, endRow: row, columns: {}, minRows: 10 };
+        return { ...current, lineItems: { ...lineItems, columns: { ...lineItems.columns, [activeLineRole]: col } } };
+      });
+      toast.success(`${LINE_ROLES.find((role) => role.key === activeLineRole)?.label} 已绑定到 ${columnLabel(col)} 列`);
+      setActiveLineRole(null);
+      return;
+    }
+    if (bindField === "__none__") return;
     const fieldDef = TEMPLATE_FIELDS.find((f) => f.key === bindField);
     if (!fieldDef) return;
+    setGrid((current) => {
+      if (!current || findAnchorAt(current, row, col)) return current;
+      return patchCellStyle(
+        current,
+        { startRow: row, endRow: row, startCol: col, endCol: col },
+        { fontSize: detail?.page_config.baseFontSize ?? 10 }
+      );
+    });
     setBinding((b) => {
-      const existing = b.fields[bindField as TemplateFieldKey]
-      const existingCells = existing?.cells ?? []
+      const fields = { ...b.fields };
+      for (const field of TEMPLATE_FIELDS) {
+        if (field.key === bindField) continue;
+        const config = fields[field.key];
+        if (!config) continue;
+        const cells = config.cells.filter((cell) => cell.row !== row || cell.col !== col);
+        if (cells.length === 0) delete fields[field.key];
+        else fields[field.key] = { ...config, cells };
+      }
+      const existing = fields[bindField as TemplateFieldKey]
+      const existingCells = addBindingPosition ? (existing?.cells ?? []) : []
       const alreadyBound = existingCells.some((c) => c.row === row && c.col === col)
       return {
         ...b,
         fields: {
-          ...b.fields,
+          ...fields,
           [bindField as TemplateFieldKey]: {
             cells: alreadyBound ? existingCells : [...existingCells, { row, col }],
             format: fieldDef.format,
@@ -280,7 +418,11 @@ export function TemplatesClient() {
         },
       }
     });
-    toast.success(`已绑定 ${fieldDef.label} → 第 ${row + 1} 行 第 ${col + 1} 列`);
+    toast.success(`已绑定 ${fieldDef.label} → ${columnLabel(col)}${row + 1}`);
+    setAddBindingPosition(false);
+    const currentIndex = TEMPLATE_FIELDS.findIndex((field) => field.key === bindField);
+    const next = TEMPLATE_FIELDS.slice(currentIndex + 1).find((field) => !binding.fields[field.key]);
+    setBindField(next?.key ?? "__none__");
   };
 
   const unbindField = (key: TemplateFieldKey) => {
@@ -297,8 +439,8 @@ export function TemplatesClient() {
     )
   );
 
-  const renderedGrid = detail
-    ? renderTemplateData(detail.grid_config, binding, sampleTemplateRenderData())
+  const renderedGrid = grid
+    ? renderTemplateData(grid, binding, sampleTemplateRenderData())
     : null;
   const selectedPosition = selected?.split(":").map(Number);
   const selectedRow = selectedPosition?.[0];
@@ -337,6 +479,42 @@ export function TemplatesClient() {
       setDeletingId(null);
     }
   };
+
+  const handleDuplicate = async (row: TemplateListRow) => {
+    setDuplicatingId(row.id);
+    try {
+      const copy = await fetchJson<{ id: string }>(`/api/admin/invoice-templates/${row.id}/duplicate`, {
+        method: "POST",
+      });
+      toast.success("已复制为新草稿，可安全编辑后再发布");
+      await loadTemplates();
+      await openDetail(copy.id);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "复制模版失败");
+    } finally {
+      setDuplicatingId(null);
+    }
+  };
+
+  const closeDetail = () => {
+    if (isDirty && !window.confirm("当前模版有未保存修改，确定关闭吗？")) return;
+    if (detail) sessionStorage.removeItem(draftStorageKey(detail.id));
+    setDetail(null);
+    setGrid(null);
+    setSavedSnapshot("");
+  };
+
+  const fieldBadges = React.useMemo(() => {
+    const badges = new Map<string, string>();
+    for (const field of TEMPLATE_FIELDS) {
+      for (const cell of binding.fields[field.key]?.cells ?? []) {
+        const key = `${cell.row}:${cell.col}`;
+        const current = badges.get(key);
+        badges.set(key, current ? `${current}、${field.label}` : field.label);
+      }
+    }
+    return badges;
+  }, [binding.fields]);
 
   return (
     <div className="space-y-4">
@@ -460,8 +638,23 @@ export function TemplatesClient() {
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={() => void openDetail(row.id)}>
                         <Eye className="mr-1 size-3.5" />
-                        {row.status === "draft" ? "绑定字段" : "查看"}
+                        {row.status === "draft" ? "编辑" : "查看"}
                       </Button>
+                      {row.status !== "draft" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleDuplicate(row)}
+                          disabled={duplicatingId === row.id}
+                        >
+                          {duplicatingId === row.id ? (
+                            <Loader2 className="mr-1 size-3.5 animate-spin" />
+                          ) : (
+                            <Copy className="mr-1 size-3.5" />
+                          )}
+                          复制为草稿
+                        </Button>
+                      ) : null}
                       <Button
                         variant="outline"
                         size="sm"
@@ -508,13 +701,16 @@ export function TemplatesClient() {
                 </span>
               </h2>
               <p className="text-xs text-muted-foreground">
-                点击网格中的单元格选中，再选择字段绑定；明细行区域按行号与列号框定
+                双击单元格编辑内容；先在右侧选择字段，再点击目标单元格完成绑定
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setDetail(null)}>
+            <div className="flex items-center gap-2">
+              {isDirty ? <span className="text-xs font-medium text-amber-700">有未保存修改</span> : null}
+            <Button variant="outline" size="sm" onClick={closeDetail}>
               <X className="mr-1 size-3.5" />
               关闭
             </Button>
+            </div>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -527,88 +723,124 @@ export function TemplatesClient() {
                   {showSample ? "查看原始样张" : "查看示例数据效果"}
                 </Button>
               </div>
-              <div className="max-h-[560px] overflow-auto">
-                <TemplatePreview
-                  grid={showSample && renderedGrid ? renderedGrid : detail.grid_config}
-                  onCellClick={
-                    detail.status === "draft" && !showSample
-                      ? (row, col) => setSelected(`${row}:${col}`)
-                      : undefined
-                  }
-                  highlightedCells={showSample ? undefined : highlightedCells}
-                  selectedCell={selected}
-                  scale={0.75}
-                  showCoordinates={!showSample}
-                  lineItemRegion={
-                    !showSample && binding.lineItems
-                      ? {
-                          startRow: binding.lineItems.startRow,
-                          endRow: binding.lineItems.endRow,
-                          columns: lineItemColumns,
-                        }
-                      : null
-                  }
-                />
+              <div className="max-h-[640px] overflow-auto">
+                {detail.status === "draft" && !showSample && grid ? (
+                  <TemplateEditor
+                    key={detail.id}
+                    grid={grid}
+                    binding={binding}
+                    onChange={(nextGrid, nextBinding) => {
+                      setGrid(nextGrid);
+                      if (nextBinding) setBinding(nextBinding);
+                    }}
+                    onCellActivate={bindCell}
+                    onRowRangeChange={(a, b) => {
+                      const startRow = Math.min(a, b);
+                      const endRow = Math.max(a, b);
+                      setBinding((current) => ({
+                        ...current,
+                        lineItems: {
+                          ...(current.lineItems ?? { columns: {}, minRows: 10 }),
+                          startRow,
+                          endRow,
+                        },
+                      }));
+                    }}
+                    onColumnPick={(col) => {
+                      if (!activeLineRole) return;
+                      bindCell(binding.lineItems?.startRow ?? 0, col);
+                    }}
+                    lineItemRegion={
+                      binding.lineItems
+                        ? {
+                            startRow: binding.lineItems.startRow,
+                            endRow: binding.lineItems.endRow,
+                            columns: lineItemColumns,
+                          }
+                        : null
+                    }
+                    fieldBadges={fieldBadges}
+                    selectedCell={selected}
+                  />
+                ) : grid ? (
+                  <TemplatePreview
+                    grid={showSample && renderedGrid ? renderedGrid : grid}
+                    scale={0.75}
+                    showCoordinates={!showSample}
+                    highlightedCells={showSample ? undefined : highlightedCells}
+                    lineItemRegion={
+                      !showSample && binding.lineItems
+                        ? {
+                            startRow: binding.lineItems.startRow,
+                            endRow: binding.lineItems.endRow,
+                            columns: lineItemColumns,
+                          }
+                        : null
+                    }
+                  />
+                ) : null}
               </div>
             </div>
 
             {detail.status === "draft" ? (
               <div className="space-y-4">
                 <div className="rounded-md border p-3">
-                  <p className="mb-2 text-sm font-medium">字段绑定</p>
-                  <div className="mb-3 text-xs text-muted-foreground">
-                    {selected ? (
-                      <>
-                        已选中单元格：第 {Number(selected.split(":")[0]) + 1} 行 / 第{" "}
-                        {Number(selected.split(":")[1]) + 1} 列
-                      </>
-                    ) : (
-                      "先点击左侧网格选择一个单元格"
-                    )}
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium">字段绑定</p>
+                      <p className="mt-1 text-xs text-muted-foreground">选择字段，再点左侧目标格</p>
+                    </div>
+                    {bindField !== "__none__" ? (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setBindField("__none__")}>取消选择</Button>
+                    ) : null}
                   </div>
-                  <div className="flex gap-2">
-                    <Select value={bindField} onValueChange={setBindField}>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="选择字段" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TEMPLATE_FIELDS.map((f) => (
-                          <SelectItem key={f.key} value={f.key}>
-                            {f.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      size="sm"
-                      onClick={bindSelectedCell}
-                      disabled={!selected || bindField === "__none__"}
-                    >
-                      绑定
-                    </Button>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">未绑定</p>
+                  <div className="grid gap-1.5">
+                    {TEMPLATE_FIELDS.filter((field) => !binding.fields[field.key]).map((field) => (
+                      <button
+                        key={field.key}
+                        type="button"
+                        className={`min-h-9 rounded-md border px-2 text-left text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${bindField === field.key ? "border-sky-500 bg-sky-50 text-sky-900" : "bg-background hover:bg-muted"}`}
+                        onClick={() => {
+                          setActiveLineRole(null);
+                          setAddBindingPosition(false);
+                          setBindField(field.key);
+                        }}
+                      >
+                        {field.label}
+                      </button>
+                    ))}
+                    {TEMPLATE_FIELDS.every((field) => binding.fields[field.key]) ? (
+                      <p className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-700">所有普通字段均已绑定</p>
+                    ) : null}
                   </div>
-                  <div className="mt-3 space-y-1">
-                    {TEMPLATE_FIELDS.map((f) => {
-                      const fb = binding.fields[f.key];
+                  <p className="mb-2 mt-4 text-xs font-medium text-muted-foreground">已绑定</p>
+                  <div className="space-y-2">
+                    {TEMPLATE_FIELDS.filter((field) => binding.fields[field.key]).map((field) => {
+                      const config = binding.fields[field.key]!;
                       return (
-                        <div key={f.key} className="flex items-center justify-between text-xs">
-                          <span className={fb ? "text-foreground" : "text-muted-foreground"}>
-                            {f.label}
-                            {fb && (
-                              <span className="ml-1 font-mono text-sky-600">
-                                → {fb.cells.map((c) => `${c.row + 1}行${c.col + 1}列`).join("、")}
-                              </span>
-                            )}
-                          </span>
-                          {fb && (
-                            <button
+                        <div key={field.key} className="rounded-md border bg-muted/20 p-2 text-xs">
+                          <div className="font-medium">{field.label}</div>
+                          <div className="mt-1 font-mono text-sky-700">
+                            {config.cells.map((cell) => `${columnLabel(cell.col)}${cell.row + 1}`).join("、")}
+                          </div>
+                          <div className="mt-2 flex gap-1">
+                            <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSelected(`${config.cells[0].row}:${config.cells[0].col}`)}>定位</Button>
+                            <Button
                               type="button"
-                              className="text-destructive hover:underline"
-                              onClick={() => unbindField(f.key)}
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                setActiveLineRole(null);
+                                setAddBindingPosition(true);
+                                setBindField(field.key);
+                              }}
                             >
-                              解绑
-                            </button>
-                          )}
+                              添加位置
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-destructive" onClick={() => unbindField(field.key)}>解绑</Button>
+                          </div>
                         </div>
                       );
                     })}
@@ -620,7 +852,7 @@ export function TemplatesClient() {
                     <div>
                       <p className="text-sm font-medium">明细数据绑定</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        先点左侧单元格，再用它的行或列完成绑定。蓝色区域是会被账单明细替换的范围。
+                        拖动左侧行号选择范围；选择一个列角色，再点击目标列或其中任意单元格。
                       </p>
                     </div>
                     {binding.lineItems && (
@@ -721,71 +953,26 @@ export function TemplatesClient() {
                       选中行设为结束
                     </Button>
                   </div>
-                  <div className="mt-2 grid gap-2">
+                  <div className="mt-3 grid grid-cols-2 gap-2">
                     {LINE_ROLES.map((role) => (
-                      <div key={role.key} className="grid grid-cols-[110px_minmax(0,1fr)_auto] items-center gap-2">
-                        <Label className="text-xs">
-                          {role.label}
-                          {role.required ? <span className="ml-1 text-destructive">*</span> : null}
-                        </Label>
-                        <Select
-                          value={
-                            binding.lineItems?.columns[role.key] != null
-                              ? String(binding.lineItems.columns[role.key])
-                              : "__none__"
-                          }
-                          onValueChange={(v) => {
-                            setBinding((b) => {
-                              const li =
-                                b.lineItems ??
-                                { startRow: selectedRow ?? 0, endRow: selectedRow ?? 0, columns: {}, minRows: 10 };
-                              const columns = { ...li.columns } as Record<string, number | undefined>;
-                              if (v === "__none__") delete columns[role.key];
-                              else columns[role.key] = Number(v);
-                              return {
-                                ...b,
-                                lineItems: {
-                                  ...li,
-                                  columns,
-                                } as TemplateBinding["lineItems"],
-                              };
-                            });
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">不绑定</SelectItem>
-                            {detail.grid_config.colWidths.map((_, idx) => (
-                              <SelectItem key={idx} value={String(idx)}>
-                                {columnLabel(idx)} 列（第 {idx + 1} 列）
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={selectedCol == null}
-                          onClick={() => {
-                            if (selectedCol == null) return;
-                            setBinding((b) => {
-                              const li = b.lineItems ?? {
-                                startRow: selectedRow ?? 0,
-                                endRow: selectedRow ?? 0,
-                                columns: {},
-                                minRows: 10,
-                              };
-                              const columns = { ...li.columns, [role.key]: selectedCol };
-                              return { ...b, lineItems: { ...li, columns } };
-                            });
-                          }}
-                        >
-                          用 {selectedCol == null ? "选中列" : `${columnLabel(selectedCol)} 列`}
-                        </Button>
-                      </div>
+                      <button
+                        key={role.key}
+                        type="button"
+                        className={`min-h-12 rounded-md border px-2 text-left text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${activeLineRole === role.key ? "border-sky-500 bg-sky-100 text-sky-900" : "bg-background hover:bg-muted"}`}
+                        onClick={() => {
+                          setBindField("__none__");
+                          setActiveLineRole(role.key);
+                        }}
+                      >
+                        <span className="block font-medium">
+                          {role.label}{role.required ? <span className="ml-1 text-destructive">*</span> : null}
+                        </span>
+                        <span className="mt-0.5 block text-muted-foreground">
+                          {binding.lineItems?.columns[role.key] != null
+                            ? `已绑定 ${columnLabel(binding.lineItems.columns[role.key]!)} 列`
+                            : "点击后选择列"}
+                        </span>
+                      </button>
                     ))}
                   </div>
                   <div className="mt-2">
@@ -815,7 +1002,7 @@ export function TemplatesClient() {
                     ) : (
                       <Save className="mr-2 size-4" />
                     )}
-                    保存绑定
+                    保存模版
                   </Button>
                   <Button
                     variant="outline"
@@ -839,9 +1026,25 @@ export function TemplatesClient() {
               </div>
             ) : (
               <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                该模版为「{STATUS_LABEL[detail.status]}」状态，仅草稿可编辑绑定。
+                该模版为「{STATUS_LABEL[detail.status]}」状态，仅草稿可编辑。
                 <br />
-                如需调整版式，请重新上传样张生成新草稿后发布替换。
+                复制为草稿后修改，发布时再安全替换当前版本。
+                <div className="mt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleDuplicate({
+                      id: detail.id,
+                      name: detail.name,
+                      status: detail.status,
+                      updated_at: "",
+                      company: detail.company,
+                    })}
+                    disabled={duplicatingId === detail.id}
+                  >
+                    <Copy className="mr-2 size-4" />复制为草稿
+                  </Button>
+                </div>
               </div>
             )}
           </div>

@@ -6,7 +6,8 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAdmin, userIdBigint, jsonOk, jsonError, handleDbError } from "@/lib/api-helpers"
-import { validateBindingForPublish, type TemplateBinding } from "@/lib/templates/types"
+import { validateBindingForPublish, type TemplateBinding, type TemplateGrid } from "@/lib/templates/types"
+import { validateTemplateGrid } from "@/lib/templates/template-grid"
 
 export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { session, error } = await requireAdmin()
@@ -20,7 +21,9 @@ export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: s
     if (!template) return jsonError("模版不存在", 404)
     if (template.status === "archived") return jsonError("已归档模版不能重新发布", 400)
 
-    const errors = validateBindingForPublish(template.binding_config as unknown as TemplateBinding)
+    const binding = template.binding_config as unknown as TemplateBinding
+    const grid = template.grid_config as unknown as TemplateGrid
+    const errors = [...validateTemplateGrid(grid, binding), ...validateBindingForPublish(binding)]
     if (errors.length > 0) return jsonError(errors.join("；"), 400)
 
     await prisma.$transaction(async (tx) => {

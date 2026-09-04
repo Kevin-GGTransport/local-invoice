@@ -7,6 +7,8 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requireAdmin, userIdBigint, jsonOk, jsonError, handleDbError, readJsonBody } from "@/lib/api-helpers"
 import { validateBindingForPublish, type TemplateBinding } from "@/lib/templates/types"
+import { validateTemplateGrid } from "@/lib/templates/template-grid"
+import type { TemplateGrid } from "@/lib/templates/types"
 
 export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { error } = await requireAdmin()
@@ -55,6 +57,40 @@ const patchSchema = z.object({
         .nullable(),
     })
     .optional(),
+  grid_config: z
+    .object({
+      colWidths: z.array(z.number()),
+      rowHeights: z.array(z.number()),
+      cells: z.array(
+        z.object({
+          row: z.number().int(),
+          col: z.number().int(),
+          rowSpan: z.number().int(),
+          colSpan: z.number().int(),
+          text: z.string(),
+          style: z.object({
+            bold: z.boolean().optional(),
+            italic: z.boolean().optional(),
+            fontSize: z.number().optional(),
+            color: z.string().optional(),
+            fill: z.string().optional(),
+            borders: z
+              .object({
+                top: z.number().optional(),
+                right: z.number().optional(),
+                bottom: z.number().optional(),
+                left: z.number().optional(),
+                color: z.string().optional(),
+              })
+              .optional(),
+            halign: z.enum(["left", "center", "right"]).optional(),
+            valign: z.enum(["top", "middle", "bottom"]).optional(),
+            wrap: z.boolean().optional(),
+          }),
+        })
+      ),
+    })
+    .optional(),
 })
 
 export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -79,6 +115,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
 
     // 绑定保存时做结构校验（非发布级校验，允许未完成状态保存）
     const binding = parsed.data.binding_config as TemplateBinding | undefined
+    const grid = parsed.data.grid_config as TemplateGrid | undefined
     if (binding) {
       if (binding.lineItems && binding.lineItems.endRow < binding.lineItems.startRow) {
         return jsonError("明细区域结束行不能小于起始行", 400)
@@ -86,15 +123,24 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
       void validateBindingForPublish // 发布接口使用；此处仅做宽松保存
     }
 
-    const template = await prisma.invoice_templates.update({
-      where: { id: BigInt(id) },
+    if (grid || binding) {
+      const nextGrid = grid ?? (existing.grid_config as unknown as TemplateGrid)
+      const nextBinding = binding ?? (existing.binding_config as unknown as TemplateBinding)
+      const gridErrors = validateTemplateGrid(nextGrid, nextBinding)
+      if (gridErrors.length > 0) return jsonError(gridErrors[0], 400)
+    }
+
+    const result = await prisma.invoice_templates.updateMany({
+      where: { id: BigInt(id), status: "draft" },
       data: {
         ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
         ...(binding ? { binding_config: binding as unknown as object } : {}),
+        ...(grid ? { grid_config: grid as unknown as object } : {}),
         updated_by: userIdBigint(session),
       },
     })
-    return jsonOk({ id: template.id, name: template.name, status: template.status })
+    if (result.count === 0) return jsonError("模版状态已变化，仅草稿模版可保存", 409)
+    return jsonOk({ id, name: parsed.data.name ?? existing.name, status: "draft" })
   } catch (err) {
     return handleDbError(err, "保存模版失败")
   }
