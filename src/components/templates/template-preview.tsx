@@ -1,12 +1,15 @@
 import React from "react";
 
+import { layoutCellText } from "@/lib/templates/cell-layout";
 import type { GridRange } from "@/lib/templates/template-grid";
 import type { TemplateCellStyle, TemplateGrid } from "@/lib/templates/types";
 import { cn } from "@/lib/utils";
 
 /**
  * 账单模版 HTML 预览：绝对定位还原网格（pt → px × 96/72），
- * 与 PDF 渲染器消费同一 TemplateGrid，视觉效果保持一致。
+ * 与 PDF 渲染器消费同一 TemplateGrid 与 cell-layout 排版模型
+ * （Excel 式右溢出 + 单行缩字号），视觉效果保持一致。
+ * 文本画在背景之上（z-10），交互由更高层的命中层（z-20）接管。
  */
 const PT_TO_PX = 96 / 72;
 const COORDINATE_HEADER_HEIGHT = 28;
@@ -27,7 +30,8 @@ function borderPx(pt: number | undefined): number | undefined {
   return pt == null ? undefined : Math.max(1, Math.round(pt * PT_TO_PX * 10) / 10);
 }
 
-function cellBoxStyle(
+/** 背景层样式：原始格矩形 + 填充 + 边框 */
+function cellBackgroundStyle(
   style: TemplateCellStyle,
   left: number,
   top: number,
@@ -44,10 +48,22 @@ function cellBoxStyle(
     height: height * PT_TO_PX,
     boxSizing: "border-box",
     backgroundColor: style.fill,
+    borderTop: b?.top != null ? `${borderPx(b.top)}px solid ${borderColor}` : undefined,
+    borderRight: b?.right != null ? `${borderPx(b.right)}px solid ${borderColor}` : undefined,
+    borderBottom: b?.bottom != null ? `${borderPx(b.bottom)}px solid ${borderColor}` : undefined,
+    borderLeft: b?.left != null ? `${borderPx(b.left)}px solid ${borderColor}` : undefined,
+  };
+}
+
+/** 文本层样式：字体/对齐/内边距，字号为 cell-layout 给出的建议字号（与 PDF 一致） */
+function cellTextStyle(style: TemplateCellStyle, fontSize: number): React.CSSProperties {
+  return {
+    position: "absolute",
+    boxSizing: "border-box",
     color: style.color,
     fontWeight: style.bold ? 700 : undefined,
     fontStyle: style.italic ? "italic" : undefined,
-    fontSize: (style.fontSize ?? 10) * PT_TO_PX,
+    fontSize: fontSize * PT_TO_PX,
     lineHeight: 1.1,
     textAlign: style.halign ?? "left",
     display: "flex",
@@ -55,10 +71,6 @@ function cellBoxStyle(
       style.valign === "bottom" ? "flex-end" : style.valign === "middle" ? "center" : "flex-start",
     justifyContent:
       style.halign === "center" ? "center" : style.halign === "right" ? "flex-end" : "flex-start",
-    borderTop: b?.top != null ? `${borderPx(b.top)}px solid ${borderColor}` : undefined,
-    borderRight: b?.right != null ? `${borderPx(b.right)}px solid ${borderColor}` : undefined,
-    borderBottom: b?.bottom != null ? `${borderPx(b.bottom)}px solid ${borderColor}` : undefined,
-    borderLeft: b?.left != null ? `${borderPx(b.left)}px solid ${borderColor}` : undefined,
     overflow: "hidden",
     padding: "0 3px",
     whiteSpace: style.wrap ? "pre-wrap" : "pre",
@@ -160,6 +172,7 @@ export function TemplatePreview({
   for (const h of grid.rowHeights) rowY.push(rowY[rowY.length - 1] + h);
   const totalW = colX[colX.length - 1];
   const totalH = rowY[rowY.length - 1];
+  const clickable = !!onCellClick;
   const selectedParts = selectedCell?.split(":").map(Number);
   const selectedRow = selectedParts?.[0];
   const selectedCol = selectedParts?.[1];
@@ -169,6 +182,19 @@ export function TemplatePreview({
   const selectionTop = selection ? rowY[selection.startRow] * PT_TO_PX : 0;
   const selectionRight = selection ? colX[selection.endCol + 1] * PT_TO_PX : 0;
   const selectionBottom = selection ? rowY[selection.endRow + 1] * PT_TO_PX : 0;
+
+  /** 与 PDF 渲染器共用的格矩形计算（含合并跨度，钳制在网格范围内） */
+  const cellRect = (cell: TemplateGrid["cells"][number]) => {
+    const left = colX[cell.col] ?? 0;
+    const top = rowY[cell.row] ?? 0;
+    const right =
+      colX[Math.min(cell.col + cell.colSpan, colX.length - 1)] ??
+      left + (grid.colWidths[cell.col] ?? 0);
+    const bottom =
+      rowY[Math.min(cell.row + cell.rowSpan, rowY.length - 1)] ??
+      top + (grid.rowHeights[cell.row] ?? 0);
+    return { left, top, width: right - left, height: bottom - top };
+  };
 
   return (
     <div className={cn("overflow-auto rounded-md border bg-white p-3", className)}>
@@ -198,7 +224,7 @@ export function TemplatePreview({
                     ? "bg-amber-100 text-amber-800"
                     : lineItemRegion?.columns.includes(col)
                       ? "bg-sky-100 text-sky-800"
-                    : "bg-slate-100 text-slate-600"
+                      : "bg-slate-100 text-slate-600"
                 )}
                 style={{
                   left: gutterWidth + colX[col] * PT_TO_PX * scale,
@@ -236,7 +262,7 @@ export function TemplatePreview({
                     ? "bg-amber-100 text-amber-800"
                     : lineItemRegion && row >= lineItemRegion.startRow && row <= lineItemRegion.endRow
                       ? "bg-sky-100 text-sky-800"
-                    : "bg-slate-100 text-slate-600"
+                      : "bg-slate-100 text-slate-600"
                 )}
                 style={{
                   top: headerHeight + rowY[row] * PT_TO_PX * scale,
@@ -285,44 +311,84 @@ export function TemplatePreview({
             transformOrigin: "top left",
           }}
         >
-          {grid.cells.map((cell, i) => {
-          const left = colX[cell.col] ?? 0;
-          const top = rowY[cell.row] ?? 0;
-          const right =
-            colX[Math.min(cell.col + cell.colSpan, colX.length - 1)] ??
-            left + (grid.colWidths[cell.col] ?? 0);
-          const bottom =
-            rowY[Math.min(cell.row + cell.rowSpan, rowY.length - 1)] ??
-            top + (grid.rowHeights[cell.row] ?? 0);
-          const key = `${cell.row}:${cell.col}`;
-          const clickable = !!onCellClick;
-          const highlighted = highlightedCells?.has(key);
-          const selected = selectedCell === key;
-          const inLineItemRegion =
-            lineItemRegion && cell.row >= lineItemRegion.startRow && cell.row <= lineItemRegion.endRow;
-          const isLineItemColumn = lineItemRegion?.columns.includes(cell.col);
-          return (
-            <div
-              key={`${key}-${i}`}
-              style={cellBoxStyle(cell.style, left, top, right - left, bottom - top)}
-              onClick={clickable ? () => onCellClick?.(cell.row, cell.col) : undefined}
-              className={cn(
-                clickable && "cursor-pointer hover:z-10 hover:bg-sky-50/80",
-                inLineItemRegion && "after:pointer-events-none after:absolute after:inset-0 after:bg-sky-400/10",
-                inLineItemRegion && isLineItemColumn && "after:bg-sky-400/20",
-                highlighted && "outline-2 outline-offset-[-2px] outline-sky-500",
-                selected && "outline-2 outline-offset-[-2px] outline-amber-500 ring-2 ring-amber-300"
-              )}
-            >
-              {cell.text || "\u00A0"}
-              {fieldBadges?.get(key) ? (
-                <span className="pointer-events-none absolute right-0 top-0 max-w-full truncate rounded-bl bg-sky-600 px-1 py-0.5 text-[8px] font-medium leading-none text-white">
-                  {fieldBadges.get(key)}
-                </span>
-              ) : null}
+          {/* 背景层 z-0：所有格的填充/边框/高亮（原始矩形） */}
+          <div className="absolute inset-0 z-0" style={{ pointerEvents: "none" }} aria-hidden="true">
+            {grid.cells.map((cell, i) => {
+              const { left, top, width, height } = cellRect(cell);
+              const key = `${cell.row}:${cell.col}`;
+              const highlighted = highlightedCells?.has(key);
+              const selected = selectedCell === key;
+              const inLineItemRegion =
+                lineItemRegion && cell.row >= lineItemRegion.startRow && cell.row <= lineItemRegion.endRow;
+              const isLineItemColumn = lineItemRegion?.columns.includes(cell.col);
+              return (
+                <div
+                  key={`bg-${key}-${i}`}
+                  style={cellBackgroundStyle(cell.style, left, top, width, height)}
+                  className={cn(
+                    inLineItemRegion && "after:pointer-events-none after:absolute after:inset-0 after:bg-sky-400/10",
+                    inLineItemRegion && isLineItemColumn && "after:bg-sky-400/20",
+                    highlighted && "outline-2 outline-offset-[-2px] outline-sky-500",
+                    selected && "outline-2 outline-offset-[-2px] outline-amber-500 ring-2 ring-amber-300"
+                  )}
+                />
+              );
+            })}
+          </div>
+          {/* 文本层 z-10：盒宽与字号来自 cell-layout（溢出扩展 + 缩字号），与 PDF 一致 */}
+          <div className="absolute inset-0 z-10" style={{ pointerEvents: "none" }} aria-hidden="true">
+            {grid.cells
+              .filter((cell) => cell.text)
+              .map((cell, i) => {
+                const { left, top, width, height } = cellRect(cell);
+                const { textBoxWidth, fontSize } = layoutCellText(
+                  grid,
+                  cell,
+                  width,
+                  cell.style.fontSize ?? 10
+                );
+                return (
+                  <div
+                    key={`tx-${cell.row}:${cell.col}-${i}`}
+                    style={{
+                      ...cellTextStyle(cell.style, fontSize),
+                      left: left * PT_TO_PX,
+                      top: top * PT_TO_PX,
+                      width: textBoxWidth * PT_TO_PX,
+                      height: height * PT_TO_PX,
+                    }}
+                  >
+                    {cell.text}
+                  </div>
+                );
+              })}
+          </div>
+          {/* 徽标层 z-[15]：锚定原始格矩形，画在溢出文本之上、命中层之下 */}
+          {fieldBadges && fieldBadges.size > 0 ? (
+            <div className="absolute inset-0 z-[15]" style={{ pointerEvents: "none" }} aria-hidden="true">
+              {grid.cells
+                .filter((cell) => fieldBadges.get(`${cell.row}:${cell.col}`))
+                .map((cell, i) => {
+                  const { left, top, width, height } = cellRect(cell);
+                  return (
+                    <div
+                      key={`badge-${cell.row}:${cell.col}-${i}`}
+                      className="absolute"
+                      style={{
+                        left: left * PT_TO_PX,
+                        top: top * PT_TO_PX,
+                        width: width * PT_TO_PX,
+                        height: height * PT_TO_PX,
+                      }}
+                    >
+                      <span className="pointer-events-none absolute right-0 top-0 max-w-full truncate rounded-bl bg-sky-600 px-1 py-0.5 text-[8px] font-medium leading-none text-white">
+                        {fieldBadges.get(`${cell.row}:${cell.col}`)}
+                      </span>
+                    </div>
+                  );
+                })}
             </div>
-          );
-          })}
+          ) : null}
           {(onSelectionChange || onCellClick || onCellDoubleClick) &&
             grid.rowHeights.flatMap((height, row) =>
               grid.colWidths.map((width, col) => (
@@ -331,7 +397,10 @@ export function TemplatePreview({
                   role="button"
                   tabIndex={0}
                   aria-label={`${columnLabel(col)}${row + 1}`}
-                  className="absolute z-20 border border-transparent bg-transparent focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-sky-600"
+                  className={cn(
+                    "absolute z-20 border border-transparent bg-transparent focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-sky-600",
+                    clickable && "cursor-pointer"
+                  )}
                   style={{
                     left: colX[col] * PT_TO_PX,
                     top: rowY[row] * PT_TO_PX,

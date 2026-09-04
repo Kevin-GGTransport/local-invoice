@@ -1,12 +1,18 @@
 /**
  * 账单模版 —— 通用 PDF 渲染器
  * 消费 renderTemplateData 的输出网格，按列宽/行高累计坐标绝对定位，
- * 网格超宽时等比缩放适配页面内容区。与 HTML 预览共用同一数据源。
+ * 网格超宽时等比缩放适配页面内容区。与 HTML 预览共用同一数据源与
+ * cell-layout 排版模型（Excel 式右溢出 + 单行缩字号），保证所见即所得。
+ * react-pdf 无 z-index（画序 = 文档顺序），故先画全部背景/边框，再画全部文本，
+ * 使溢出文本能压在右侧空单元格的填充之上。
  */
 
 import React from 'react'
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
+import { layoutCellText } from '@/lib/templates/cell-layout'
 import type { TemplateGrid, TemplatePageConfig } from '@/lib/templates/types'
+
+export { fitSingleLineFontSize } from '@/lib/templates/cell-layout'
 
 export interface GenericTemplateDocumentProps {
   pageConfig: TemplatePageConfig
@@ -24,39 +30,6 @@ function fontFamily(style: { bold?: boolean; italic?: boolean }, base: string): 
   if (style.bold) return `${prefix}-Bold`
   if (style.italic) return `${prefix}-Oblique`
   return prefix
-}
-
-/**
- * react-pdf 会把窄单元格中的文字自动换行，而 Excel 样张中的日期/编号通常是单行。
- * 对未开启 wrap 的单元格做保守的字宽估算，必要时缩小字号以完整放入格内。
- * 单元格内换行（Alt+Enter、未带 wrapText 标志）视为多行排版：按最长一行估宽。
- */
-export function fitSingleLineFontSize(
-  text: string,
-  requestedSize: number,
-  cellWidth: number,
-  bold = false
-): number {
-  const availableWidth = Math.max(0, cellWidth - 6)
-  if (!text || availableWidth === 0) return requestedSize
-
-  let emWidth = 0
-  for (const line of text.split(/\r?\n/)) {
-    let lineEm = 0
-    for (const char of line) {
-      if (/\d/.test(char)) lineEm += 0.56
-      else if (/[A-Z]/.test(char)) lineEm += 0.65
-      else if (/[a-z]/.test(char)) lineEm += 0.5
-      else if (/\s/.test(char)) lineEm += 0.28
-      else lineEm += 0.3
-    }
-    emWidth = Math.max(emWidth, lineEm)
-  }
-  if (bold) emWidth *= 1.05
-
-  const estimatedWidth = emWidth * requestedSize
-  if (estimatedWidth <= availableWidth) return requestedSize
-  return Math.max(5.5, Math.min(requestedSize, (requestedSize * availableWidth) / estimatedWidth))
 }
 
 export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDocumentProps) {
@@ -91,65 +64,91 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
     },
   })
 
+  // 与背景遍共用的格矩形（含合并跨度，钳制在网格范围内）
+  const cellRect = (cell: TemplateGrid['cells'][number]) => {
+    const left = (colX[cell.col] ?? 0) * scale
+    const top = (rowY[cell.row] ?? 0) * scale
+    const right = (colX[Math.min(cell.col + cell.colSpan, colX.length - 1)] ?? gridW) * scale
+    const bottom = (rowY[Math.min(cell.row + cell.rowSpan, rowY.length - 1)] ?? gridH) * scale
+    return { left, top, width: right - left, height: bottom - top }
+  }
+
   return (
     <Document>
       <Page size={pageConfig.size} style={styles.page}>
         <View style={styles.canvas}>
+          {/* 第一遍：背景 + 边框（原始格矩形） */}
           {grid.cells.map((cell, i) => {
-            const left = (colX[cell.col] ?? 0) * scale
-            const top = (rowY[cell.row] ?? 0) * scale
-            const right = (colX[Math.min(cell.col + cell.colSpan, colX.length - 1)] ?? gridW) * scale
-            const bottom =
-              (rowY[Math.min(cell.row + cell.rowSpan, rowY.length - 1)] ?? gridH) * scale
-            const w = right - left
-            const h = bottom - top
-            const s = cell.style
-            const b = s.borders
-            const boxStyle: React.ComponentProps<typeof View>['style'] = {
-              position: 'absolute',
-              left,
-              top,
-              width: w,
-              height: h,
-              backgroundColor: s.fill,
-              borderWidth: 0,
-              borderTopWidth: b?.top != null ? b.top * scale : 0,
-              borderRightWidth: b?.right != null ? b.right * scale : 0,
-              borderBottomWidth: b?.bottom != null ? b.bottom * scale : 0,
-              borderLeftWidth: b?.left != null ? b.left * scale : 0,
-              borderColor: b?.color ?? '#000000',
-              // 垂直方向零 padding + 行高 1.1：避免小行高单元格因放不下文本被 react-pdf 丢弃
-              paddingTop: 0,
-              paddingRight: 3 * scale,
-              paddingBottom: 0,
-              paddingLeft: 3 * scale,
-              justifyContent:
-                s.valign === 'bottom' ? 'flex-end' : s.valign === 'middle' ? 'center' : 'flex-start',
-            }
-            if (!cell.text) return <View key={i} style={boxStyle} />
-            const requestedFontSize = s.fontSize ?? pageConfig.baseFontSize
-            const fittedFontSize = s.wrap
-              ? requestedFontSize
-              : fitSingleLineFontSize(cell.text, requestedFontSize, w / scale, s.bold)
+            const { left, top, width, height } = cellRect(cell)
+            const b = cell.style.borders
             return (
-              <View key={i} style={[boxStyle, { overflow: 'hidden' }]}>
-                <Text
-                  style={{
-                    fontFamily: fontFamily(s, pageConfig.fontFamily),
-                    fontSize: fittedFontSize * scale,
-                    lineHeight: 1.1,
-                    color: s.color ?? pageConfig.textColor,
-                    textAlign: s.halign ?? 'left',
-                    width: '100%',
-                    // 含显式换行符的多行单元格不限制行数，避免 maxLines 截掉第二行
-                    maxLines: s.wrap || cell.text.includes('\n') ? undefined : 1,
-                  }}
-                >
-                  {cell.text}
-                </Text>
-              </View>
+              <View
+                key={`bg-${i}`}
+                style={{
+                  position: 'absolute',
+                  left,
+                  top,
+                  width,
+                  height,
+                  backgroundColor: cell.style.fill,
+                  borderWidth: 0,
+                  borderTopWidth: b?.top != null ? b.top * scale : 0,
+                  borderRightWidth: b?.right != null ? b.right * scale : 0,
+                  borderBottomWidth: b?.bottom != null ? b.bottom * scale : 0,
+                  borderLeftWidth: b?.left != null ? b.left * scale : 0,
+                  borderColor: b?.color ?? '#000000',
+                }}
+              />
             )
           })}
+          {/* 第二遍：文本（盒宽可为溢出扩展宽度，画在空邻居填充之上） */}
+          {grid.cells
+            .filter((cell) => cell.text)
+            .map((cell, i) => {
+              const { left, top, width, height } = cellRect(cell)
+              const s = cell.style
+              const { textBoxWidth, fontSize } = layoutCellText(
+                grid,
+                cell,
+                width / scale,
+                s.fontSize ?? pageConfig.baseFontSize
+              )
+              return (
+                <View
+                  key={`tx-${i}`}
+                  style={{
+                    position: 'absolute',
+                    left,
+                    top,
+                    width: textBoxWidth * scale,
+                    height,
+                    // 垂直方向零 padding + 行高 1.1：避免小行高单元格因放不下文本被 react-pdf 丢弃
+                    paddingTop: 0,
+                    paddingRight: 3 * scale,
+                    paddingBottom: 0,
+                    paddingLeft: 3 * scale,
+                    justifyContent:
+                      s.valign === 'bottom' ? 'flex-end' : s.valign === 'middle' ? 'center' : 'flex-start',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: fontFamily(s, pageConfig.fontFamily),
+                      fontSize: fontSize * scale,
+                      lineHeight: 1.1,
+                      color: s.color ?? pageConfig.textColor,
+                      textAlign: s.halign ?? 'left',
+                      width: '100%',
+                      // 含显式换行符的多行单元格不限制行数，避免 maxLines 截掉第二行
+                      maxLines: s.wrap || cell.text.includes('\n') ? undefined : 1,
+                    }}
+                  >
+                    {cell.text}
+                  </Text>
+                </View>
+              )
+            })}
         </View>
       </Page>
     </Document>
