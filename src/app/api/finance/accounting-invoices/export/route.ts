@@ -14,6 +14,7 @@ import {
   parseSelectedIds,
 } from "@/lib/finance/accounting-invoice-query"
 import { generateAccountingInvoiceExportExcel } from "@/lib/utils/accounting-invoice-export-excel"
+import { reconciliationSummary } from "@/lib/finance/accounting-invoice-reconciliation"
 import { requireSession, jsonError } from "@/lib/api-helpers"
 
 export async function GET(request: NextRequest) {
@@ -32,10 +33,22 @@ export async function GET(request: NextRequest) {
       where,
       orderBy: buildAccountingInvoiceOrderBy(params),
       take: 10000,
+      include: {
+        accounting_invoice_reconciliations: {
+          where: { voided_at: null },
+          orderBy: [{ check_date: "desc" }, { id: "desc" }],
+        },
+      },
     })
 
     const buffer = await generateAccountingInvoiceExportExcel(
-      rows.map((row) => ({
+      rows.map((row) => {
+        const reconciliations = row.accounting_invoice_reconciliations
+        const summary = reconciliationSummary(
+          row.invoice_price,
+          reconciliations.map((item) => item.check_amount)
+        )
+        return {
         id: row.id,
         company: row.company,
         master_order_number: row.master_order_number,
@@ -48,14 +61,15 @@ export async function GET(request: NextRequest) {
         invoice_number: row.invoice_number,
         invoice_date: row.invoice_date,
         invoice_price: row.invoice_price == null ? null : Number(row.invoice_price),
-        check_date: row.check_date,
-        check_amount: row.check_amount == null ? null : Number(row.check_amount),
-        check_number: row.check_number,
+        check_date: reconciliations[0]?.check_date ?? null,
+        check_amount: reconciliations.length > 0 ? Number(summary.paid_amount) : null,
+        check_number: reconciliations.length > 0 ? reconciliations.map((item) => item.check_number).join("/") : null,
         deduction: row.deduction,
         rts: row.rts,
-        difference: row.difference,
+        difference: summary.difference,
         notes: row.notes,
-      }))
+        }
+      })
     )
 
     const timestamp = new Date().toISOString().slice(0, 10)
