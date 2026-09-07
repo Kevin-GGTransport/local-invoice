@@ -29,6 +29,7 @@ import {
   Eye,
   FileSpreadsheet,
   FileText,
+  FileUp,
   Loader2,
   Pencil,
   Plus,
@@ -42,6 +43,10 @@ import { openPdf, reservePdfWindow } from "@/lib/utils/open-pdf"
 import { MAX_NEGATIVE_INVOICE_DATE_BATCH } from "@/lib/finance/accounting-invoice-negative-date"
 import { MAX_INVOICE_DEDUCTION_BATCH } from "@/lib/finance/accounting-invoice-deduction"
 import { MAX_ACCOUNTING_INVOICE_SEND } from "@/lib/finance/accounting-invoice-send"
+import type {
+  ImportRowError,
+  ImportSummary,
+} from "@/lib/finance/accounting-invoice-import"
 import { useServerTable } from "@/components/data-table/use-server-table"
 import { DataTable } from "@/components/data-table/data-table"
 import { TablePagination } from "@/components/data-table/table-pagination"
@@ -66,6 +71,7 @@ import {
 } from "./accounting-invoice-columns"
 import {
   InvoiceFormDialog,
+  ImportInvoicesDialog,
   SendInvoiceDialog,
   NegativeDateDialog,
   DeductionDialog,
@@ -760,6 +766,78 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     setEditingRecord(null)
   }, [])
 
+  // —— Excel 批量导入（按账单编号 upsert） ——
+  const [importOpen, setImportOpen] = React.useState(false)
+  const [importFile, setImportFile] = React.useState<File | null>(null)
+  const [importing, setImporting] = React.useState(false)
+  const [importRowErrors, setImportRowErrors] = React.useState<ImportRowError[] | null>(null)
+  const [importIgnoredColumns, setImportIgnoredColumns] = React.useState<string[] | null>(null)
+
+  const openImportDialog = React.useCallback(() => {
+    setImportFile(null)
+    setImportRowErrors(null)
+    setImportIgnoredColumns(null)
+    setImportOpen(true)
+  }, [])
+
+  // 换文件即清除上一次的校验错误（错误属于上一个文件）
+  const handleImportFileChange = React.useCallback((file: File | null) => {
+    setImportFile(file)
+    setImportRowErrors(null)
+    setImportIgnoredColumns(null)
+  }, [])
+
+  const handleDownloadImportTemplate = React.useCallback(() => {
+    void downloadExport(
+      "/api/finance/accounting-invoices/import-template",
+      "账单导入模板.xlsx",
+      "导入模板已下载"
+    )
+  }, [])
+
+  const handleImportConfirm = React.useCallback(async () => {
+    if (!importFile || importing) return
+    setImporting(true)
+    try {
+      // 裸 fetch（不走 fetchJson）：错误响应需读取 details.rowErrors 展示行级明细
+      const form = new FormData()
+      form.set("file", importFile)
+      const res = await fetch("/api/finance/accounting-invoices/import", {
+        method: "POST",
+        body: form,
+      })
+      // 平台/代理错误（413、502 等）可能返回非 JSON，解析失败按无明细处理
+      const payload = (await res.json().catch(() => null)) as
+        | { success: true; data: ImportSummary }
+        | {
+            success: false
+            error: string
+            details?: { rowErrors?: ImportRowError[]; ignoredColumns?: string[] }
+          }
+        | null
+      if (!res.ok || !payload || !payload.success) {
+        if (payload?.success === false && payload.details?.rowErrors?.length) {
+          setImportRowErrors(payload.details.rowErrors)
+          setImportIgnoredColumns(payload.details.ignoredColumns ?? null)
+        }
+        throw new Error(
+          payload?.success === false && payload.error ? payload.error : "导入失败，请重试"
+        )
+      }
+      const { total, created, updated } = payload.data
+      toast.success(`导入完成：共 ${total} 行，新增 ${created} 条，更新 ${updated} 条`)
+      setImportOpen(false)
+      setImportFile(null)
+      setImportRowErrors(null)
+      setImportIgnoredColumns(null)
+      refresh()
+    } catch (error) {
+      toast.error(getErrorMessage(error, "导入失败，请重试"))
+    } finally {
+      setImporting(false)
+    }
+  }, [importFile, importing, refresh])
+
   const handleRowPrint = React.useCallback(
     (row: AccountingInvoiceRow) => {
       const hasTemplate =
@@ -1011,6 +1089,15 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                 <Plus className="mr-2 h-4 w-4" />
                 新建账单
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                onClick={openImportDialog}
+              >
+                <FileUp className="mr-2 h-4 w-4" />
+                导入账单
+              </Button>
               <AccountingInvoicesBatchPdf selectedRows={selectedRows} />
               {invoiceTab === "negative" && (
                 <Button variant="outline" size="sm"
@@ -1235,6 +1322,18 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
         editingRecord={editingRecord}
         onClose={closeDialog}
         onSaved={refresh}
+      />
+
+      <ImportInvoicesDialog
+        open={importOpen}
+        importing={importing}
+        file={importFile}
+        rowErrors={importRowErrors}
+        ignoredColumns={importIgnoredColumns}
+        onFileChange={handleImportFileChange}
+        onDownloadTemplate={handleDownloadImportTemplate}
+        onConfirm={() => void handleImportConfirm()}
+        onClose={() => setImportOpen(false)}
       />
 
       <SendInvoiceDialog

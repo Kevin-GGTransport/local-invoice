@@ -3,6 +3,7 @@
 /**
  * 陆运账单页弹窗集合（受控哑组件，状态与请求回调由编排器持有）：
  * - InvoiceFormDialog   新建/编辑（复用模版编辑表单 AccountingInvoiceForm）
+ * - ImportInvoicesDialog Excel 批量导入（按账单编号 upsert，错误明细由编排器传入）
  * - SendInvoiceDialog   单条/批量发账单（设置 Invoice 日期并打开 PDF）
  * - NegativeDateDialog  批量修改负数账单 Invoice 日期
  * - DeductionDialog     批量填写/清除扣钱说明
@@ -19,8 +20,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Loader2, Send } from "lucide-react"
+import { FileSpreadsheet, Loader2, Send } from "lucide-react"
 import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
+import type { ImportRowError } from "@/lib/finance/accounting-invoice-import"
 
 export type SendTarget = {
   ids: string[]
@@ -66,6 +68,98 @@ export function InvoiceFormDialog({
             onCancel={onClose}
           />
         )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+type ImportInvoicesDialogProps = {
+  open: boolean
+  importing: boolean
+  file: File | null
+  rowErrors: ImportRowError[] | null
+  ignoredColumns: string[] | null
+  onFileChange: (file: File | null) => void
+  onDownloadTemplate: () => void
+  onConfirm: () => void
+  onClose: () => void
+}
+
+export function ImportInvoicesDialog({
+  open,
+  importing,
+  file,
+  rowErrors,
+  ignoredColumns,
+  onFileChange,
+  onDownloadTemplate,
+  onConfirm,
+  onClose,
+}: ImportInvoicesDialogProps) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !importing) onClose()
+      }}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>导入账单（Excel）</DialogTitle>
+          <DialogDescription>
+            按账单编号导入：已存在则覆盖文件中出现的列（留空即清空该字段），不存在则新增。
+            明细行、货号、合同金额（已有账单）等系统维护字段不受影响。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <Button type="button" variant="outline" size="sm" onClick={onDownloadTemplate}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            下载导入模板
+          </Button>
+          <Input
+            type="file"
+            accept=".xlsx"
+            disabled={importing}
+            onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+          />
+          {file && (
+            <p className="text-xs text-muted-foreground">已选择：{file.name}</p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            仅支持 .xlsx 文件（.xls 请先另存为 .xlsx），单次最多 2000 行；多余的列会被忽略。
+          </p>
+          {ignoredColumns && ignoredColumns.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              以下列不是导入字段，已被忽略：{ignoredColumns.join("、")}
+            </p>
+          )}
+          {rowErrors && rowErrors.length > 0 && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 p-2 dark:border-rose-900 dark:bg-rose-950">
+              <p className="text-xs font-medium text-rose-700 dark:text-rose-300">
+                以下行未通过校验，本次未写入任何数据，请修正后重新上传：
+              </p>
+              <ul className="mt-1 max-h-56 list-disc space-y-1 overflow-y-auto pl-4">
+                {rowErrors.map((item, index) => (
+                  <li
+                    key={`${item.row}-${index}`}
+                    className="text-xs text-rose-700 dark:text-rose-300"
+                  >
+                    {item.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={importing}>
+            取消
+          </Button>
+          <Button onClick={onConfirm} disabled={importing || !file}>
+            {importing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {importing ? "正在导入..." : "开始导入"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
