@@ -2,7 +2,7 @@
  * 陆运账单 查询构建器：列表接口与 Excel 导出共用同一套 searchParams → Prisma where/orderBy，
  * 保证「导出筛选结果」与列表所见一致（替代源项目 crud filter-helper 的本模块子集）
  */
-import type { Prisma } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 
 /** 快速搜索的模糊匹配字段 */
 export const ACCOUNTING_INVOICE_SEARCH_FIELDS = [
@@ -83,6 +83,10 @@ export function buildAccountingInvoiceWhere(
     }))
   }
 
+  if (params.get("invoice_status") === "has_difference") {
+    where.AND = [{ invoice_date: { not: null } }, { invoice_price: { not: null } }]
+  }
+
   return where
 }
 
@@ -109,4 +113,35 @@ export function parseSelectedIds(value: string | null): bigint[] | null {
     .filter(Boolean)
   if (tokens.length === 0 || tokens.some((t) => !/^\d+$/.test(t))) return null
   return tokens.map((t) => BigInt(t))
+}
+
+
+/** SQL counterpart used for aggregate filtering. Keep ordinary predicates aligned with the Prisma builder. */
+export function buildAccountingInvoiceSqlWhere(params: URLSearchParams): Prisma.Sql {
+  const clauses: Prisma.Sql[] = []
+  const companies = (params.get("company") ?? "").split(",").map((value) => value.trim()).filter(Boolean)
+  if (companies.length) clauses.push(Prisma.sql`i.company IN (${Prisma.join(companies)})`)
+  const billTo = params.get("bill_to")?.trim()
+  if (billTo) clauses.push(Prisma.sql`i.bill_to ILIKE ${`%${billTo}%`}`)
+  const category = params.get("billing_category")?.trim()
+  if (category) clauses.push(Prisma.sql`i.billing_category = ${category}`)
+  const status = params.get("invoice_status")
+  if (status === "negative") clauses.push(Prisma.sql`i.invoice_price < 0`)
+  if (status === "unsent") clauses.push(Prisma.sql`i.invoice_date IS NULL`)
+  else {
+    const from = dateParam(params.get("invoice_date_from"))
+    const to = dateParam(params.get("invoice_date_to"), true)
+    if (from) clauses.push(Prisma.sql`i.invoice_date >= ${from.toISOString().slice(0, 10)}::date`)
+    if (to) clauses.push(Prisma.sql`i.invoice_date <= ${to.toISOString().slice(0, 10)}::date`)
+  }
+  if (status === "has_difference") clauses.push(Prisma.sql`
+    i.invoice_date IS NOT NULL AND i.invoice_price IS NOT NULL
+    AND COALESCE(p.paid_amount, 0) - i.invoice_price <> 0
+  `)
+  const search = params.get("search")?.trim()
+  if (search) clauses.push(Prisma.sql`(${Prisma.join(
+    ACCOUNTING_INVOICE_SEARCH_FIELDS.map((field) => Prisma.sql`${Prisma.raw(`i."${field}"`)} ILIKE ${`%${search}%`}`),
+    " OR ",
+  )})`)
+  return clauses.length ? Prisma.join(clauses, " AND ") : Prisma.sql`TRUE`
 }

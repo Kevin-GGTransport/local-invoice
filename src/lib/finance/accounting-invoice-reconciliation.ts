@@ -9,17 +9,17 @@ export function reconciliationSummary(
   const invoiceAmount = new Prisma.Decimal(invoicePrice ?? 0)
   let paidAmount = new Prisma.Decimal(0)
   for (const value of amounts) paidAmount = paidAmount.plus(new Prisma.Decimal(value))
-  const difference = invoiceAmount.minus(paidAmount)
+  const difference = paidAmount.minus(invoiceAmount)
   let status: ReconciliationStatus
   if (paidAmount.isZero()) status = "unreconciled"
   else if (difference.isZero()) status = "settled"
-  else if (difference.isPositive()) status = "partial"
+  else if (difference.isNegative()) status = "partial"
   else status = "overpaid"
 
   return {
     invoice_amount: invoiceAmount.toFixed(2),
     paid_amount: paidAmount.toFixed(2),
-    difference: difference.toFixed(2),
+    difference: invoicePrice == null ? null : difference.toFixed(2),
     status,
   }
 }

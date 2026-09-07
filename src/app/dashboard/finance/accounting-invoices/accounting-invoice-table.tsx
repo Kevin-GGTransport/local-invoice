@@ -6,6 +6,7 @@
  * + 新建/编辑弹窗复用模版编辑表单（AccountingInvoiceForm）
  */
 
+import { invoiceMonthRange, selectedInvoiceMonth } from "@/lib/finance/accounting-invoice-month"
 import React from "react"
 import { useRouter } from "next/navigation"
 import {
@@ -109,7 +110,7 @@ type Row = {
 
 type ListData = PaginatedData<Row>
 type SelectedRow = Pick<Row, "id" | "company" | "invoice_number" | "invoice_date" | "invoice_price">
-type InvoiceTab = "all" | "unsent" | "negative"
+type InvoiceTab = "all" | "unsent" | "negative" | "has_difference"
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
@@ -198,8 +199,9 @@ function SortIcon({ id, sorting }: { id: string; sorting: SortingState }) {
   )
 }
 
-export function AccountingInvoiceTable() {
+export function AccountingInvoiceTable({ initialToday }: { initialToday: string }) {
   const router = useRouter()
+  const initialYear = Number(initialToday.slice(0, 4))
 
   // 数据与分页/排序
   const [rows, setRows] = React.useState<Row[]>([])
@@ -223,6 +225,14 @@ export function AccountingInvoiceTable() {
   const [invoiceTab, setInvoiceTab] = React.useState<InvoiceTab>("all")
   const [dateFrom, setDateFrom] = React.useState("")
   const [dateTo, setDateTo] = React.useState("")
+  const [filterYear, setFilterYear] = React.useState(initialYear)
+  const activeMonth = selectedInvoiceMonth(filterYear, dateFrom, dateTo)
+  const selectMonth = (year: number, month: number) => {
+    const range = invoiceMonthRange(year, month)
+    setDateFrom(range.from)
+    setDateTo(range.to)
+    setPage(1)
+  }
 
   // 勾选与新建/编辑弹窗
   const [selected, setSelected] = React.useState<Map<string, SelectedRow>>(new Map())
@@ -230,10 +240,10 @@ export function AccountingInvoiceTable() {
   const [editingRecord, setEditingRecord] = React.useState<Record<string, unknown> | null>(null)
   const [detailLoading, setDetailLoading] = React.useState(false)
   const [sendTarget, setSendTarget] = React.useState<SendTarget | null>(null)
-  const [sendDate, setSendDate] = React.useState(localToday)
+  const [sendDate, setSendDate] = React.useState(initialToday)
   const [sending, setSending] = React.useState(false)
   const [dateEditIds, setDateEditIds] = React.useState<string[] | null>(null)
-  const [negativeDate, setNegativeDate] = React.useState(localToday)
+  const [negativeDate, setNegativeDate] = React.useState(initialToday)
   const [savingNegativeDate, setSavingNegativeDate] = React.useState(false)
   const [reconciliationTarget, setReconciliationTarget] = React.useState<Row | null>(null)
 
@@ -642,10 +652,11 @@ export function AccountingInvoiceTable() {
     setCompanies([])
     setBillingCategory("")
     setInvoiceTab("all")
+    setFilterYear(initialYear)
     setDateFrom("")
     setDateTo("")
     setPage(1)
-  }, [])
+  }, [initialYear])
 
   const applySearch = React.useCallback(() => {
     setAppliedSearch(searchInput.trim())
@@ -738,6 +749,8 @@ export function AccountingInvoiceTable() {
         ),
         cell: (info) => fmtMoney(info.getValue()),
       }),
+      columnHelper.accessor("check_amount", { header: "支票金额", cell: (info) => fmtMoney(info.getValue()) }),
+      columnHelper.accessor("difference", { header: "差额", cell: (info) => fmtMoney(info.getValue()) }),
       columnHelper.accessor("notes", { header: "备注", cell: (info) => info.getValue() ?? "" }),
       columnHelper.display({
         id: "actions",
@@ -875,11 +888,12 @@ export function AccountingInvoiceTable() {
 
         {/* 统一筛选与搜索工具栏 */}
         <div className="border-t border-slate-800 bg-slate-950 px-3 sm:px-4">
-          <div className="flex" role="tablist" aria-label="账单状态">
+          <div className="flex flex-wrap" role="tablist" aria-label="账单状态">
             {([
               ["all", "全部账单"],
               ["unsent", "未发账单"],
               ["negative", "负数账单"],
+              ["has_difference", "有差额"],
             ] as const).map(([value, label]) => {
               const active = invoiceTab === value
               return (
@@ -977,6 +991,7 @@ export function AccountingInvoiceTable() {
                   disabled={invoiceTab === "unsent"}
                   onChange={(e) => {
                     setDateFrom(e.target.value)
+                    if (e.target.value) setFilterYear(Number(e.target.value.slice(0, 4)))
                     setPage(1)
                   }}
                 />
@@ -993,6 +1008,46 @@ export function AccountingInvoiceTable() {
                   }}
                 />
               </div>
+            </div>
+
+            <div className="flex w-full flex-wrap items-center gap-1.5" role="group" aria-label="Invoice 月份快捷筛选">
+              <label htmlFor="invoice-filter-year" className="text-xs font-medium text-muted-foreground">年份</label>
+              <Input
+                id="invoice-filter-year"
+                type="number"
+                min={1900}
+                max={9999}
+                className="h-11 w-24"
+                key={filterYear}
+                defaultValue={filterYear}
+                disabled={invoiceTab === "unsent"}
+                onBlur={(event) => {
+                  const year = Number(event.target.value)
+                  if (!Number.isInteger(year) || year < 1900 || year > 9999) {
+                    event.target.value = String(filterYear)
+                    return
+                  }
+                  setFilterYear(year)
+                  if (activeMonth != null) selectMonth(year, activeMonth)
+                }}
+                onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur() }}
+              />
+              <Button type="button" variant={!dateFrom && !dateTo ? "default" : "outline"}
+                className="min-h-11" disabled={invoiceTab === "unsent"}
+                aria-pressed={!dateFrom && !dateTo}
+                onClick={() => { setDateFrom(""); setDateTo(""); setPage(1) }}>
+                全部月份
+              </Button>
+              {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                <Button key={month} type="button" className="min-h-11 min-w-11 px-2"
+                  variant={activeMonth === month ? "default" : "outline"}
+                  disabled={invoiceTab === "unsent"}
+                  aria-pressed={activeMonth === month}
+                  aria-label={`${filterYear}年${month}月`}
+                  onClick={() => selectMonth(filterYear, month)}>
+                  {month}月
+                </Button>
+              ))}
             </div>
 
             <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row 2xl:ml-auto 2xl:w-auto 2xl:flex-1">
@@ -1140,6 +1195,8 @@ export function AccountingInvoiceTable() {
 
               <dl className="grid grid-cols-2 gap-x-3 gap-y-3">
                 <CardField label="Invoice 金额" value={fmtMoney(row.invoice_price) || "—"} />
+                <CardField label="支票金额" value={fmtMoney(row.check_amount) || "—"} />
+                <CardField label="差额" value={fmtMoney(row.difference) || "—"} />
                 <CardField label="Load #" value={fmtText(row.broker_load_number)} />
                 <CardField label="总货号" value={fmtText(row.master_order_number)} />
                 <CardField label="货号" value={fmtText(row.order_number)} />

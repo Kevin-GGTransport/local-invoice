@@ -5,11 +5,8 @@
  */
 
 import { NextRequest } from "next/server"
+import { readAccountingInvoices } from "@/lib/finance/accounting-invoice-read"
 import { prisma } from "@/lib/prisma"
-import {
-  buildAccountingInvoiceWhere,
-  buildAccountingInvoiceOrderBy,
-} from "@/lib/finance/accounting-invoice-query"
 import {
   getNextAccountingInvoiceNumber,
   getNextAccountingOrderNumbers,
@@ -38,18 +35,11 @@ export async function GET(request: NextRequest) {
     const params = request.nextUrl.searchParams
     const page = Math.max(1, Number(params.get("page")) || 1)
     const pageSize = Math.min(500, Math.max(1, Number(params.get("pageSize")) || 100))
-    const where = buildAccountingInvoiceWhere(params)
-    const orderBy = buildAccountingInvoiceOrderBy(params)
-
-    const [rows, total] = await prisma.$transaction([
-      prisma.accounting_invoices.findMany({
-        where,
-        orderBy,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-      prisma.accounting_invoices.count({ where }),
-    ])
+    const { rows, total } = await readAccountingInvoices(prisma, params, {
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      count: true,
+    })
 
     return jsonOk({ rows, pagination: { total, page, pageSize } })
   } catch (err) {

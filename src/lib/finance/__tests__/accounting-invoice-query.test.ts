@@ -108,3 +108,29 @@ describe('buildAccountingInvoiceWhere broker', () => {
     })
   })
 })
+
+
+describe('Invoice month shortcuts', () => {
+  it('covers leap years, year boundaries and full-month highlighting', async () => {
+    const { invoiceMonthRange, selectedInvoiceMonth } = await import('../accounting-invoice-month')
+    assert.deepEqual(invoiceMonthRange(2024, 2), { from: '2024-02-01', to: '2024-02-29' })
+    assert.deepEqual(invoiceMonthRange(2026, 2), { from: '2026-02-01', to: '2026-02-28' })
+    assert.deepEqual(invoiceMonthRange(2026, 12), { from: '2026-12-01', to: '2026-12-31' })
+    assert.deepEqual(invoiceMonthRange(2027, 1), { from: '2027-01-01', to: '2027-01-31' })
+    assert.equal(selectedInvoiceMonth(2024, '2024-02-01', '2024-02-29'), 2)
+    assert.equal(selectedInvoiceMonth(2026, '2024-02-01', '2024-02-29'), null)
+    assert.equal(selectedInvoiceMonth(2024, '2024-02-02', '2024-02-29'), null)
+    assert.equal(selectedInvoiceMonth(2024, '', ''), null)
+  })
+  it('retains date and company restrictions for the difference tab', () => {
+    const where = buildAccountingInvoiceWhere(new URLSearchParams({
+      invoice_status: 'has_difference', company: 'A',
+      invoice_date_from: '2024-02-01', invoice_date_to: '2024-02-29',
+    }))
+    assert.deepEqual(where.company, { in: ['A'] })
+    assert.deepEqual(where.AND, [{ invoice_date: { not: null } }, { invoice_price: { not: null } }])
+    assert.deepEqual(where.invoice_date, {
+      gte: new Date('2024-02-01T00:00:00.000Z'), lte: new Date('2024-02-29T23:59:59.999Z'),
+    })
+  })
+})

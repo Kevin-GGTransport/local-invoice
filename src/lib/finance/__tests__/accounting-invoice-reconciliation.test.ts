@@ -6,11 +6,11 @@ import {
   reconciliationDateToUtc,
 } from "../../validations/accounting-invoice-reconciliation"
 
-test("reconciliation summary supports repeated payments and a negative difference", () => {
+test("reconciliation summary supports repeated payments and a positive overpayment difference", () => {
   assert.deepEqual(reconciliationSummary("4000.00", ["2500.00", "2000.00"]), {
     invoice_amount: "4000.00",
     paid_amount: "4500.00",
-    difference: "-500.00",
+    difference: "500.00",
     status: "overpaid",
   })
 })
@@ -63,4 +63,14 @@ test("reconciliation validation rejects sub-cent amounts that the database would
 
 test("reconciliation dates are stored at UTC midnight", () => {
   assert.equal(reconciliationDateToUtc("2026-09-04").toISOString(), "2026-09-04T00:00:00.000Z")
+})
+
+
+test("difference uses exact paid minus price, including missing and negative prices", () => {
+  assert.equal(reconciliationSummary("4000", []).difference, "-4000.00")
+  assert.equal(reconciliationSummary("4000", ["1000"]).difference, "-3000.00")
+  assert.equal(reconciliationSummary("4000", ["1500", "2500"]).difference, "0.00")
+  assert.equal(reconciliationSummary("0.30", ["0.10", "0.20"]).difference, "0.00")
+  assert.equal(reconciliationSummary(null, ["100"]).difference, null)
+  assert.equal(reconciliationSummary("-100", []).difference, "100.00")
 })
