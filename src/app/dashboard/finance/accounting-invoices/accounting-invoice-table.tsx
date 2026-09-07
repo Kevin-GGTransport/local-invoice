@@ -643,102 +643,112 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
   // —— 列定义（sortable 与源 config 一致） ——
   const columns = React.useMemo(
     () => [
-      columnHelper.display({
-        id: "select",
-        size: 36,
-        header: () => (
-          <Checkbox
-            checked={allSelected}
-            onCheckedChange={toggleAll}
-            aria-label="全选本页"
-          />
-        ),
-        cell: ({ row }) => (
-          <Checkbox
-            checked={selected.has(row.original.id)}
-            onCheckedChange={() => toggleRow(row.original)}
-            aria-label="选择该行"
-          />
-        ),
-      }),
-      columnHelper.accessor("company", {
-        header: ({ column }) => (
-          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-            公司
-            <SortIcon id={column.id} sorting={sorting} />
-          </button>
-        ),
-        cell: (info) => info.getValue(),
-      }),
-      columnHelper.accessor("master_order_number", { header: "总货号", cell: (info) => info.getValue() ?? "" }),
-      columnHelper.accessor("order_number", { header: "货号", cell: (info) => info.getValue() ?? "" }),
-      columnHelper.accessor("contract_date", {
-        header: ({ column }) => (
-          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-            合同日期
-            <SortIcon id={column.id} sorting={sorting} />
-          </button>
-        ),
-        cell: (info) => fmtDate(info.getValue()),
-      }),
-      columnHelper.accessor("contract_price", {
-        header: ({ column }) => (
-          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-            合同金额
-            <SortIcon id={column.id} sorting={sorting} />
-          </button>
-        ),
-        cell: (info) => fmtMoney(info.getValue()),
-      }),
-      columnHelper.accessor("bill_to", { header: "Broker公司", cell: (info) => info.getValue() ?? "" }),
-      columnHelper.accessor("broker_load_number", { header: "Load #", cell: (info) => info.getValue() ?? "" }),
-      columnHelper.accessor("billing_category", { header: "账单分类", cell: (info) => info.getValue() ?? "" }),
-      columnHelper.accessor("tonu", {
-        header: "TONU",
-        size: 56,
-        cell: (info) => <TonuIcon value={info.getValue()} />,
-      }),
-      columnHelper.accessor("invoice_number", {
-        header: ({ column }) => (
-          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-            Invoice Number
-            <SortIcon id={column.id} sorting={sorting} />
-          </button>
-        ),
-        cell: (info) => info.getValue(),
-      }),
-      columnHelper.accessor("invoice_date", {
-        header: ({ column }) => (
-          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-            Invoice 日期
-            <SortIcon id={column.id} sorting={sorting} />
-          </button>
-        ),
-        cell: (info) => fmtDate(info.getValue()),
-      }),
-      columnHelper.accessor("invoice_price", {
-        header: ({ column }) => (
-          <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-            Invoice 价格
-            <SortIcon id={column.id} sorting={sorting} />
-          </button>
-        ),
-        cell: (info) => fmtMoney(info.getValue()),
-      }),
-      columnHelper.accessor("notes", { header: "备注", cell: (info) => info.getValue() ?? "" }),
-      columnHelper.display({
-        id: "actions",
-        size: 176,
-        header: "操作",
-        cell: ({ row }) => {
-          const r = row.original
-          return (
-            <div className="flex items-center justify-center">
-              {renderRowActions(r)}
-            </div>
-          )
-        },
-      }),
+      columnHelper.group({ id: "business", header: "业务信息", columns: [
+        columnHelper.display({
+          id: "select",
+          size: 36,
+          header: () => (
+            <Checkbox
+              checked={allSelected}
+              onCheckedChange={toggleAll}
+              aria-label="全选本页"
+            />
+          ),
+          cell: ({ row }) => (
+            <Checkbox
+              checked={selected.has(row.original.id)}
+              onCheckedChange={() => toggleRow(row.original)}
+              aria-label="选择该行"
+            />
+          ),
+        }),
+        columnHelper.accessor("company", {
+          header: ({ column }) => (
+            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+              公司
+              <SortIcon id={column.id} sorting={sorting} />
+            </button>
+          ),
+          cell: (info) => info.getValue(),
+        }),
+        columnHelper.accessor("master_order_number", { header: "总货号", cell: (info) => info.getValue() ?? "" }),
+        columnHelper.accessor("order_number", { header: "货号", cell: (info) => info.getValue() ?? "" }),
+      ] }),
+      columnHelper.group({ id: "contract", header: "合同", columns: [
+        columnHelper.accessor("contract_date", {
+          header: ({ column }) => (
+            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+              合同日期
+              <SortIcon id={column.id} sorting={sorting} />
+            </button>
+          ),
+          cell: (info) => fmtDate(info.getValue()),
+        }),
+        columnHelper.accessor("contract_price", {
+          header: ({ column }) => (
+            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+              合同金额
+              <SortIcon id={column.id} sorting={sorting} />
+            </button>
+          ),
+          cell: (info) => fmtMoney(info.getValue()),
+        }),
+      ] }),
+      columnHelper.group({ id: "broker", header: "Broker", columns: [
+        columnHelper.accessor("bill_to", { header: "Broker公司", cell: (info) => info.getValue() ?? "" }),
+        columnHelper.accessor("broker_load_number", { header: "Load #", cell: (info) => info.getValue() ?? "" }),
+        columnHelper.accessor("billing_category", { header: "账单分类", cell: (info) => info.getValue() ?? "" }),
+        columnHelper.accessor("tonu", {
+          header: "TONU",
+          size: 56,
+          cell: (info) => <TonuIcon value={info.getValue()} />,
+        }),
+      ] }),
+      columnHelper.group({ id: "invoice", header: "Invoice", columns: [
+        columnHelper.accessor("invoice_number", {
+          header: ({ column }) => (
+            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+              Invoice Number
+              <SortIcon id={column.id} sorting={sorting} />
+            </button>
+          ),
+          cell: (info) => info.getValue(),
+        }),
+        columnHelper.accessor("invoice_date", {
+          header: ({ column }) => (
+            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+              Invoice 日期
+              <SortIcon id={column.id} sorting={sorting} />
+            </button>
+          ),
+          cell: (info) => fmtDate(info.getValue()),
+        }),
+        columnHelper.accessor("invoice_price", {
+          header: ({ column }) => (
+            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+              Invoice 价格
+              <SortIcon id={column.id} sorting={sorting} />
+            </button>
+          ),
+          cell: (info) => fmtMoney(info.getValue()),
+        }),
+      ] }),
+      columnHelper.group({ id: "other", header: "备注与操作", columns: [
+        columnHelper.accessor("notes", { header: "备注", cell: (info) => info.getValue() ?? "" }),
+        columnHelper.display({
+          id: "actions",
+          size: 176,
+          header: "操作",
+          cell: ({ row }) => {
+            const r = row.original
+            return (
+              <div className="flex items-center justify-center">
+                {renderRowActions(r)}
+              </div>
+            )
+          },
+        }),
+      ] }),
     ],
     [allSelected, toggleAll, selected, toggleRow, sorting, toggleSort, renderRowActions]
   )
@@ -1082,8 +1092,10 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                 {headerGroup.headers.map((header) => (
                   <TableHead
                     key={header.id}
+                    colSpan={header.colSpan}
+                    scope={header.subHeaders.length ? "colgroup" : "col"}
                     className="h-10 whitespace-nowrap border-slate-800 bg-slate-950 px-3 text-[12px] font-semibold text-slate-100 [&_button]:text-slate-100 [&_button:hover]:text-white"
-                    style={{ width: header.getSize() !== 150 ? header.getSize() : undefined }}
+                    style={{ width: header.subHeaders.length === 0 && header.getSize() !== 150 ? header.getSize() : undefined }}
                   >
                     {header.isPlaceholder
                       ? null
@@ -1096,14 +1108,14 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={table.getVisibleLeafColumns().length} className="h-24 text-center text-muted-foreground">
                   <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
                   正在加载...
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={table.getVisibleLeafColumns().length} className="h-24 text-center text-muted-foreground">
                   暂无账单数据
                 </TableCell>
               </TableRow>

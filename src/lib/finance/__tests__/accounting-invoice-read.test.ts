@@ -59,6 +59,22 @@ test("database difference filtering, pagination and Excel agree", { skip: !url }
       assert.deepEqual(page.rows.map((row) => row.id), matching.slice(2, 4))
       const exported = await readAccountingInvoices(tx, params, { take: 10000 })
       assert.deepEqual(exported.rows.map((row) => row.id), matching)
+      // Cashier queues are disjoint: partial payments remain pending, while
+      // overpayments and issued negative invoices require separate review.
+      const pendingParams = new URLSearchParams(params)
+      pendingParams.set("invoice_status", "pending_receipt")
+      const pending = await readAccountingInvoices(tx, pendingParams, { take: 100, count: true })
+      assert.equal(pending.total, 3)
+      assert.deepEqual(pending.rows.map((row) => row.id), [ids[0], ids[1], ids[4]])
+      const exceptionParams = new URLSearchParams(params)
+      exceptionParams.set("invoice_status", "reconciliation_exception")
+      const exceptions = await readAccountingInvoices(tx, exceptionParams, { take: 100, count: true })
+      assert.equal(exceptions.total, 2)
+      assert.deepEqual(exceptions.rows.map((row) => row.id), [ids[3], ids[5]])
+      assert.ok(pending.rows.every((row) => !exceptions.rows.some((other) => other.id === row.id)))
+      const lastPending = await readAccountingInvoices(tx, pendingParams, { skip: 2, take: 1, count: true })
+      assert.equal(lastPending.total, 3)
+      assert.deepEqual(lastPending.rows.map((row) => row.id), [ids[4]])
       // Ordinary filters remain compatible with the existing Prisma query semantics.
       for (const status of ["all", "negative", "unsent"]) {
         const ordinary = new URLSearchParams(params)

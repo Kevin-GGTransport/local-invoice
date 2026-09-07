@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Building2, ChevronDown, CircleDollarSign, CircleHelp, FileSliders, Home, Landmark, Menu, ReceiptText, Route, Settings2, X } from "lucide-react";
+import { ArrowLeftRight, BookOpen, Building2, ChevronDown, CircleDollarSign, CircleHelp, FileSliders, Home, Landmark, Menu, ReceiptText, Route, Settings2, X } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 const financeChildren = [
   { href: "/dashboard/finance/accounting-invoices", label: "陆运账单", icon: ReceiptText },
   { href: "/dashboard/finance/reconciliation", label: "出纳核销", icon: CircleDollarSign },
+  { href: "/dashboard/finance/reconciliation-differences", label: "差额处理", icon: ArrowLeftRight },
 ];
 
 const basicChildren = [
