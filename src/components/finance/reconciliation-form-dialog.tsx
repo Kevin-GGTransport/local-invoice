@@ -26,6 +26,9 @@ export type ReconciliationInvoice = {
   broker_load_number: string | null
   billing_category: string | null
   invoice_number: string
+  invoice_price?: string | null
+  check_amount?: string | null
+  difference?: string | null
 }
 
 type FormValues = {
@@ -41,8 +44,19 @@ function localToday() {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-function emptyValues(): FormValues {
-  return { checkDate: localToday(), checkAmount: "", checkNumber: "", notes: "" }
+function emptyValues(invoice?: ReconciliationInvoice | null): FormValues {
+  const difference = Number(invoice?.difference)
+  const suggestedAmount = Number.isFinite(difference) && difference < 0
+    ? Math.abs(difference).toFixed(2)
+    : ""
+  return { checkDate: localToday(), checkAmount: suggestedAmount, checkNumber: "", notes: "" }
+}
+
+function money(value: string | null | undefined) {
+  if (value == null || value === "") return "—"
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return "—"
+  return amount.toLocaleString("en-US", { style: "currency", currency: "USD" })
 }
 
 function IdentityField({ label, value }: { label: string; value: string | null }) {
@@ -73,17 +87,17 @@ export function ReconciliationFormDialog({
   React.useEffect(() => {
     if (!open) return
     void Promise.resolve().then(() => {
-      setValues(emptyValues())
+      setValues(emptyValues(invoice))
       setRequestId(crypto.randomUUID())
       setErrors({})
     })
-  }, [open, invoice?.id])
+  }, [open, invoice])
 
   const validate = () => {
     const next: typeof errors = {}
     if (!values.checkDate) next.checkDate = "请选择支票日期"
     const amount = Number(values.checkAmount)
-    if (!values.checkAmount || !Number.isFinite(amount) || amount <= 0) next.checkAmount = "销账金额必须大于 0"
+    if (!values.checkAmount || !Number.isFinite(amount) || amount <= 0) next.checkAmount = "收款金额必须大于 0"
     else if (!/^\d+(?:\.\d{1,2})?$/.test(values.checkAmount)) next.checkAmount = "金额最多保留两位小数"
     if (!values.checkNumber.trim()) next.checkNumber = "请输入支票号码"
     else if (!/^[A-Za-z0-9]+$/.test(values.checkNumber.trim())) next.checkNumber = "只能输入英文字母和数字"
@@ -107,11 +121,11 @@ export function ReconciliationFormDialog({
           notes: values.notes || null,
         }] }),
       })
-      toast.success(`账单 ${invoice.invoice_number} 已新增一条销账记录`)
+      toast.success(`账单 ${invoice.invoice_number} 已新增一条核销记录`)
       onOpenChange(false)
       onSuccess?.()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "销账失败")
+      toast.error(error instanceof Error ? error.message : "核销失败")
     } finally {
       setSaving(false)
     }
@@ -121,7 +135,7 @@ export function ReconciliationFormDialog({
     <Dialog open={open} onOpenChange={(next) => { if (!saving) onOpenChange(next) }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>新增销账</DialogTitle>
+          <DialogTitle>登记收款</DialogTitle>
           <DialogDescription>为当前账单登记一次支票收款，同一账单可多次登记。</DialogDescription>
         </DialogHeader>
 
@@ -135,10 +149,13 @@ export function ReconciliationFormDialog({
               <IdentityField label="Load #" value={invoice.broker_load_number} />
               <IdentityField label="From-To" value={invoice.billing_category} />
               <div className="sm:col-span-2 lg:col-span-3"><IdentityField label="Invoice Number" value={invoice.invoice_number} /></div>
+              {invoice.invoice_price !== undefined ? <IdentityField label="Invoice 金额" value={money(invoice.invoice_price)} /> : null}
+              {invoice.check_amount !== undefined ? <IdentityField label="已收金额" value={money(invoice.check_amount)} /> : null}
+              {invoice.difference !== undefined ? <IdentityField label="待收金额" value={money(String(Math.abs(Number(invoice.difference))))} /> : null}
             </dl>
 
             <fieldset className="space-y-4">
-              <legend className="text-sm font-semibold">本次销账</legend>
+              <legend className="text-sm font-semibold">本次核销</legend>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div><Label htmlFor="new-check-date">支票日期 *</Label><Input id="new-check-date" type="date" value={values.checkDate} onChange={(event) => setValues((current) => ({ ...current, checkDate: event.target.value }))} aria-invalid={Boolean(errors.checkDate)} aria-describedby="new-check-date-error" /><p id="new-check-date-error" className="min-h-5 text-xs text-destructive">{errors.checkDate}</p></div>
                 <div><Label htmlFor="new-check-amount">金额 *</Label><Input id="new-check-amount" inputMode="decimal" value={values.checkAmount} onChange={(event) => setValues((current) => ({ ...current, checkAmount: event.target.value }))} aria-invalid={Boolean(errors.checkAmount)} aria-describedby="new-check-amount-error" /><p id="new-check-amount-error" className="min-h-5 text-xs text-destructive">{errors.checkAmount}</p></div>
@@ -153,7 +170,7 @@ export function ReconciliationFormDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>取消</Button>
           <Button onClick={() => void submit()} disabled={saving || !invoice}>
             {saving ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : <ReceiptText className="mr-2 size-4" aria-hidden="true" />}
-            {saving ? "正在保存..." : "确认销账"}
+            {saving ? "正在保存..." : "确认核销"}
           </Button>
         </DialogFooter>
       </DialogContent>

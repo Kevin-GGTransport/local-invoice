@@ -57,13 +57,11 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CircleDollarSign,
   Database,
   Download,
   Eye,
   FileSpreadsheet,
   FileText,
-  History,
   Loader2,
   Pencil,
   Plus,
@@ -76,7 +74,6 @@ import {
 import { toast } from "sonner"
 import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
 import { AccountingInvoicesBatchPdf } from "@/components/finance/accounting-invoices-batch-pdf"
-import { ReconciliationFormDialog } from "@/components/finance/reconciliation-form-dialog"
 import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
 import type { PaginatedData } from "@/lib/api/types"
 import { openPdf, reservePdfWindow } from "@/lib/utils/open-pdf"
@@ -110,7 +107,7 @@ type Row = {
 
 type ListData = PaginatedData<Row>
 type SelectedRow = Pick<Row, "id" | "company" | "invoice_number" | "invoice_date" | "invoice_price">
-type InvoiceTab = "all" | "unsent" | "negative" | "has_difference"
+type InvoiceTab = "all" | "unsent" | "negative"
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
@@ -245,7 +242,6 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
   const [dateEditIds, setDateEditIds] = React.useState<string[] | null>(null)
   const [negativeDate, setNegativeDate] = React.useState(initialToday)
   const [savingNegativeDate, setSavingNegativeDate] = React.useState(false)
-  const [reconciliationTarget, setReconciliationTarget] = React.useState<Row | null>(null)
 
   React.useEffect(() => {
     void fetchJson<{ code: string; name: string; has_active_template: boolean }[]>("/api/companies")
@@ -531,26 +527,6 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          title="新增销账"
-          aria-label={`为 ${r.invoice_number} 新增销账`}
-          onClick={() => setReconciliationTarget(r)}
-        >
-          <CircleDollarSign className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          title="查看销账记录"
-          aria-label={`查看 ${r.invoice_number} 的销账记录`}
-          onClick={() => router.push(`/dashboard/finance/reconciliation?invoice_id=${r.id}`)}
-        >
-          <History className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
           title={r.invoice_date ? `已于 ${fmtDate(r.invoice_date)} 发送` : "发账单"}
           aria-label={r.invoice_date ? `${r.invoice_number} 已发送` : `发送 ${r.invoice_number}`}
           disabled={r.invoice_date != null}
@@ -749,8 +725,6 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
         ),
         cell: (info) => fmtMoney(info.getValue()),
       }),
-      columnHelper.accessor("check_amount", { header: "支票金额", cell: (info) => fmtMoney(info.getValue()) }),
-      columnHelper.accessor("difference", { header: "差额", cell: (info) => fmtMoney(info.getValue()) }),
       columnHelper.accessor("notes", { header: "备注", cell: (info) => info.getValue() ?? "" }),
       columnHelper.display({
         id: "actions",
@@ -812,7 +786,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                 )}
               </div>
               <p className="mt-2 text-sm text-slate-300">
-                承运商对 Broker 开票 + 会计对账
+                承运商对 Broker 开票与账单管理
               </p>
             </div>
 
@@ -893,7 +867,6 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
               ["all", "全部账单"],
               ["unsent", "未发账单"],
               ["negative", "负数账单"],
-              ["has_difference", "有差额"],
             ] as const).map(([value, label]) => {
               const active = invoiceTab === value
               return (
@@ -1195,8 +1168,6 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
 
               <dl className="grid grid-cols-2 gap-x-3 gap-y-3">
                 <CardField label="Invoice 金额" value={fmtMoney(row.invoice_price) || "—"} />
-                <CardField label="支票金额" value={fmtMoney(row.check_amount) || "—"} />
-                <CardField label="差额" value={fmtMoney(row.difference) || "—"} />
                 <CardField label="Load #" value={fmtText(row.broker_load_number)} />
                 <CardField label="总货号" value={fmtText(row.master_order_number)} />
                 <CardField label="货号" value={fmtText(row.order_number)} />
@@ -1352,11 +1323,6 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
         </DialogContent>
       </Dialog>
 
-      <ReconciliationFormDialog
-        invoice={reconciliationTarget}
-        open={reconciliationTarget != null}
-        onOpenChange={(open) => { if (!open) setReconciliationTarget(null) }}
-      />
     </div>
   )
 }

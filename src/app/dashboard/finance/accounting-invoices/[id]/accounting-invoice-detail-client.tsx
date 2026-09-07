@@ -7,11 +7,10 @@
 
 import React from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, CircleDollarSign, History, Printer } from "lucide-react"
+import { ArrowLeft, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
-import { ReconciliationFormDialog, type ReconciliationInvoice } from "@/components/finance/reconciliation-form-dialog"
 import { fetchJson } from "@/lib/api/client"
 import { openPdf } from "@/lib/utils/open-pdf"
 
@@ -22,7 +21,6 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
   const [record, setRecord] = React.useState<Record<string, unknown> | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [companies, setCompanies] = React.useState<{ code: string; has_active_template: boolean }[]>([])
-  const [reconciliationOpen, setReconciliationOpen] = React.useState(false)
 
   React.useEffect(() => {
     let cancelled = false
@@ -51,17 +49,6 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
   const invoiceNumber = record?.invoice_number != null ? String(record.invoice_number) : ""
   const hasTemplate =
     companies.find((c) => c.code === company)?.has_active_template ?? false
-  const reconciliationInvoice: ReconciliationInvoice = {
-    id,
-    master_order_number: record?.master_order_number == null ? null : String(record.master_order_number),
-    company,
-    order_number: record?.order_number == null ? null : String(record.order_number),
-    bill_to: record?.bill_to == null ? null : String(record.bill_to),
-    broker_load_number: record?.broker_load_number == null ? null : String(record.broker_load_number),
-    billing_category: record?.billing_category == null ? null : String(record.billing_category),
-    invoice_number: invoiceNumber,
-  }
-
   const handlePrint = () => {
     if (!hasTemplate) {
       toast.error(`公司「${company || "未知"}」暂无 PDF 模版`)
@@ -104,14 +91,6 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
           </div>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <Button size="sm" onClick={() => setReconciliationOpen(true)}>
-            <CircleDollarSign className="mr-2 h-4 w-4" />
-            销账
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => router.push(`/dashboard/finance/reconciliation?invoice_id=${id}`)}>
-            <History className="mr-2 h-4 w-4" />
-            销账记录
-          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -134,11 +113,6 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
         />
       </div>
 
-      <ReconciliationFormDialog
-        invoice={reconciliationInvoice}
-        open={reconciliationOpen}
-        onOpenChange={setReconciliationOpen}
-      />
     </div>
   )
 }
