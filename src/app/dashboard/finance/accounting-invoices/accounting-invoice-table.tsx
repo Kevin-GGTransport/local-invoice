@@ -1047,42 +1047,43 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                 </SelectContent>
               </Select>
 
-              <div
-                aria-label="时间筛选"
-                className="flex w-full min-w-0 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 shadow-xs sm:w-auto"
-              >
-                <span className="shrink-0 px-1 text-xs font-medium text-muted-foreground">
-                  Invoice日期
-                </span>
+              {invoiceTab !== "unsent" && (
+                <div
+                  aria-label="时间筛选"
+                  className="flex w-full min-w-0 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 shadow-xs sm:w-auto"
+                >
+                  <span className="shrink-0 px-1 text-xs font-medium text-muted-foreground">
+                    Invoice日期
+                  </span>
 
-                <Input
-                  type="date"
-                  aria-label="开始日期"
-                  className="h-7 min-w-24 flex-1 border-0 px-1 text-xs shadow-none focus-visible:border-transparent focus-visible:ring-0 sm:w-32"
-                  value={dateFrom}
-                  disabled={invoiceTab === "unsent"}
-                  onChange={(e) => {
-                    setDateFrom(e.target.value)
-                    if (e.target.value) setFilterYear(Number(e.target.value.slice(0, 4)))
-                    setPage(1)
-                  }}
-                />
-                <span className="text-xs text-muted-foreground">至</span>
-                <Input
-                  type="date"
-                  aria-label="结束日期"
-                  className="h-7 min-w-24 flex-1 border-0 px-1 text-xs shadow-none focus-visible:border-transparent focus-visible:ring-0 sm:w-32"
-                  value={dateTo}
-                  disabled={invoiceTab === "unsent"}
-                  onChange={(e) => {
-                    setDateTo(e.target.value)
-                    setPage(1)
-                  }}
-                />
-              </div>
+                  <Input
+                    type="date"
+                    aria-label="开始日期"
+                    className="h-7 min-w-24 flex-1 border-0 px-1 text-xs shadow-none focus-visible:border-transparent focus-visible:ring-0 sm:w-32"
+                    value={dateFrom}
+                    onChange={(e) => {
+                      setDateFrom(e.target.value)
+                      if (e.target.value) setFilterYear(Number(e.target.value.slice(0, 4)))
+                      setPage(1)
+                    }}
+                  />
+                  <span className="text-xs text-muted-foreground">至</span>
+                  <Input
+                    type="date"
+                    aria-label="结束日期"
+                    className="h-7 min-w-24 flex-1 border-0 px-1 text-xs shadow-none focus-visible:border-transparent focus-visible:ring-0 sm:w-32"
+                    value={dateTo}
+                    onChange={(e) => {
+                      setDateTo(e.target.value)
+                      setPage(1)
+                    }}
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="flex w-full flex-wrap items-center gap-1.5" role="group" aria-label="Invoice 月份快捷筛选">
+            {invoiceTab !== "unsent" && (
+              <div className="flex w-full flex-wrap items-center gap-1.5" role="group" aria-label="Invoice 月份快捷筛选">
               <label htmlFor="invoice-filter-year" className="text-xs font-medium text-muted-foreground">年份</label>
               <Input
                 id="invoice-filter-year"
@@ -1092,7 +1093,6 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                 className="h-11 w-24"
                 key={filterYear}
                 defaultValue={filterYear}
-                disabled={invoiceTab === "unsent"}
                 onBlur={(event) => {
                   const year = Number(event.target.value)
                   if (!Number.isInteger(year) || year < 1900 || year > 9999) {
@@ -1106,7 +1106,6 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
               />
               <Button type="button" variant={!dateFrom && !dateTo ? "default" : "outline"}
                 className={`min-h-11 ${!dateFrom && !dateTo ? "bg-amber-500 text-slate-950 hover:bg-amber-400 focus-visible:ring-amber-300/50" : ""}`}
-                disabled={invoiceTab === "unsent"}
                 aria-pressed={!dateFrom && !dateTo}
                 onClick={() => { setDateFrom(""); setDateTo(""); setPage(1) }}>
                 全部月份
@@ -1114,14 +1113,14 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
               {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
                 <Button key={month} type="button" className={`min-h-11 min-w-11 px-2 ${activeMonth === month ? "bg-amber-500 text-slate-950 hover:bg-amber-400 focus-visible:ring-amber-300/50" : ""}`}
                   variant={activeMonth === month ? "default" : "outline"}
-                  disabled={invoiceTab === "unsent"}
                   aria-pressed={activeMonth === month}
                   aria-label={`${filterYear}年${month}月`}
                   onClick={() => selectMonth(filterYear, month)}>
                   {month}月
                 </Button>
               ))}
-            </div>
+              </div>
+            )}
 
             <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row 2xl:ml-auto 2xl:w-auto 2xl:flex-1">
               <div className="flex h-10 w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-background px-3 shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30 sm:w-64 sm:shrink-0">
