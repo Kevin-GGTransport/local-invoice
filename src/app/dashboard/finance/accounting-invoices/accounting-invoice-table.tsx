@@ -79,6 +79,7 @@ import type { PaginatedData } from "@/lib/api/types"
 import { openPdf, reservePdfWindow } from "@/lib/utils/open-pdf"
 import { ACCOUNTING_BILLING_CATEGORY_OPTIONS } from "@/lib/finance/accounting-invoice-companies"
 import { MAX_NEGATIVE_INVOICE_DATE_BATCH } from "@/lib/finance/accounting-invoice-negative-date"
+import { MAX_INVOICE_DEDUCTION_BATCH } from "@/lib/finance/accounting-invoice-deduction"
 import { MAX_ACCOUNTING_INVOICE_SEND } from "@/lib/finance/accounting-invoice-send"
 
 /** 列表行（API 返回 JSON：BigInt id 已转 string，Decimal 为 string） */
@@ -106,8 +107,8 @@ type Row = {
 }
 
 type ListData = PaginatedData<Row>
-type SelectedRow = Pick<Row, "id" | "company" | "invoice_number" | "invoice_date" | "invoice_price">
-type InvoiceTab = "all" | "unsent" | "negative"
+type SelectedRow = Pick<Row, "id" | "company" | "invoice_number" | "invoice_date" | "invoice_price" | "deduction">
+type InvoiceTab = "all" | "unsent" | "negative" | "unmatched_paid" | "with_deduction"
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
@@ -242,6 +243,10 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
   const [dateEditIds, setDateEditIds] = React.useState<string[] | null>(null)
   const [negativeDate, setNegativeDate] = React.useState(initialToday)
   const [savingNegativeDate, setSavingNegativeDate] = React.useState(false)
+  const [deductionEditIds, setDeductionEditIds] = React.useState<string[] | null>(null)
+  const [deductionText, setDeductionText] = React.useState("")
+  const [deductionInit, setDeductionInit] = React.useState("")
+  const [savingDeduction, setSavingDeduction] = React.useState(false)
 
   React.useEffect(() => {
     void fetchJson<{ code: string; name: string; has_active_template: boolean }[]>("/api/companies")
@@ -484,6 +489,49 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
       setSavingNegativeDate(false)
     }
   }, [dateEditIds, negativeDate, savingNegativeDate, refresh])
+
+  // 已收未平 / 有扣钱视图：批量填写或清除扣钱说明（单选一条即为快捷修改）
+  const openDeductionDialog = React.useCallback(() => {
+    if (!selected.size || selected.size > MAX_INVOICE_DEDUCTION_BATCH) {
+      toast.error(`请选择 1 至 ${MAX_INVOICE_DEDUCTION_BATCH} 条账单`)
+      return
+    }
+    const rows = [...selected.values()]
+    const firstDeduction = rows.find((row) => row.deduction)?.deduction ?? ""
+    setDeductionEditIds([...selected.keys()])
+    setDeductionText(firstDeduction)
+    setDeductionInit(firstDeduction)
+  }, [selected])
+
+  const saveDeduction = React.useCallback(async () => {
+    if (!deductionEditIds || savingDeduction) return
+    if (deductionText.length > 200) {
+      toast.error("扣钱说明最长 200 字")
+      return
+    }
+    setSavingDeduction(true)
+    try {
+      const result = await fetchJson<{ count: number }>(
+        "/api/finance/accounting-invoices/deduction",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ids: deductionEditIds,
+            deduction: deductionText.trim() === "" ? null : deductionText.trim(),
+          }),
+        },
+      )
+      toast.success(`已更新 ${result.count} 条账单的扣钱说明`)
+      setDeductionEditIds(null)
+      setSelected(new Map())
+      refresh()
+    } catch (error) {
+      toast.error(getErrorMessage(error, "修改扣钱失败"))
+    } finally {
+      setSavingDeduction(false)
+    }
+  }, [deductionEditIds, deductionText, savingDeduction, refresh])
 
   const openCreate = React.useCallback(() => {
     setEditingRecord(null)
@@ -734,6 +782,15 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
         }),
       ] }),
       columnHelper.group({ id: "other", header: "备注与操作", columns: [
+        columnHelper.accessor("deduction", {
+          header: "扣钱",
+          cell: (info) => {
+            const value = info.getValue()
+            return value ? (
+              <span className="text-rose-600 dark:text-rose-400" title={value}>{value}</span>
+            ) : ""
+          },
+        }),
         columnHelper.accessor("notes", { header: "备注", cell: (info) => info.getValue() ?? "" }),
         columnHelper.display({
           id: "actions",
@@ -818,6 +875,14 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                   批量修改 Invoice 日期
                 </Button>
               )}
+              {(invoiceTab === "unmatched_paid" || invoiceTab === "with_deduction") && (
+                <Button variant="outline" size="sm"
+                  className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  disabled={selected.size === 0 || loading} onClick={openDeductionDialog}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  修改扣钱
+                </Button>
+              )}
               {selected.size > 0 && (
                 <>
                   <Button
@@ -877,6 +942,8 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
               ["all", "全部账单"],
               ["unsent", "未发账单"],
               ["negative", "负数账单"],
+              ["unmatched_paid", "已收未平"],
+              ["with_deduction", "有扣钱"],
             ] as const).map(([value, label]) => {
               const active = invoiceTab === value
               return (
@@ -1192,6 +1259,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                     <TonuIcon value={row.tonu} />
                   </dd>
                 </div>
+                <CardField label="扣钱" value={fmtText(row.deduction)} />
               </dl>
 
               <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">
@@ -1330,6 +1398,35 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
             <Button onClick={() => void saveNegativeDate()} disabled={savingNegativeDate || !negativeDate}>
               {savingNegativeDate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {savingNegativeDate ? "正在保存..." : "确认修改"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deductionEditIds != null}
+        onOpenChange={(open) => { if (!open && !savingDeduction) setDeductionEditIds(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>修改扣钱</DialogTitle>
+            <DialogDescription>
+              为选中的 {deductionEditIds?.length ?? 0} 条账单填写统一的扣钱说明，留空并保存即清除扣钱；扣钱不参与差额计算。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <label htmlFor="invoice-deduction-input" className="text-sm font-medium">扣钱说明</label>
+            <Input id="invoice-deduction-input" value={deductionText} maxLength={200}
+              placeholder="如 RTS、扣款原因（最长 200 字）"
+              onChange={(event) => setDeductionText(event.target.value)} disabled={savingDeduction}
+              onKeyDown={(event) => { if (event.key === "Enter") void saveDeduction() }} />
+            {deductionInit && deductionText === deductionInit && (
+              <p className="text-xs text-muted-foreground">已带入选中账单中首个非空扣钱说明，可直接修改或清空。</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeductionEditIds(null)} disabled={savingDeduction}>取消</Button>
+            <Button onClick={() => void saveDeduction()} disabled={savingDeduction}>
+              {savingDeduction && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {savingDeduction ? "正在保存..." : "确认修改"}
             </Button>
           </DialogFooter>
         </DialogContent>

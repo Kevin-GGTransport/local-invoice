@@ -29,6 +29,8 @@ export const accountingInvoiceCreateSchema = z.object({
   broker_load_number: z.string().max(100).optional().nullable(),
   billing_category: z.string().max(50).optional().nullable(),
   tonu: z.boolean().optional(),
+  // 扣钱为纯文本说明（如 RTS、扣款原因），不参与差额计算
+  deduction: z.string().max(200, '扣钱说明最长 200 字').optional().nullable(),
   invoice_price: moneyField,
   bill_to: z.string().max(200).optional().nullable(),
   description: z.string().optional().nullable(),

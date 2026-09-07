@@ -10,6 +10,7 @@ import React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -62,6 +63,8 @@ interface FormValues {
   invoice_date: string
   broker_load_number: string
   bill_to: string
+  tonu: boolean
+  deduction: string
   lines: FormLine[]
   pickup_date: string
   pickup_company: string
@@ -166,6 +169,8 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
     invoice_date: dateStr(data?.invoice_date),
     broker_load_number: str(data?.broker_load_number),
     bill_to: str(data?.bill_to),
+    tonu: data?.tonu === true,
+    deduction: str(data?.deduction),
     lines: initLines(data),
     pickup_date: dateStr(data?.pickup_date),
     pickup_company: str(data?.pickup_company),
@@ -175,7 +180,7 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
     drop_address: str(data?.drop_address),
   }))
 
-  const setField = React.useCallback((key: keyof Omit<FormValues, "lines">, value: string) => {
+  const setField = React.useCallback((key: keyof Omit<FormValues, "lines" | "tonu">, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }))
   }, [])
 
@@ -265,6 +270,8 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
         invoice_number: values.invoice_number.trim(),
         broker_load_number: values.broker_load_number.trim() || null,
         bill_to: values.bill_to.trim() || null,
+        tonu: values.tonu,
+        deduction: values.deduction.trim() || null,
         invoice_price: linesTotal,
         lines: linesPayload,
         pickup_date: dateOrNull(values.pickup_date),
@@ -327,7 +334,7 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
     !ACCOUNTING_BILLING_CATEGORY_OPTIONS.some((option) => option.value === values.billing_category)
 
   const renderField = (
-    key: keyof Omit<FormValues, "lines" | "company">,
+    key: keyof Omit<FormValues, "lines" | "company" | "tonu">,
     label: string,
     type: "text" | "date" = "text",
     placeholder?: string,
@@ -425,6 +432,30 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">TONU</Label>
+                <label className="flex min-h-11 items-center gap-2">
+                  <Checkbox
+                    checked={values.tonu}
+                    onCheckedChange={(checked) =>
+                      setValues((prev) => ({ ...prev, tonu: checked === true }))
+                    }
+                    aria-label="TONU（Truck Ordered Not Used）"
+                  />
+                  <span className="text-xs text-muted-foreground">Truck Ordered Not Used</span>
+                </label>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs" htmlFor="invoice-deduction">扣钱（说明）</Label>
+                <Input
+                  id="invoice-deduction"
+                  value={values.deduction}
+                  onChange={(e) => setField("deduction", e.target.value)}
+                  maxLength={200}
+                  placeholder="如 RTS、扣款原因（不参与差额计算）"
+                  className={inputCls}
+                />
               </div>
             </div>
           </section>

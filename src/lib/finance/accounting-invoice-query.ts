@@ -87,6 +87,19 @@ export function buildAccountingInvoiceWhere(
     where.AND = [{ invoice_date: { not: null } }, { invoice_price: { not: null } }]
   }
 
+  // 已收未平：有有效收款且差额 ≠ 0（差额 ≠ 0 的聚合条件由 SQL 版 where 负责）
+  if (params.get("invoice_status") === "unmatched_paid") {
+    where.AND = [
+      { invoice_date: { not: null } },
+      { invoice_price: { not: null } },
+      { accounting_invoice_reconciliations: { some: { voided_at: null } } },
+    ]
+  }
+
+  if (params.get("invoice_status") === "with_deduction") {
+    where.deduction = { not: null }
+  }
+
   return where
 }
 
@@ -145,6 +158,14 @@ export function buildAccountingInvoiceSqlWhere(params: URLSearchParams): Prisma.
   if (status === "reconciliation_exception") clauses.push(Prisma.sql`
     i.invoice_date IS NOT NULL AND i.invoice_price IS NOT NULL
     AND (i.invoice_price < 0 OR COALESCE(p.paid_amount, 0) > i.invoice_price)
+  `)
+  if (status === "unmatched_paid") clauses.push(Prisma.sql`
+    i.invoice_date IS NOT NULL AND i.invoice_price IS NOT NULL
+    AND COALESCE(p.paid_amount, 0) <> 0
+    AND COALESCE(p.paid_amount, 0) - i.invoice_price <> 0
+  `)
+  if (status === "with_deduction") clauses.push(Prisma.sql`
+    i.deduction IS NOT NULL AND i.deduction <> ''
   `)
   const search = params.get("search")?.trim()
   if (search) clauses.push(Prisma.sql`(${Prisma.join(
