@@ -17,6 +17,7 @@ import {
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -37,7 +38,6 @@ import {
 } from "@/components/ui/select"
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
@@ -55,7 +55,6 @@ import {
   ArrowUp,
   ArrowUpDown,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Database,
@@ -66,8 +65,6 @@ import {
   Loader2,
   Pencil,
   Plus,
-  RotateCcw,
-  Search,
   Send,
   Trash2,
   X,
@@ -78,10 +75,14 @@ import { AccountingInvoicesBatchPdf } from "@/components/finance/accounting-invo
 import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
 import type { PaginatedData } from "@/lib/api/types"
 import { openPdf, reservePdfWindow } from "@/lib/utils/open-pdf"
-import { ACCOUNTING_BILLING_CATEGORY_OPTIONS } from "@/lib/finance/accounting-invoice-companies"
 import { MAX_NEGATIVE_INVOICE_DATE_BATCH } from "@/lib/finance/accounting-invoice-negative-date"
 import { MAX_INVOICE_DEDUCTION_BATCH } from "@/lib/finance/accounting-invoice-deduction"
 import { MAX_ACCOUNTING_INVOICE_SEND } from "@/lib/finance/accounting-invoice-send"
+import {
+  AccountingInvoiceToolbar,
+  type CompanyOption,
+  type InvoiceTab,
+} from "./accounting-invoice-toolbar"
 
 /** 列表行（API 返回 JSON：BigInt id 已转 string，Decimal 为 string） */
 type Row = {
@@ -109,7 +110,6 @@ type Row = {
 
 type ListData = PaginatedData<Row>
 type SelectedRow = Pick<Row, "id" | "company" | "invoice_number" | "invoice_date" | "invoice_price" | "deduction">
-type InvoiceTab = "all" | "unsent" | "negative" | "unmatched_paid" | "with_deduction"
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
@@ -187,6 +187,43 @@ async function downloadExport(url: string, filename: string, successToast: strin
 
 const columnHelper = createColumnHelper<Row>()
 
+// —— 分组拖拽排序：拖动分组表头整组移动，组内列顺序不变 ——
+const GROUP_ORDER_STORAGE_KEY = "accounting-invoices.group-column-order.v1"
+const DEFAULT_GROUP_ORDER = ["business", "contract", "broker", "invoice", "other"] as const
+/** 各分组包含的叶子列 id（与 columns 定义保持一致），用于生成 TanStack columnOrder */
+const GROUP_LEAF_COLUMN_IDS: Record<string, string[]> = {
+  business: ["select", "company", "master_order_number", "order_number"],
+  contract: ["contract_date", "contract_price"],
+  broker: ["bill_to", "broker_load_number", "billing_category", "tonu"],
+  invoice: ["invoice_number", "invoice_date", "invoice_price", "difference"],
+  other: ["deduction", "notes", "actions"],
+}
+
+function arrayMove<T>(list: T[], from: number, to: number): T[] {
+  const copy = [...list]
+  const [moved] = copy.splice(from, 1)
+  copy.splice(to, 0, moved)
+  return copy
+}
+
+/** 读取持久化的分组顺序，容忍脏数据/新增分组（缺失的补到末尾） */
+function loadGroupOrder(): string[] {
+  if (typeof window === "undefined") return [...DEFAULT_GROUP_ORDER]
+  try {
+    const raw = window.localStorage.getItem(GROUP_ORDER_STORAGE_KEY)
+    if (!raw) return [...DEFAULT_GROUP_ORDER]
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return [...DEFAULT_GROUP_ORDER]
+    const saved = parsed.filter(
+      (id): id is string => typeof id === "string" && (DEFAULT_GROUP_ORDER as readonly string[]).includes(id)
+    )
+    const missing = DEFAULT_GROUP_ORDER.filter((id) => !saved.includes(id))
+    return [...new Set(saved), ...missing]
+  } catch {
+    return [...DEFAULT_GROUP_ORDER]
+  }
+}
+
 /** 排序图标（服务端排序，点击表头在 desc/asc 间切换） */
 function SortIcon({ id, sorting }: { id: string; sorting: SortingState }) {
   const sorted = sorting.find((s) => s.id === id)
@@ -217,21 +254,36 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
   const [brokerInput, setBrokerInput] = React.useState("")
   const [appliedBroker, setAppliedBroker] = React.useState("")
   const [companies, setCompanies] = React.useState<string[]>([])
-  const [companyOptions, setCompanyOptions] = React.useState<
-    { code: string; name: string; has_active_template: boolean }[]
-  >([])
+  const [companyOptions, setCompanyOptions] = React.useState<CompanyOption[]>([])
   const [billingCategory, setBillingCategory] = React.useState("")
   const [invoiceTab, setInvoiceTab] = React.useState<InvoiceTab>("all")
   const [dateFrom, setDateFrom] = React.useState("")
   const [dateTo, setDateTo] = React.useState("")
   const [filterYear, setFilterYear] = React.useState(initialYear)
   const activeMonth = selectedInvoiceMonth(filterYear, dateFrom, dateTo)
-  const selectMonth = (year: number, month: number) => {
+  const selectMonth = React.useCallback((year: number, month: number) => {
     const range = invoiceMonthRange(year, month)
     setDateFrom(range.from)
     setDateTo(range.to)
     setPage(1)
-  }
+  }, [])
+
+  // 吸顶工具栏高度（用于计算表格滚动容器 max-height）与分组列顺序
+  const [toolbarHeight, setToolbarHeight] = React.useState(0)
+  const [groupOrder, setGroupOrder] = React.useState<string[]>([...DEFAULT_GROUP_ORDER])
+  const [draggingGroup, setDraggingGroup] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    setGroupOrder(loadGroupOrder())
+  }, [])
+
+  const persistGroupOrder = React.useCallback((order: string[]) => {
+    try {
+      window.localStorage.setItem(GROUP_ORDER_STORAGE_KEY, JSON.stringify(order))
+    } catch {
+      // localStorage 不可用（隐私模式等）时仅本次会话生效
+    }
+  }, [])
 
   // 勾选与新建/编辑弹窗
   const [selected, setSelected] = React.useState<Map<string, SelectedRow>>(new Map())
@@ -689,6 +741,70 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     setPage(1)
   }, [searchInput, brokerInput])
 
+  // —— 工具栏交互（吸顶工具栏组件的回调） ——
+  const handleInvoiceTabChange = React.useCallback((tab: InvoiceTab) => {
+    setInvoiceTab(tab)
+    setSelected(new Map())
+    setPage(1)
+  }, [])
+
+  const handleBillingCategoryChange = React.useCallback((value: string) => {
+    setBillingCategory(value)
+    setPage(1)
+  }, [])
+
+  const handleDateFromChange = React.useCallback((value: string) => {
+    setDateFrom(value)
+    if (value) setFilterYear(Number(value.slice(0, 4)))
+    setPage(1)
+  }, [])
+
+  const handleDateToChange = React.useCallback((value: string) => {
+    setDateTo(value)
+    setPage(1)
+  }, [])
+
+  const handleFilterYearCommit = React.useCallback(
+    (year: number) => {
+      setFilterYear(year)
+      if (activeMonth != null) selectMonth(year, activeMonth)
+    },
+    [activeMonth, selectMonth]
+  )
+
+  const handleClearMonth = React.useCallback(() => {
+    setDateFrom("")
+    setDateTo("")
+    setPage(1)
+  }, [])
+
+  // —— 分组拖拽排序（原生 HTML5 DnD，拖第一行分组表头实时换位） ——
+  const handleGroupDragStart = React.useCallback(
+    (event: React.DragEvent<HTMLTableCellElement>, groupId: string) => {
+      setDraggingGroup(groupId)
+      event.dataTransfer.effectAllowed = "move"
+      event.dataTransfer.setData("text/plain", groupId)
+    },
+    []
+  )
+
+  const handleGroupDragOver = React.useCallback(
+    (event: React.DragEvent<HTMLTableCellElement>, groupId: string) => {
+      if (draggingGroup == null || draggingGroup === groupId) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = "move"
+      const from = groupOrder.indexOf(draggingGroup)
+      const to = groupOrder.indexOf(groupId)
+      if (from < 0 || to < 0 || from === to) return
+      const next = arrayMove(groupOrder, from, to)
+      setGroupOrder(next)
+      persistGroupOrder(next)
+    },
+    [draggingGroup, groupOrder, persistGroupOrder]
+  )
+
+  const clearDraggingGroup = React.useCallback(() => setDraggingGroup(null), [])
+
   // —— 列定义（sortable 与源 config 一致） ——
   const columns = React.useMemo(
     () => [
@@ -832,10 +948,15 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     ? {}
     : { difference: false, deduction: false }
 
+  const columnOrder = React.useMemo(
+    () => groupOrder.flatMap((groupId) => GROUP_LEAF_COLUMN_IDS[groupId] ?? []),
+    [groupOrder]
+  )
+
   const table = useReactTable({
     data: rows,
     columns,
-    state: { sorting, columnVisibility },
+    state: { sorting, columnVisibility, columnOrder },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     manualPagination: true,
@@ -844,6 +965,11 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
   })
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
+
+  // 表格滚动容器高度：视口高 − 顶栏(64px) − 吸顶工具栏高 − 底部留白（分页条 + 间距 + 页边距，
+  // 略小于实际值，保证页面可滚出足够距离让工具栏吸顶）
+  const tableMaxHeight =
+    toolbarHeight > 0 ? `calc(100dvh - ${Math.round(toolbarHeight) + 64 + 80}px)` : undefined
 
   return (
     <div className="space-y-4">
@@ -957,242 +1083,82 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
           </div>
         </div>
 
-        {/* 统一筛选与搜索工具栏 */}
-        <div className="border-t border-slate-800 bg-slate-950 px-3 sm:px-4">
-          <div className="flex flex-wrap" role="tablist" aria-label="账单状态">
-            {([
-              ["all", "全部账单"],
-              ["unsent", "未发账单"],
-              ["negative", "负数账单"],
-              ["unmatched_paid", "已收未平"],
-              ["with_deduction", "有扣钱"],
-            ] as const).map(([value, label]) => {
-              const active = invoiceTab === value
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  className={`relative px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300 ${
-                    active ? "text-amber-300" : "text-slate-400 hover:text-slate-100"
-                  }`}
-                  onClick={() => {
-                    setInvoiceTab(value)
-                    setSelected(new Map())
-                    setPage(1)
-                  }}
-                >
-                  {label}
-                  {active && (
-                    <span
-                      aria-hidden="true"
-                      className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-amber-400"
-                    />
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="border-t bg-muted/30 px-3 py-3 sm:px-4">
-          <div className="flex flex-col gap-2 2xl:flex-row 2xl:flex-wrap 2xl:items-center 2xl:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 w-full justify-between bg-background sm:w-[136px]"
-                  >
-                    {companies.length > 0 ? `公司 ${companies.length}` : "全部公司"}
-                    <ChevronDown className="ml-1 h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {companyOptions.map((opt) => (
-                    <DropdownMenuCheckboxItem
-                      key={opt.code}
-                      checked={companies.includes(opt.code)}
-                      onCheckedChange={(checked) => toggleCompany(opt.code, checked === true)}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      {opt.name}（{opt.code}）
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <Select
-                value={billingCategory || "__all__"}
-                onValueChange={(v) => {
-                  setBillingCategory(v === "__all__" ? "" : v)
-                  setPage(1)
-                }}
-              >
-                <SelectTrigger
-                  className="h-9 w-full bg-background sm:w-[150px]"
-                  aria-label="账单分类"
-                >
-                  <SelectValue placeholder="账单分类" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">全部分类</SelectItem>
-                  {ACCOUNTING_BILLING_CATEGORY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {invoiceTab !== "unsent" && (
-                <div
-                  aria-label="时间筛选"
-                  className="flex w-full min-w-0 flex-wrap items-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 shadow-xs sm:w-auto"
-                >
-                  <span className="shrink-0 px-1 text-xs font-medium text-muted-foreground">
-                    Invoice日期
-                  </span>
-
-                  <Input
-                    type="date"
-                    aria-label="开始日期"
-                    className="h-7 min-w-24 flex-1 border-0 px-1 text-xs shadow-none focus-visible:border-transparent focus-visible:ring-0 sm:w-32"
-                    value={dateFrom}
-                    onChange={(e) => {
-                      setDateFrom(e.target.value)
-                      if (e.target.value) setFilterYear(Number(e.target.value.slice(0, 4)))
-                      setPage(1)
-                    }}
-                  />
-                  <span className="text-xs text-muted-foreground">至</span>
-                  <Input
-                    type="date"
-                    aria-label="结束日期"
-                    className="h-7 min-w-24 flex-1 border-0 px-1 text-xs shadow-none focus-visible:border-transparent focus-visible:ring-0 sm:w-32"
-                    value={dateTo}
-                    onChange={(e) => {
-                      setDateTo(e.target.value)
-                      setPage(1)
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {invoiceTab !== "unsent" && (
-              <div className="flex w-full flex-wrap items-center gap-1.5" role="group" aria-label="Invoice 月份快捷筛选">
-              <label htmlFor="invoice-filter-year" className="text-xs font-medium text-muted-foreground">年份</label>
-              <Input
-                id="invoice-filter-year"
-                type="number"
-                min={1900}
-                max={9999}
-                className="h-11 w-24"
-                key={filterYear}
-                defaultValue={filterYear}
-                onBlur={(event) => {
-                  const year = Number(event.target.value)
-                  if (!Number.isInteger(year) || year < 1900 || year > 9999) {
-                    event.target.value = String(filterYear)
-                    return
-                  }
-                  setFilterYear(year)
-                  if (activeMonth != null) selectMonth(year, activeMonth)
-                }}
-                onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur() }}
-              />
-              <Button type="button" variant={!dateFrom && !dateTo ? "default" : "outline"}
-                className={`min-h-11 ${!dateFrom && !dateTo ? "bg-amber-500 text-slate-950 hover:bg-amber-400 focus-visible:ring-amber-300/50" : ""}`}
-                aria-pressed={!dateFrom && !dateTo}
-                onClick={() => { setDateFrom(""); setDateTo(""); setPage(1) }}>
-                全部月份
-              </Button>
-              {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
-                <Button key={month} type="button" className={`min-h-11 min-w-11 px-2 ${activeMonth === month ? "bg-amber-500 text-slate-950 hover:bg-amber-400 focus-visible:ring-amber-300/50" : ""}`}
-                  variant={activeMonth === month ? "default" : "outline"}
-                  aria-pressed={activeMonth === month}
-                  aria-label={`${filterYear}年${month}月`}
-                  onClick={() => selectMonth(filterYear, month)}>
-                  {month}月
-                </Button>
-              ))}
-              </div>
-            )}
-
-            <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row 2xl:ml-auto 2xl:w-auto 2xl:flex-1">
-              <div className="flex h-10 w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-background px-3 shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30 sm:w-64 sm:shrink-0">
-                <label htmlFor="broker-search" className="shrink-0 text-xs text-muted-foreground">
-                  客户 / BROKER
-                </label>
-                <Input
-                  id="broker-search"
-                  className="h-8 min-w-0 flex-1 rounded-none border-0 px-0 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0"
-                  placeholder="输入客户名称"
-                  value={brokerInput}
-                  onChange={(e) => setBrokerInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") applySearch()
-                  }}
-                />
-              </div>
-              <div className="flex h-10 w-full min-w-0 items-center gap-1 rounded-lg border border-input bg-background p-1 shadow-xs transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30 sm:flex-1">
-                <Search
-                  className="ml-1.5 size-4 shrink-0 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                <Input
-                  aria-label="搜索账单"
-                  className="h-8 min-w-0 flex-1 rounded-none border-0 px-1 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0"
-                  placeholder="发票号 / 货号 / Load# / 备注"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") applySearch()
-                  }}
-                />
-                <Button size="sm" className="h-8 shrink-0" onClick={applySearch}>
-                  搜索
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 shrink-0 text-muted-foreground"
-                  onClick={resetFilters}
-                  title="清空筛选条件"
-                  aria-label="清空筛选条件"
-                >
-                  <RotateCcw className="size-4" aria-hidden="true" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
       </section>
 
-      {/* 宽屏表格；低于 2xl 分辨率切换为卡片视图 */}
-      <div className="hidden overflow-x-auto rounded-lg border bg-card 2xl:block">
-        <Table className="text-[13px]">
+      {/* 吸顶工具栏：状态 Tab + 筛选/搜索区（sticky 于顶部导航栏下方） */}
+      <AccountingInvoiceToolbar
+        invoiceTab={invoiceTab}
+        onInvoiceTabChange={handleInvoiceTabChange}
+        companies={companies}
+        companyOptions={companyOptions}
+        onToggleCompany={toggleCompany}
+        billingCategory={billingCategory}
+        onBillingCategoryChange={handleBillingCategoryChange}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={handleDateFromChange}
+        onDateToChange={handleDateToChange}
+        filterYear={filterYear}
+        onFilterYearCommit={handleFilterYearCommit}
+        activeMonth={activeMonth}
+        onSelectMonth={selectMonth}
+        onClearMonth={handleClearMonth}
+        brokerInput={brokerInput}
+        onBrokerInputChange={setBrokerInput}
+        searchInput={searchInput}
+        onSearchInputChange={setSearchInput}
+        onApplySearch={applySearch}
+        onResetFilters={resetFilters}
+        onHeightChange={setToolbarHeight}
+      />
+
+      {/* 宽屏表格；低于 2xl 分辨率切换为卡片视图。表格内部滚动，两行表头吸顶 */}
+      <div
+        className="hidden overflow-auto rounded-lg border bg-card 2xl:block"
+        style={{ maxHeight: tableMaxHeight }}
+      >
+        <Table noWrapper className="text-[13px]">
           <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead
-                    key={header.id}
-                    colSpan={header.colSpan}
-                    scope={header.subHeaders.length ? "colgroup" : "col"}
-                    className="h-10 whitespace-nowrap border-slate-800 bg-slate-950 px-3 text-[12px] font-semibold text-slate-100 [&_button]:text-slate-100 [&_button:hover]:text-white"
-                    style={{ width: header.subHeaders.length === 0 && header.getSize() !== 150 ? header.getSize() : undefined }}
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
+            {table.getHeaderGroups().map((headerGroup) => {
+              const isGroupRow = headerGroup.depth === 0
+              return (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <TableHead
+                      key={header.id}
+                      colSpan={header.colSpan}
+                      scope={header.subHeaders.length ? "colgroup" : "col"}
+                      draggable={isGroupRow}
+                      title={isGroupRow ? "拖动调整分组顺序" : undefined}
+                      onDragStart={
+                        isGroupRow
+                          ? (event) => handleGroupDragStart(event, header.column.id)
+                          : undefined
+                      }
+                      onDragOver={
+                        isGroupRow
+                          ? (event) => handleGroupDragOver(event, header.column.id)
+                          : undefined
+                      }
+                      onDrop={isGroupRow ? (event) => event.preventDefault() : undefined}
+                      onDragEnd={isGroupRow ? clearDraggingGroup : undefined}
+                      className={cn(
+                        "sticky h-10 whitespace-nowrap border-slate-800 bg-slate-950 px-3 text-[12px] font-semibold text-slate-100 [&_button]:text-slate-100 [&_button:hover]:text-white",
+                        isGroupRow
+                          ? "top-0 z-20 cursor-grab select-none active:cursor-grabbing"
+                          : "top-10 z-10",
+                        isGroupRow && draggingGroup === header.column.id ? "opacity-60" : ""
+                      )}
+                      style={{ width: header.subHeaders.length === 0 && header.getSize() !== 150 ? header.getSize() : undefined }}
+                    >
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              )
+            })}
           </TableHeader>
           <TableBody>
             {loading ? (
