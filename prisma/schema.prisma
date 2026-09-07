@@ -86,13 +86,30 @@ model accounting_invoice_reconciliations {
 }
 
 model users {
-  id            BigInt   @id @default(autoincrement())
-  username      String   @unique @db.VarChar(50)
+  id            BigInt       @id @default(autoincrement())
+  username      String       @unique @db.VarChar(50)
   password_hash String
-  name          String?  @db.VarChar(100)
-  role          String   @default("user") @db.VarChar(50)
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  name          String?      @db.VarChar(100)
+  role          String       @default("user") @db.VarChar(50)
+  created_at    DateTime     @default(now())
+  updated_at    DateTime     @updatedAt
+  table_views   table_views[]
+}
+
+/** 表格视图预设：按用户按表格保存（筛选 + 排序 + 列显隐 + 分组顺序） */
+model table_views {
+  id         BigInt   @id @default(autoincrement())
+  user_id    BigInt
+  table_key  String   @db.VarChar(50)
+  name       String   @db.VarChar(50)
+  config     Json
+  is_default Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @updatedAt @db.Timestamptz(6)
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, table_key, name], map: "uk_table_views_user_table_name")
+  @@index([user_id, table_key], map: "idx_table_views_user_table")
 }
 
 model companies {

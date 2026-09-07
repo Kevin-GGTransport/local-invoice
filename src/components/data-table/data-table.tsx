@@ -1,0 +1,179 @@
+"use client"
+
+/**
+ * 通用数据表格外壳（配合 TanStack Table 实例渲染）
+ * - 双行表头（分组行 + 叶子行）sticky 吸顶；传入受控 groupOrder 后分组表头可拖拽整组换位
+ * - 滚动容器 maxHeight 由外部按吸顶工具栏高度计算传入
+ * - 响应式显隐（如 2xl:block 配卡片视图）由调用方通过 className 控制
+ */
+
+import React from "react"
+import { flexRender, type Table as TanStackTable } from "@tanstack/react-table"
+import { Loader2 } from "lucide-react"
+import { cn } from "@/lib/utils"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+
+type DataTableProps<TData> = {
+  table: TanStackTable<TData>
+  loading?: boolean
+  /** 滚动容器 max-height（CSS 值，如 calc(100dvh - 320px)） */
+  maxHeight?: string
+  /** 追加到滚动容器的类名（如响应式显隐 hidden 2xl:block） */
+  className?: string
+  emptyText?: string
+  loadingText?: string
+  /** 分组顺序（分组 id 数组）；与 onGroupOrderChange 同传即启用分组拖拽 */
+  groupOrder?: string[]
+  onGroupOrderChange?: (next: string[]) => void
+}
+
+function arrayMove<T>(list: T[], from: number, to: number): T[] {
+  const copy = [...list]
+  const [moved] = copy.splice(from, 1)
+  copy.splice(to, 0, moved)
+  return copy
+}
+
+export function DataTable<TData>({
+  table,
+  loading = false,
+  maxHeight,
+  className,
+  emptyText = "暂无数据",
+  loadingText = "正在加载...",
+  groupOrder,
+  onGroupOrderChange,
+}: DataTableProps<TData>) {
+  const [draggingGroup, setDraggingGroup] = React.useState<string | null>(null)
+  const dragEnabled = groupOrder != null && onGroupOrderChange != null
+
+  // —— 分组拖拽排序（原生 HTML5 DnD，拖第一行分组表头实时换位，组内列顺序不变） ——
+  const handleGroupDragStart = React.useCallback(
+    (event: React.DragEvent<HTMLTableCellElement>, groupId: string) => {
+      setDraggingGroup(groupId)
+      event.dataTransfer.effectAllowed = "move"
+      event.dataTransfer.setData("text/plain", groupId)
+    },
+    []
+  )
+
+  const handleGroupDragOver = React.useCallback(
+    (event: React.DragEvent<HTMLTableCellElement>, groupId: string) => {
+      if (!dragEnabled || !groupOrder) return
+      if (draggingGroup == null || draggingGroup === groupId) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = "move"
+      const from = groupOrder.indexOf(draggingGroup)
+      const to = groupOrder.indexOf(groupId)
+      if (from < 0 || to < 0 || from === to) return
+      onGroupOrderChange?.(arrayMove(groupOrder, from, to))
+    },
+    [dragEnabled, draggingGroup, groupOrder, onGroupOrderChange]
+  )
+
+  const clearDraggingGroup = React.useCallback(() => setDraggingGroup(null), [])
+
+  return (
+    <div
+      className={cn("overflow-auto rounded-lg border bg-card", className)}
+      style={{ maxHeight }}
+    >
+      <Table noWrapper className="text-[13px]">
+        <TableHeader>
+          {table.getHeaderGroups().map((headerGroup) => {
+            // depth 0 为分组行；仅在启用拖拽且该表头确实是分组（含子列）时可拖
+            const isGroupRow =
+              headerGroup.depth === 0 &&
+              headerGroup.headers.some((h) => h.subHeaders.length > 0)
+            return (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => {
+                  const isDraggableHead = isGroupRow && header.subHeaders.length > 0
+                  return (
+                    <TableHead
+                      key={header.id}
+                      colSpan={header.colSpan}
+                      scope={header.subHeaders.length ? "colgroup" : "col"}
+                      draggable={isDraggableHead}
+                      title={isDraggableHead ? "拖动调整分组顺序" : undefined}
+                      onDragStart={
+                        isDraggableHead
+                          ? (event) => handleGroupDragStart(event, header.column.id)
+                          : undefined
+                      }
+                      onDragOver={
+                        isDraggableHead
+                          ? (event) => handleGroupDragOver(event, header.column.id)
+                          : undefined
+                      }
+                      onDrop={isDraggableHead ? (event) => event.preventDefault() : undefined}
+                      onDragEnd={isDraggableHead ? clearDraggingGroup : undefined}
+                      className={cn(
+                        "sticky h-10 whitespace-nowrap border-slate-800 bg-slate-950 px-3 text-[12px] font-semibold text-slate-100 [&_button]:text-slate-100 [&_button:hover]:text-white",
+                        isDraggableHead
+                          ? "top-0 z-20 cursor-grab select-none active:cursor-grabbing"
+                          : isGroupRow
+                            ? "top-0 z-20"
+                            : "top-10 z-10",
+                        isDraggableHead && draggingGroup === header.column.id ? "opacity-60" : ""
+                      )}
+                      style={{
+                        width:
+                          header.subHeaders.length === 0 && header.getSize() !== 150
+                            ? header.getSize()
+                            : undefined,
+                      }}
+                    >
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  )
+                })}
+              </TableRow>
+            )
+          })}
+        </TableHeader>
+        <TableBody>
+          {loading ? (
+            <TableRow>
+              <TableCell
+                colSpan={table.getVisibleLeafColumns().length}
+                className="h-24 text-center text-muted-foreground"
+              >
+                <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                {loadingText}
+              </TableCell>
+            </TableRow>
+          ) : table.getRowModel().rows.length === 0 ? (
+            <TableRow>
+              <TableCell
+                colSpan={table.getVisibleLeafColumns().length}
+                className="h-24 text-center text-muted-foreground"
+              >
+                {emptyText}
+              </TableCell>
+            </TableRow>
+          ) : (
+            table.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id} className="h-8 px-2 py-1.5">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}

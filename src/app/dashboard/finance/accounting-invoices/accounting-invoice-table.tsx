@@ -1,41 +1,22 @@
 "use client"
 
 /**
- * 陆运账单列表（本模块专用表格，替代源项目通用 EntityTable）
- * 服务端分页/排序/筛选 + 勾选批量（合并打印 PDF / 导出 Excel / 批量删除）
- * + 新建/编辑弹窗复用模版编辑表单（AccountingInvoiceForm）
+ * 陆运账单列表编排器
+ * 数据/分页/排序由 useServerTable 驱动，表格渲染复用通用 DataTable / TablePagination，
+ * 列定义见 accounting-invoice-columns，弹窗见 accounting-invoice-dialogs，
+ * 视图预设（筛选 + 排序 + 列显隐 + 分组顺序，按用户存库）见 accounting-invoice-view
  */
 
 import { invoiceMonthRange, selectedInvoiceMonth } from "@/lib/finance/accounting-invoice-month"
 import React from "react"
 import { useRouter } from "next/navigation"
 import {
-  createColumnHelper,
-  flexRender,
   getCoreRowModel,
   useReactTable,
-  type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table"
-import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,20 +24,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  Check,
-  ChevronLeft,
-  ChevronRight,
   Database,
   Download,
   Eye,
@@ -67,87 +34,89 @@ import {
   Plus,
   Send,
   Trash2,
-  X,
 } from "lucide-react"
 import { toast } from "sonner"
-import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
 import { AccountingInvoicesBatchPdf } from "@/components/finance/accounting-invoices-batch-pdf"
 import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
-import type { PaginatedData } from "@/lib/api/types"
 import { openPdf, reservePdfWindow } from "@/lib/utils/open-pdf"
 import { MAX_NEGATIVE_INVOICE_DATE_BATCH } from "@/lib/finance/accounting-invoice-negative-date"
 import { MAX_INVOICE_DEDUCTION_BATCH } from "@/lib/finance/accounting-invoice-deduction"
 import { MAX_ACCOUNTING_INVOICE_SEND } from "@/lib/finance/accounting-invoice-send"
+import { useServerTable } from "@/components/data-table/use-server-table"
+import { DataTable } from "@/components/data-table/data-table"
+import { TablePagination } from "@/components/data-table/table-pagination"
+import {
+  TableViewMenu,
+  type TableViewItem,
+} from "@/components/data-table/table-view-menu"
+import { ColumnSettingsMenu } from "@/components/data-table/column-settings-menu"
 import {
   AccountingInvoiceToolbar,
   type CompanyOption,
   type InvoiceTab,
 } from "./accounting-invoice-toolbar"
+import {
+  useInvoiceColumns,
+  fmtDate,
+  fmtMoney,
+  fmtText,
+  TonuIcon,
+  type AccountingInvoiceRow,
+  type SelectedInvoiceRow,
+} from "./accounting-invoice-columns"
+import {
+  InvoiceFormDialog,
+  SendInvoiceDialog,
+  NegativeDateDialog,
+  DeductionDialog,
+  type SendTarget,
+} from "./accounting-invoice-dialogs"
+import {
+  INVOICE_TABLE_KEY,
+  DEFAULT_GROUP_ORDER,
+  GROUP_LEAF_COLUMN_IDS,
+  INVOICE_COLUMN_SETTINGS_GROUPS,
+  buildInvoiceViewConfig,
+  parseInvoiceViewConfig,
+  type InvoiceViewConfig,
+} from "./accounting-invoice-view"
 
-/** 列表行（API 返回 JSON：BigInt id 已转 string，Decimal 为 string） */
-type Row = {
+/** API 返回的已保存视图（BigInt id 已转 string） */
+type ApiTableView = {
   id: string
-  company: string
-  master_order_number: string | null
-  order_number: string | null
-  contract_date: string | null
-  contract_price: string | null
-  bill_to: string | null
-  broker_load_number: string | null
-  billing_category: string | null
-  tonu: boolean
-  invoice_number: string
-  invoice_date: string | null
-  invoice_price: string | null
-  check_date: string | null
-  check_amount: string | null
-  check_number: string | null
-  deduction: string | null
-  rts: string | null
-  difference: string | null
-  notes: string | null
+  table_key: string
+  name: string
+  config: unknown
+  is_default: boolean
 }
 
-type ListData = PaginatedData<Row>
-type SelectedRow = Pick<Row, "id" | "company" | "invoice_number" | "invoice_date" | "invoice_price" | "deduction">
+const GROUP_ORDER_STORAGE_KEY = "accounting-invoices.group-column-order.v1"
+
+/** 读取持久化的分组顺序，容忍脏数据/新增分组 */
+function loadGroupOrder(): string[] {
+  if (typeof window === "undefined") return [...DEFAULT_GROUP_ORDER]
+  try {
+    const raw = window.localStorage.getItem(GROUP_ORDER_STORAGE_KEY)
+    if (!raw) return [...DEFAULT_GROUP_ORDER]
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return [...DEFAULT_GROUP_ORDER]
+    const defaults = DEFAULT_GROUP_ORDER as readonly string[]
+    const saved = parsed.filter((id): id is string => typeof id === "string" && defaults.includes(id))
+    const missing = defaults.filter((id) => !saved.includes(id))
+    return [...new Set(saved), ...missing]
+  } catch {
+    return [...DEFAULT_GROUP_ORDER]
+  }
+}
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
-}
-
-function fmtDate(value: string | null) {
-  return value ? value.slice(0, 10) : ""
-}
-
-function fmtMoney(value: string | null) {
-  if (value == null || value === "") return ""
-  const n = Number(value)
-  if (Number.isNaN(n)) return ""
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
-function fmtText(value: string | null) {
-  return value == null || value === "" ? "—" : value
 }
 
 function localToday(): string {
   const now = new Date()
   const pad = (value: number) => String(value).padStart(2, "0")
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-}
-
-type SendTarget = {
-  ids: string[]
-  label: string
-  isBatch: boolean
-}
-
-function TonuIcon({ value }: { value: boolean }) {
-  return value ? (
-    <Check className="mx-auto size-4 text-emerald-600" aria-label="TONU：是" />
-  ) : (
-    <X className="mx-auto size-4 text-rose-600" aria-label="TONU：否" />
-  )
 }
 
 function CardField({ label, value }: { label: string; value: string }) {
@@ -185,70 +154,11 @@ async function downloadExport(url: string, filename: string, successToast: strin
   }
 }
 
-const columnHelper = createColumnHelper<Row>()
-
-// —— 分组拖拽排序：拖动分组表头整组移动，组内列顺序不变 ——
-const GROUP_ORDER_STORAGE_KEY = "accounting-invoices.group-column-order.v1"
-const DEFAULT_GROUP_ORDER = ["business", "contract", "broker", "invoice", "other"] as const
-/** 各分组包含的叶子列 id（与 columns 定义保持一致），用于生成 TanStack columnOrder */
-const GROUP_LEAF_COLUMN_IDS: Record<string, string[]> = {
-  business: ["select", "company", "master_order_number", "order_number"],
-  contract: ["contract_date", "contract_price"],
-  broker: ["bill_to", "broker_load_number", "billing_category", "tonu"],
-  invoice: ["invoice_number", "invoice_date", "invoice_price", "difference"],
-  other: ["deduction", "notes", "actions"],
-}
-
-function arrayMove<T>(list: T[], from: number, to: number): T[] {
-  const copy = [...list]
-  const [moved] = copy.splice(from, 1)
-  copy.splice(to, 0, moved)
-  return copy
-}
-
-/** 读取持久化的分组顺序，容忍脏数据/新增分组（缺失的补到末尾） */
-function loadGroupOrder(): string[] {
-  if (typeof window === "undefined") return [...DEFAULT_GROUP_ORDER]
-  try {
-    const raw = window.localStorage.getItem(GROUP_ORDER_STORAGE_KEY)
-    if (!raw) return [...DEFAULT_GROUP_ORDER]
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return [...DEFAULT_GROUP_ORDER]
-    const saved = parsed.filter(
-      (id): id is string => typeof id === "string" && (DEFAULT_GROUP_ORDER as readonly string[]).includes(id)
-    )
-    const missing = DEFAULT_GROUP_ORDER.filter((id) => !saved.includes(id))
-    return [...new Set(saved), ...missing]
-  } catch {
-    return [...DEFAULT_GROUP_ORDER]
-  }
-}
-
-/** 排序图标（服务端排序，点击表头在 desc/asc 间切换） */
-function SortIcon({ id, sorting }: { id: string; sorting: SortingState }) {
-  const sorted = sorting.find((s) => s.id === id)
-  if (!sorted) return <ArrowUpDown className="ml-1 h-3 w-3 text-slate-400" />
-  return sorted.desc ? (
-    <ArrowDown className="ml-1 h-3 w-3 text-amber-300" />
-  ) : (
-    <ArrowUp className="ml-1 h-3 w-3 text-amber-300" />
-  )
-}
-
 export function AccountingInvoiceTable({ initialToday }: { initialToday: string }) {
   const router = useRouter()
   const initialYear = Number(initialToday.slice(0, 4))
 
-  // 数据与分页/排序
-  const [rows, setRows] = React.useState<Row[]>([])
-  const [total, setTotal] = React.useState(0)
-  const [page, setPage] = React.useState(1)
-  const [pageSize, setPageSize] = React.useState(100)
-  const [sorting, setSorting] = React.useState<SortingState>([{ id: "invoice_date", desc: true }])
-  const [loading, setLoading] = React.useState(true)
-  const [reloadFlag, setReloadFlag] = React.useState(0)
-
-  // 筛选条件（变更即回第一页）
+  // —— 筛选条件（变更即回第一页） ——
   const [searchInput, setSearchInput] = React.useState("")
   const [appliedSearch, setAppliedSearch] = React.useState("")
   const [brokerInput, setBrokerInput] = React.useState("")
@@ -261,17 +171,25 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
   const [dateTo, setDateTo] = React.useState("")
   const [filterYear, setFilterYear] = React.useState(initialYear)
   const activeMonth = selectedInvoiceMonth(filterYear, dateFrom, dateTo)
-  const selectMonth = React.useCallback((year: number, month: number) => {
-    const range = invoiceMonthRange(year, month)
-    setDateFrom(range.from)
-    setDateTo(range.to)
-    setPage(1)
+
+  // —— 列显隐：手动/视图覆盖优先于按 Tab 的自动规则 ——
+  // （负数、已收未平、有扣钱视图默认展示差额与扣钱列，其余 Tab 默认隐藏）
+  const [columnOverrides, setColumnOverrides] = React.useState<VisibilityState>({})
+  const showSettlementColumns =
+    invoiceTab === "negative" || invoiceTab === "unmatched_paid" || invoiceTab === "with_deduction"
+  const columnVisibility: VisibilityState = React.useMemo(
+    () => ({
+      ...(showSettlementColumns ? {} : { difference: false, deduction: false }),
+      ...columnOverrides,
+    }),
+    [showSettlementColumns, columnOverrides]
+  )
+  const handleToggleColumn = React.useCallback((id: string, visible: boolean) => {
+    setColumnOverrides((prev) => ({ ...prev, [id]: visible }))
   }, [])
 
-  // 吸顶工具栏高度（用于计算表格滚动容器 max-height）与分组列顺序
-  const [toolbarHeight, setToolbarHeight] = React.useState(0)
+  // —— 分组列顺序（localStorage 持久化；应用视图时覆盖并回写） ——
   const [groupOrder, setGroupOrder] = React.useState<string[]>([...DEFAULT_GROUP_ORDER])
-  const [draggingGroup, setDraggingGroup] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     setGroupOrder(loadGroupOrder())
@@ -285,8 +203,73 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     }
   }, [])
 
-  // 勾选与新建/编辑弹窗
-  const [selected, setSelected] = React.useState<Map<string, SelectedRow>>(new Map())
+  const handleGroupOrderChange = React.useCallback(
+    (next: string[]) => {
+      setGroupOrder(next)
+      persistGroupOrder(next)
+    },
+    [persistGroupOrder]
+  )
+
+  // —— 数据（服务端分页/排序） ——
+  const buildParams = React.useCallback(
+    ({ page, pageSize, sorting }: { page: number; pageSize: number; sorting: { id: string; desc: boolean }[] }) => {
+      const params = new URLSearchParams()
+      params.set("page", String(page))
+      params.set("pageSize", String(pageSize))
+      if (sorting[0]) {
+        params.set("sort", sorting[0].id)
+        params.set("order", sorting[0].desc ? "desc" : "asc")
+      }
+      if (appliedSearch) params.set("search", appliedSearch)
+      if (appliedBroker) params.set("bill_to", appliedBroker)
+      if (companies.length > 0) params.set("company", companies.join(","))
+      if (billingCategory) params.set("billing_category", billingCategory)
+      if (invoiceTab !== "all") params.set("invoice_status", invoiceTab)
+      if (dateFrom) params.set("invoice_date_from", dateFrom)
+      if (dateTo) params.set("invoice_date_to", dateTo)
+      return params
+    },
+    [appliedSearch, appliedBroker, companies, billingCategory, invoiceTab, dateFrom, dateTo]
+  )
+
+  const handleLoadError = React.useCallback(
+    (message: string) => toast.error(`加载陆运账单失败：${message}`),
+    []
+  )
+
+  const {
+    rows,
+    total,
+    page,
+    setPage,
+    pageSize,
+    changePageSize,
+    sorting,
+    setSorting,
+    toggleSort,
+    loading,
+    refresh,
+  } = useServerTable<AccountingInvoiceRow>({
+    endpoint: "/api/finance/accounting-invoices",
+    buildParams,
+    initialSorting: [{ id: "invoice_date", desc: true }],
+    initialPageSize: 100,
+    onError: handleLoadError,
+  })
+
+  const selectMonth = React.useCallback(
+    (year: number, month: number) => {
+      const range = invoiceMonthRange(year, month)
+      setDateFrom(range.from)
+      setDateTo(range.to)
+      setPage(1)
+    },
+    [setPage]
+  )
+
+  // —— 勾选与新建/编辑弹窗 ——
+  const [selected, setSelected] = React.useState<Map<string, SelectedInvoiceRow>>(new Map())
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editingRecord, setEditingRecord] = React.useState<Record<string, unknown> | null>(null)
   const [detailLoading, setDetailLoading] = React.useState(false)
@@ -307,70 +290,22 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
       .catch(() => setCompanyOptions([]))
   }, [])
 
-  const refresh = React.useCallback(() => setReloadFlag((f) => f + 1), [])
-
-  const buildQueryParams = React.useCallback((): string => {
-    const params = new URLSearchParams()
-    params.set("page", String(page))
-    params.set("pageSize", String(pageSize))
-    if (sorting[0]) {
-      params.set("sort", sorting[0].id)
-      params.set("order", sorting[0].desc ? "desc" : "asc")
-    }
-    if (appliedSearch) params.set("search", appliedSearch)
-    if (appliedBroker) params.set("bill_to", appliedBroker)
-    if (companies.length > 0) params.set("company", companies.join(","))
-    if (billingCategory) params.set("billing_category", billingCategory)
-    if (invoiceTab !== "all") params.set("invoice_status", invoiceTab)
-    if (dateFrom) params.set("invoice_date_from", dateFrom)
-    if (dateTo) params.set("invoice_date_to", dateTo)
-    return params.toString()
-  }, [page, pageSize, sorting, appliedSearch, appliedBroker, companies, billingCategory, invoiceTab, dateFrom, dateTo])
-
+  // 数据刷新后同步勾选行的最新数据
   React.useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      setLoading(true)
-      try {
-        if (cancelled) return
-        const data = await fetchJson<ListData>(
-          `/api/finance/accounting-invoices?${buildQueryParams()}`
-        )
-        if (cancelled) return
-        setRows(data.rows)
-        setSelected((prev) => {
-          const next = new Map(prev)
-          for (const row of data.rows) {
-            if (next.has(row.id)) next.set(row.id, row)
-          }
-          return next
-        })
-        setTotal(data.pagination.total)
-        // 删除后落在空页时回退到最后一页
-        if (data.rows.length === 0 && page > 1 && data.pagination.total > 0) {
-          setPage(Math.max(1, Math.ceil(data.pagination.total / pageSize)))
+    setSelected((prev) => {
+      if (prev.size === 0) return prev
+      const next = new Map(prev)
+      let changed = false
+      for (const row of rows) {
+        if (next.has(row.id) && next.get(row.id) !== row) {
+          next.set(row.id, row)
+          changed = true
         }
-      } catch (error) {
-        if (!cancelled) toast.error(getErrorMessage(error, "加载陆运账单失败"))
-      } finally {
-        if (!cancelled) setLoading(false)
       }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [buildQueryParams, reloadFlag, page, pageSize])
-
-  const toggleSort = React.useCallback((id: string) => {
-    setSorting((prev) => {
-      const current = prev[0]
-      if (current?.id === id) return [{ id, desc: !current.desc }]
-      return [{ id, desc: true }]
+      return changed ? next : prev
     })
-    setPage(1)
-  }, [])
+  }, [rows])
 
-  // —— 勾选 ——
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id))
   const toggleAll = React.useCallback(() => {
     setSelected((prev) => {
@@ -380,7 +315,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
       return next
     })
   }, [rows])
-  const toggleRow = React.useCallback((row: Row) => {
+  const toggleRow = React.useCallback((row: AccountingInvoiceRow) => {
     setSelected((prev) => {
       const next = new Map(prev)
       if (next.has(row.id)) next.delete(row.id)
@@ -388,14 +323,225 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
       return next
     })
   }, [])
-  const selectedRows = React.useMemo(
-    () => [...selected.values()],
-    [selected]
+  const isSelected = React.useCallback((id: string) => selected.has(id), [selected])
+  const selectedRows = React.useMemo(() => [...selected.values()], [selected])
+
+  // —— 视图预设（按用户存库，进页面应用默认视图） ——
+  const [views, setViews] = React.useState<ApiTableView[]>([])
+  const [activeViewId, setActiveViewId] = React.useState<string | null>(null)
+
+  const viewItems: TableViewItem[] = React.useMemo(
+    () => views.map((v) => ({ id: String(v.id), name: v.name, isDefault: v.is_default })),
+    [views]
+  )
+
+  const applyView = React.useCallback(
+    (config: InvoiceViewConfig, viewId: string | null) => {
+      setInvoiceTab(config.filters.invoiceTab)
+      setSelected(new Map())
+      setAppliedSearch(config.filters.search)
+      setSearchInput(config.filters.search)
+      setAppliedBroker(config.filters.broker)
+      setBrokerInput(config.filters.broker)
+      setCompanies(config.filters.companies)
+      setBillingCategory(config.filters.billingCategory)
+      setDateFrom(config.filters.dateFrom)
+      setDateTo(config.filters.dateTo)
+      const year =
+        config.filters.filterYear > 0
+          ? config.filters.filterYear
+          : config.filters.dateFrom
+            ? Number(config.filters.dateFrom.slice(0, 4))
+            : initialYear
+      setFilterYear(Number.isInteger(year) && year > 1900 ? year : initialYear)
+      setSorting(
+        config.sorting.length > 0 ? config.sorting : [{ id: "invoice_date", desc: true }]
+      )
+      setColumnOverrides(config.columnVisibility)
+      setGroupOrder(config.groupOrder)
+      persistGroupOrder(config.groupOrder)
+      setPage(1)
+      setActiveViewId(viewId)
+    },
+    [initialYear, persistGroupOrder, setPage, setSorting]
+  )
+
+  React.useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await fetchJson<{ views: ApiTableView[] }>(
+          `/api/table-views?table=${INVOICE_TABLE_KEY}`
+        )
+        if (cancelled) return
+        setViews(data.views)
+        const def = data.views.find((v) => v.is_default)
+        if (def) {
+          const config = parseInvoiceViewConfig(def.config)
+          if (config) applyView(config, String(def.id))
+        }
+      } catch {
+        // 视图加载失败不阻塞列表使用
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [applyView])
+
+  const buildCurrentViewConfig = React.useCallback(
+    () =>
+      buildInvoiceViewConfig({
+        filters: {
+          invoiceTab,
+          search: appliedSearch,
+          broker: appliedBroker,
+          companies,
+          billingCategory,
+          dateFrom,
+          dateTo,
+          filterYear,
+        },
+        sorting,
+        columnVisibility,
+        groupOrder,
+      }),
+    [
+      invoiceTab,
+      appliedSearch,
+      appliedBroker,
+      companies,
+      billingCategory,
+      dateFrom,
+      dateTo,
+      filterYear,
+      sorting,
+      columnVisibility,
+      groupOrder,
+    ]
+  )
+
+  /** 保存成功后本地并入列表；设为默认时同步取消其他视图的默认标记 */
+  const upsertView = React.useCallback((view: ApiTableView) => {
+    setViews((prev) => {
+      const exists = prev.some((v) => String(v.id) === String(view.id))
+      const next = exists
+        ? prev.map((v) => (String(v.id) === String(view.id) ? view : v))
+        : [...prev, view]
+      return view.is_default ? next.map((v) => (String(v.id) === String(view.id) ? v : { ...v, is_default: false })) : next
+    })
+  }, [])
+
+  const saveView = React.useCallback(
+    async (name: string, isDefault: boolean) => {
+      try {
+        const view = await fetchJson<ApiTableView>("/api/table-views", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            table_key: INVOICE_TABLE_KEY,
+            name,
+            config: buildCurrentViewConfig(),
+            is_default: isDefault,
+          }),
+        })
+        upsertView(view)
+        setActiveViewId(String(view.id))
+        toast.success(`已保存视图「${name}」`)
+      } catch (error) {
+        toast.error(getErrorMessage(error, "保存视图失败"))
+        throw error // 交回菜单组件：保存失败时弹窗保持打开
+      }
+    },
+    [buildCurrentViewConfig, upsertView]
+  )
+
+  const updateActiveView = React.useCallback(async () => {
+    if (!activeViewId) return
+    try {
+      const view = await fetchJson<ApiTableView>(`/api/table-views/${activeViewId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: buildCurrentViewConfig() }),
+      })
+      upsertView(view)
+      toast.success("已更新当前视图")
+    } catch (error) {
+      toast.error(getErrorMessage(error, "更新视图失败"))
+    }
+  }, [activeViewId, buildCurrentViewConfig, upsertView])
+
+  const renameView = React.useCallback(
+    async (view: TableViewItem, name: string) => {
+      try {
+        const updated = await fetchJson<ApiTableView>(`/api/table-views/${view.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        })
+        upsertView(updated)
+      } catch (error) {
+        toast.error(getErrorMessage(error, "重命名视图失败"))
+        throw error
+      }
+    },
+    [upsertView]
+  )
+
+  const setViewDefault = React.useCallback(
+    async (view: TableViewItem, isDefault: boolean) => {
+      try {
+        const updated = await fetchJson<ApiTableView>(`/api/table-views/${view.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ is_default: isDefault }),
+        })
+        upsertView(updated)
+        toast.success(
+          isDefault ? `已将「${view.name}」设为默认视图` : `已取消「${view.name}」的默认`
+        )
+      } catch (error) {
+        toast.error(getErrorMessage(error, "设置默认视图失败"))
+      }
+    },
+    [upsertView]
+  )
+
+  const deleteView = React.useCallback(
+    (view: TableViewItem) => {
+      if (!window.confirm(`确定删除视图「${view.name}」？`)) return
+      ;(async () => {
+        try {
+          await fetchJson(`/api/table-views/${view.id}`, { method: "DELETE" })
+          setViews((prev) => prev.filter((v) => String(v.id) !== view.id))
+          if (activeViewId === view.id) setActiveViewId(null)
+          toast.success("已删除视图")
+        } catch (error) {
+          toast.error(getErrorMessage(error, "删除视图失败"))
+        }
+      })()
+    },
+    [activeViewId]
+  )
+
+  const handleApplyView = React.useCallback(
+    (view: TableViewItem) => {
+      const full = views.find((v) => String(v.id) === view.id)
+      if (!full) return
+      const config = parseInvoiceViewConfig(full.config)
+      if (!config) {
+        toast.error("视图数据已损坏，无法应用")
+        return
+      }
+      applyView(config, view.id)
+      toast.success(`已应用视图「${view.name}」`)
+    },
+    [views, applyView]
   )
 
   // —— 行操作 ——
   const handleRowDelete = React.useCallback(
-    async (row: Row) => {
+    async (row: AccountingInvoiceRow) => {
       if (!window.confirm(`确定删除账单「${row.invoice_number}」？`)) return
       try {
         await fetchJson<{ id: string }>(`/api/finance/accounting-invoices/${row.id}`, {
@@ -436,13 +582,16 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     setSendTarget(target)
   }, [])
 
-  const openSingleSend = React.useCallback((row: Row) => {
-    if (row.invoice_date) {
-      toast.error(`账单「${row.invoice_number}」已于 ${fmtDate(row.invoice_date)} 发送`)
-      return
-    }
-    openSendDialog({ ids: [row.id], label: row.invoice_number, isBatch: false })
-  }, [openSendDialog])
+  const openSingleSend = React.useCallback(
+    (row: AccountingInvoiceRow) => {
+      if (row.invoice_date) {
+        toast.error(`账单「${row.invoice_number}」已于 ${fmtDate(row.invoice_date)} 发送`)
+        return
+      }
+      openSendDialog({ ids: [row.id], label: row.invoice_number, isBatch: false })
+    },
+    [openSendDialog]
+  )
 
   const openBatchSend = React.useCallback(() => {
     if (selected.size === 0) {
@@ -591,7 +740,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     setDialogOpen(true)
   }, [])
 
-  const openEdit = React.useCallback(async (row: Row) => {
+  const openEdit = React.useCallback(async (row: AccountingInvoiceRow) => {
     setDetailLoading(true)
     try {
       const data = await fetchJson<Record<string, unknown>>(
@@ -611,18 +760,21 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     setEditingRecord(null)
   }, [])
 
-  const handleRowPrint = React.useCallback((row: Row) => {
-    const hasTemplate =
-      companyOptions.find((c) => c.code === row.company)?.has_active_template ?? false
-    if (!row.company || !hasTemplate) {
-      toast.error(`公司「${row.company || "未知"}」暂无 PDF 模版`)
-      return
-    }
-    openPdf(`/api/finance/accounting-invoices/${row.id}/pdf`)
-  }, [companyOptions])
+  const handleRowPrint = React.useCallback(
+    (row: AccountingInvoiceRow) => {
+      const hasTemplate =
+        companyOptions.find((c) => c.code === row.company)?.has_active_template ?? false
+      if (!row.company || !hasTemplate) {
+        toast.error(`公司「${row.company || "未知"}」暂无 PDF 模版`)
+        return
+      }
+      openPdf(`/api/finance/accounting-invoices/${row.id}/pdf`)
+    },
+    [companyOptions]
+  )
 
   const renderRowActions = React.useCallback(
-    (r: Row) => (
+    (r: AccountingInvoiceRow) => (
       <div className="flex items-center gap-1">
         <Button
           variant="ghost"
@@ -682,7 +834,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
 
   // —— 导出 ——
   const handleExportFiltered = React.useCallback(async () => {
-    const params = new URLSearchParams(buildQueryParams())
+    const params = buildParams({ page, pageSize, sorting })
     params.delete("page")
     params.delete("pageSize")
     await downloadExport(
@@ -690,7 +842,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
       `陆运账单_筛选_${new Date().toISOString().slice(0, 10)}.xlsx`,
       `成功导出 ${total} 条数据`
     )
-  }, [buildQueryParams, total])
+  }, [buildParams, page, pageSize, sorting, total])
 
   const handleExportAll = React.useCallback(async () => {
     await downloadExport(
@@ -719,7 +871,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
       return next
     })
     setPage(1)
-  }, [])
+  }, [setPage])
 
   const resetFilters = React.useCallback(() => {
     setSearchInput("")
@@ -733,36 +885,36 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     setDateFrom("")
     setDateTo("")
     setPage(1)
-  }, [initialYear])
+  }, [initialYear, setPage])
 
   const applySearch = React.useCallback(() => {
     setAppliedSearch(searchInput.trim())
     setAppliedBroker(brokerInput.trim())
     setPage(1)
-  }, [searchInput, brokerInput])
+  }, [searchInput, brokerInput, setPage])
 
   // —— 工具栏交互（吸顶工具栏组件的回调） ——
   const handleInvoiceTabChange = React.useCallback((tab: InvoiceTab) => {
     setInvoiceTab(tab)
     setSelected(new Map())
     setPage(1)
-  }, [])
+  }, [setPage])
 
   const handleBillingCategoryChange = React.useCallback((value: string) => {
     setBillingCategory(value)
     setPage(1)
-  }, [])
+  }, [setPage])
 
   const handleDateFromChange = React.useCallback((value: string) => {
     setDateFrom(value)
     if (value) setFilterYear(Number(value.slice(0, 4)))
     setPage(1)
-  }, [])
+  }, [setPage])
 
   const handleDateToChange = React.useCallback((value: string) => {
     setDateTo(value)
     setPage(1)
-  }, [])
+  }, [setPage])
 
   const handleFilterYearCommit = React.useCallback(
     (year: number) => {
@@ -776,177 +928,18 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     setDateFrom("")
     setDateTo("")
     setPage(1)
-  }, [])
+  }, [setPage])
 
-  // —— 分组拖拽排序（原生 HTML5 DnD，拖第一行分组表头实时换位） ——
-  const handleGroupDragStart = React.useCallback(
-    (event: React.DragEvent<HTMLTableCellElement>, groupId: string) => {
-      setDraggingGroup(groupId)
-      event.dataTransfer.effectAllowed = "move"
-      event.dataTransfer.setData("text/plain", groupId)
-    },
-    []
-  )
-
-  const handleGroupDragOver = React.useCallback(
-    (event: React.DragEvent<HTMLTableCellElement>, groupId: string) => {
-      if (draggingGroup == null || draggingGroup === groupId) return
-      event.preventDefault()
-      event.dataTransfer.dropEffect = "move"
-      const from = groupOrder.indexOf(draggingGroup)
-      const to = groupOrder.indexOf(groupId)
-      if (from < 0 || to < 0 || from === to) return
-      const next = arrayMove(groupOrder, from, to)
-      setGroupOrder(next)
-      persistGroupOrder(next)
-    },
-    [draggingGroup, groupOrder, persistGroupOrder]
-  )
-
-  const clearDraggingGroup = React.useCallback(() => setDraggingGroup(null), [])
-
-  // —— 列定义（sortable 与源 config 一致） ——
-  const columns = React.useMemo(
-    () => [
-      columnHelper.group({ id: "business", header: "业务信息", columns: [
-        columnHelper.display({
-          id: "select",
-          size: 36,
-          header: () => (
-            <Checkbox
-              checked={allSelected}
-              onCheckedChange={toggleAll}
-              aria-label="全选本页"
-            />
-          ),
-          cell: ({ row }) => (
-            <Checkbox
-              checked={selected.has(row.original.id)}
-              onCheckedChange={() => toggleRow(row.original)}
-              aria-label="选择该行"
-            />
-          ),
-        }),
-        columnHelper.accessor("company", {
-          header: ({ column }) => (
-            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-              公司
-              <SortIcon id={column.id} sorting={sorting} />
-            </button>
-          ),
-          cell: (info) => info.getValue(),
-        }),
-        columnHelper.accessor("master_order_number", { header: "总货号", cell: (info) => info.getValue() ?? "" }),
-        columnHelper.accessor("order_number", { header: "货号", cell: (info) => info.getValue() ?? "" }),
-      ] }),
-      columnHelper.group({ id: "contract", header: "合同", columns: [
-        columnHelper.accessor("contract_date", {
-          header: ({ column }) => (
-            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-              合同日期
-              <SortIcon id={column.id} sorting={sorting} />
-            </button>
-          ),
-          cell: (info) => fmtDate(info.getValue()),
-        }),
-        columnHelper.accessor("contract_price", {
-          header: ({ column }) => (
-            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-              合同金额
-              <SortIcon id={column.id} sorting={sorting} />
-            </button>
-          ),
-          cell: (info) => fmtMoney(info.getValue()),
-        }),
-      ] }),
-      columnHelper.group({ id: "broker", header: "Broker", columns: [
-        columnHelper.accessor("bill_to", { header: "Broker公司", cell: (info) => info.getValue() ?? "" }),
-        columnHelper.accessor("broker_load_number", { header: "Load #", cell: (info) => info.getValue() ?? "" }),
-        columnHelper.accessor("billing_category", { header: "账单分类", cell: (info) => info.getValue() ?? "" }),
-        columnHelper.accessor("tonu", {
-          header: "TONU",
-          size: 56,
-          cell: (info) => <TonuIcon value={info.getValue()} />,
-        }),
-      ] }),
-      columnHelper.group({ id: "invoice", header: "Invoice", columns: [
-        columnHelper.accessor("invoice_number", {
-          header: ({ column }) => (
-            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-              Invoice Number
-              <SortIcon id={column.id} sorting={sorting} />
-            </button>
-          ),
-          cell: (info) => info.getValue(),
-        }),
-        columnHelper.accessor("invoice_date", {
-          header: ({ column }) => (
-            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-              Invoice 日期
-              <SortIcon id={column.id} sorting={sorting} />
-            </button>
-          ),
-          cell: (info) => fmtDate(info.getValue()),
-        }),
-        columnHelper.accessor("invoice_price", {
-          header: ({ column }) => (
-            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
-              Invoice 价格
-              <SortIcon id={column.id} sorting={sorting} />
-            </button>
-          ),
-          cell: (info) => fmtMoney(info.getValue()),
-        }),
-        columnHelper.accessor("difference", {
-          header: "差额",
-          cell: (info) => {
-            const value = info.getValue()
-            if (value == null || value === "") return ""
-            const n = Number(value)
-            if (Number.isNaN(n) || n === 0) return ""
-            return (
-              <span className={n > 0 ? "font-medium text-rose-600 dark:text-rose-400" : "text-muted-foreground"} title={n > 0 ? "超收" : "未收足"}>
-                {fmtMoney(value)}
-              </span>
-            )
-          },
-        }),
-      ] }),
-      columnHelper.group({ id: "other", header: "备注与操作", columns: [
-        columnHelper.accessor("deduction", {
-          header: "扣钱",
-          cell: (info) => {
-            const value = info.getValue()
-            return value ? (
-              <span className="text-rose-600 dark:text-rose-400" title={value}>{value}</span>
-            ) : ""
-          },
-        }),
-        columnHelper.accessor("notes", { header: "备注", cell: (info) => info.getValue() ?? "" }),
-        columnHelper.display({
-          id: "actions",
-          size: 176,
-          header: "操作",
-          cell: ({ row }) => {
-            const r = row.original
-            return (
-              <div className="flex items-center justify-center">
-                {renderRowActions(r)}
-              </div>
-            )
-          },
-        }),
-      ] }),
-    ],
-    [allSelected, toggleAll, selected, toggleRow, sorting, toggleSort, renderRowActions]
-  )
-
-  // 视图：全部/未发账单不显示差额与扣钱列；负数、已收未平、有扣钱按需展示
-  const showSettlementColumns =
-    invoiceTab === "negative" || invoiceTab === "unmatched_paid" || invoiceTab === "with_deduction"
-  const columnVisibility: VisibilityState = showSettlementColumns
-    ? {}
-    : { difference: false, deduction: false }
+  // —— 列定义与表格实例 ——
+  const columns = useInvoiceColumns({
+    allSelected,
+    toggleAll,
+    isSelected,
+    toggleRow,
+    sorting,
+    toggleSort,
+    renderRowActions,
+  })
 
   const columnOrder = React.useMemo(
     () => groupOrder.flatMap((groupId) => GROUP_LEAF_COLUMN_IDS[groupId] ?? []),
@@ -966,10 +959,14 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
 
-  // 表格滚动容器高度：视口高 − 顶栏(64px) − 吸顶工具栏高 − 底部留白（分页条 + 间距 + 页边距，
-  // 略小于实际值，保证页面可滚出足够距离让工具栏吸顶）
+  // 吸顶工具栏高度（用于计算表格滚动容器 max-height）
+  const [toolbarHeight, setToolbarHeight] = React.useState(0)
   const tableMaxHeight =
     toolbarHeight > 0 ? `calc(100dvh - ${Math.round(toolbarHeight) + 64 + 80}px)` : undefined
+
+  // 卡片视图的差额/扣钱字段跟随有效列显隐
+  const showDifferenceColumn = columnVisibility.difference !== false
+  const showDeductionColumn = columnVisibility.deduction !== false
 
   return (
     <div className="space-y-4">
@@ -1085,7 +1082,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
 
       </section>
 
-      {/* 吸顶工具栏：状态 Tab + 筛选/搜索区（sticky 于顶部导航栏下方） */}
+      {/* 吸顶工具栏：状态 Tab + 视图/列设置 + 筛选/搜索区（sticky 于顶部导航栏下方） */}
       <AccountingInvoiceToolbar
         invoiceTab={invoiceTab}
         onInvoiceTabChange={handleInvoiceTabChange}
@@ -1110,84 +1107,41 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
         onApplySearch={applySearch}
         onResetFilters={resetFilters}
         onHeightChange={setToolbarHeight}
+        rightSlot={
+          <>
+            <TableViewMenu
+              views={viewItems}
+              activeViewId={activeViewId}
+              buttonClassName="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+              onApply={handleApplyView}
+              onSaveAs={saveView}
+              onUpdateActive={updateActiveView}
+              onRename={renameView}
+              onSetDefault={setViewDefault}
+              onDelete={deleteView}
+            />
+            <ColumnSettingsMenu
+              groups={INVOICE_COLUMN_SETTINGS_GROUPS}
+              columnVisibility={columnVisibility}
+              onToggleColumn={handleToggleColumn}
+              onResetColumns={() => setColumnOverrides({})}
+              buttonClassName="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+            />
+          </>
+        }
       />
 
       {/* 宽屏表格；低于 2xl 分辨率切换为卡片视图。表格内部滚动，两行表头吸顶 */}
-      <div
-        className="hidden overflow-auto rounded-lg border bg-card 2xl:block"
-        style={{ maxHeight: tableMaxHeight }}
-      >
-        <Table noWrapper className="text-[13px]">
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => {
-              const isGroupRow = headerGroup.depth === 0
-              return (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead
-                      key={header.id}
-                      colSpan={header.colSpan}
-                      scope={header.subHeaders.length ? "colgroup" : "col"}
-                      draggable={isGroupRow}
-                      title={isGroupRow ? "拖动调整分组顺序" : undefined}
-                      onDragStart={
-                        isGroupRow
-                          ? (event) => handleGroupDragStart(event, header.column.id)
-                          : undefined
-                      }
-                      onDragOver={
-                        isGroupRow
-                          ? (event) => handleGroupDragOver(event, header.column.id)
-                          : undefined
-                      }
-                      onDrop={isGroupRow ? (event) => event.preventDefault() : undefined}
-                      onDragEnd={isGroupRow ? clearDraggingGroup : undefined}
-                      className={cn(
-                        "sticky h-10 whitespace-nowrap border-slate-800 bg-slate-950 px-3 text-[12px] font-semibold text-slate-100 [&_button]:text-slate-100 [&_button:hover]:text-white",
-                        isGroupRow
-                          ? "top-0 z-20 cursor-grab select-none active:cursor-grabbing"
-                          : "top-10 z-10",
-                        isGroupRow && draggingGroup === header.column.id ? "opacity-60" : ""
-                      )}
-                      style={{ width: header.subHeaders.length === 0 && header.getSize() !== 150 ? header.getSize() : undefined }}
-                    >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              )
-            })}
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={table.getVisibleLeafColumns().length} className="h-24 text-center text-muted-foreground">
-                  <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
-                  正在加载...
-                </TableCell>
-              </TableRow>
-            ) : rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={table.getVisibleLeafColumns().length} className="h-24 text-center text-muted-foreground">
-                  暂无账单数据
-                </TableCell>
-              </TableRow>
-            ) : (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="h-8 px-2 py-1.5">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        table={table}
+        loading={loading}
+        maxHeight={tableMaxHeight}
+        className="hidden 2xl:block"
+        emptyText="暂无账单数据"
+        loadingText="正在加载..."
+        groupOrder={groupOrder}
+        onGroupOrderChange={handleGroupOrderChange}
+      />
 
       <div
         aria-label="陆运账单卡片列表"
@@ -1235,7 +1189,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
 
               <dl className="grid grid-cols-2 gap-x-3 gap-y-3">
                 <CardField label="Invoice 金额" value={fmtMoney(row.invoice_price) || "—"} />
-                {showSettlementColumns && (
+                {showDifferenceColumn && (
                   <CardField label="差额" value={fmtMoney(row.difference) || "—"} />
                 )}
                 <CardField label="Load #" value={fmtText(row.broker_load_number)} />
@@ -1250,7 +1204,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                     <TonuIcon value={row.tonu} />
                   </dd>
                 </div>
-                {showSettlementColumns && (
+                {showDeductionColumn && (
                   <CardField label="扣钱" value={fmtText(row.deduction)} />
                 )}
               </dl>
@@ -1264,167 +1218,52 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
       </div>
 
       {/* 分页 */}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
-        <span>
-          共 {total} 条 · 第 {page}/{pageCount} 页
-        </span>
-        <div className="flex items-center gap-2">
-          <Select
-            value={String(pageSize)}
-            onValueChange={(v) => {
-              setPageSize(Number(v))
-              setPage(1)
-            }}
-          >
-            <SelectTrigger className="h-8 w-[110px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[20, 50, 100, 200].map((n) => (
-                <SelectItem key={n} value={String(n)}>
-                  {n} 条/页
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1 || loading}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            <ChevronLeft className="h-4 w-4" />
-            上一页
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= pageCount || loading}
-            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-          >
-            下一页
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      <TablePagination
+        total={total}
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        loading={loading}
+        onPageChange={setPage}
+        onPageSizeChange={changePageSize}
+      />
 
       {/* 新建/编辑弹窗：复用模版编辑表单 */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => (open ? setDialogOpen(true) : closeDialog())}>
-        <DialogContent className="max-h-[92vh] w-[min(96vw,80rem)] max-w-7xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingRecord ? "编辑陆运账单" : "新建陆运账单"}</DialogTitle>
-          </DialogHeader>
-          {detailLoading ? (
-            <div className="flex min-h-[200px] items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              正在加载账单...
-            </div>
-          ) : (
-            <AccountingInvoiceForm
-              key={String(editingRecord?.id ?? "new")}
-              data={editingRecord}
-              inDialog
-              onSuccess={() => {
-                closeDialog()
-                refresh()
-              }}
-              onCancel={closeDialog}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      <InvoiceFormDialog
+        open={dialogOpen}
+        detailLoading={detailLoading}
+        editingRecord={editingRecord}
+        onClose={closeDialog}
+        onSaved={refresh}
+      />
 
-      <Dialog
-        open={sendTarget != null}
-        onOpenChange={(open) => {
-          if (!open && !sending) setSendTarget(null)
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{sendTarget?.isBatch ? "批量发账单" : "发账单"}</DialogTitle>
-            <DialogDescription>
-              确认后将为 {sendTarget?.label ?? "选中账单"} 设置 Invoice 日期并打开 PDF。
-              普通账单日期设置后不可修改；负数账单可在“负数账单”中批量修改日期。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <label htmlFor="send-invoice-date" className="text-sm font-medium">
-              Invoice 日期
-            </label>
-            <Input
-              id="send-invoice-date"
-              type="date"
-              value={sendDate}
-              onChange={(event) => setSendDate(event.target.value)}
-              disabled={sending}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSendTarget(null)} disabled={sending}>
-              取消
-            </Button>
-            <Button onClick={() => void handleSend()} disabled={sending || !sendDate}>
-              {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-              {sending ? "正在发送..." : "确认发送"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SendInvoiceDialog
+        target={sendTarget}
+        sending={sending}
+        sendDate={sendDate}
+        onSendDateChange={setSendDate}
+        onConfirm={() => void handleSend()}
+        onClose={() => setSendTarget(null)}
+      />
 
-      <Dialog open={dateEditIds != null}
-        onOpenChange={(open) => { if (!open && !savingNegativeDate) setDateEditIds(null) }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>批量修改 Invoice 日期</DialogTitle>
-            <DialogDescription>
-              将为选中的 {dateEditIds?.length ?? 0} 条负数账单统一设置 Invoice 日期，覆盖已有日期。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <label htmlFor="negative-invoice-date" className="text-sm font-medium">Invoice 日期</label>
-            <Input id="negative-invoice-date" type="date" value={negativeDate}
-              onChange={(event) => setNegativeDate(event.target.value)} disabled={savingNegativeDate} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDateEditIds(null)} disabled={savingNegativeDate}>取消</Button>
-            <Button onClick={() => void saveNegativeDate()} disabled={savingNegativeDate || !negativeDate}>
-              {savingNegativeDate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {savingNegativeDate ? "正在保存..." : "确认修改"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <NegativeDateDialog
+        ids={dateEditIds}
+        saving={savingNegativeDate}
+        date={negativeDate}
+        onDateChange={setNegativeDate}
+        onConfirm={() => void saveNegativeDate()}
+        onClose={() => setDateEditIds(null)}
+      />
 
-      <Dialog open={deductionEditIds != null}
-        onOpenChange={(open) => { if (!open && !savingDeduction) setDeductionEditIds(null) }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>修改扣钱</DialogTitle>
-            <DialogDescription>
-              为选中的 {deductionEditIds?.length ?? 0} 条账单填写统一的扣钱说明，留空并保存即清除扣钱；扣钱不参与差额计算。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <label htmlFor="invoice-deduction-input" className="text-sm font-medium">扣钱说明</label>
-            <Input id="invoice-deduction-input" value={deductionText} maxLength={200}
-              placeholder="如 RTS、扣款原因（最长 200 字）"
-              onChange={(event) => setDeductionText(event.target.value)} disabled={savingDeduction}
-              onKeyDown={(event) => { if (event.key === "Enter") void saveDeduction() }} />
-            {deductionInit && deductionText === deductionInit && (
-              <p className="text-xs text-muted-foreground">已带入选中账单中首个非空扣钱说明，可直接修改或清空。</p>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeductionEditIds(null)} disabled={savingDeduction}>取消</Button>
-            <Button onClick={() => void saveDeduction()} disabled={savingDeduction}>
-              {savingDeduction && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {savingDeduction ? "正在保存..." : "确认修改"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+      <DeductionDialog
+        ids={deductionEditIds}
+        saving={savingDeduction}
+        text={deductionText}
+        initText={deductionInit}
+        onTextChange={setDeductionText}
+        onConfirm={() => void saveDeduction()}
+        onClose={() => setDeductionEditIds(null)}
+      />
     </div>
   )
 }

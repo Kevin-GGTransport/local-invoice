@@ -61,6 +61,8 @@ type AccountingInvoiceToolbarProps = {
   onApplySearch: () => void
   onResetFilters: () => void
   onHeightChange: (height: number) => void
+  /** 渲染在状态 Tab 行右侧的插槽（如视图切换、列设置菜单） */
+  rightSlot?: React.ReactNode
 }
 
 export function AccountingInvoiceToolbar({
@@ -87,6 +89,7 @@ export function AccountingInvoiceToolbar({
   onApplySearch,
   onResetFilters,
   onHeightChange,
+  rightSlot,
 }: AccountingInvoiceToolbarProps) {
   const stickyRef = React.useRef<HTMLDivElement>(null)
 
@@ -105,9 +108,10 @@ export function AccountingInvoiceToolbar({
       ref={stickyRef}
       className="sticky top-16 z-30 overflow-hidden rounded-xl border bg-card shadow-sm"
     >
-      {/* 状态 Tab */}
+      {/* 状态 Tab + 右侧插槽（视图/列设置） */}
       <div className="bg-slate-950 px-3 sm:px-4">
-        <div className="flex flex-wrap" role="tablist" aria-label="账单状态">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap" role="tablist" aria-label="账单状态">
           {INVOICE_TABS.map(([value, label]) => {
             const active = invoiceTab === value
             return (
@@ -131,6 +135,10 @@ export function AccountingInvoiceToolbar({
               </button>
             )
           })}
+          </div>
+          {rightSlot && (
+            <div className="flex shrink-0 items-center gap-1.5 py-2">{rightSlot}</div>
+          )}
         </div>
       </div>
 
