@@ -72,3 +72,39 @@ describe('billing category form values', () => {
     assert.equal(billingCategoryPayloadValue(''), null)
   })
 })
+
+describe('buildAccountingInvoiceWhere broker', () => {
+  it('trims the customer name and uses case-insensitive substring matching', () => {
+    assert.deepEqual(buildAccountingInvoiceWhere(new URLSearchParams({ bill_to: '  AcMe  ' })), {
+      bill_to: { contains: 'AcMe', mode: 'insensitive' },
+    })
+  })
+
+  it('ignores missing or blank customer names', () => {
+    for (const params of [new URLSearchParams(), new URLSearchParams({ bill_to: '   ' })]) {
+      assert.deepEqual(buildAccountingInvoiceWhere(params), {})
+    }
+  })
+
+  it('intersects the customer with keyword, company, category and date filters', () => {
+    const params = new URLSearchParams({
+      search: 'load123', company: 'A,B', billing_category: 'SAV Local',
+      invoice_date_from: '2026-09-01', invoice_date_to: '2026-09-07',
+    })
+    const existing = buildAccountingInvoiceWhere(params)
+    params.set('bill_to', 'Acme')
+    assert.deepEqual(buildAccountingInvoiceWhere(params), {
+      ...existing, bill_to: { contains: 'Acme', mode: 'insensitive' },
+    })
+    assert.ok(existing.OR?.length)
+    assert.deepEqual(existing.company, { in: ['A', 'B'] })
+  })
+
+  it('combines customer filtering with the unsent tab', () => {
+    assert.deepEqual(buildAccountingInvoiceWhere(new URLSearchParams({
+      bill_to: 'Acme', invoice_status: 'unsent',
+    })), {
+      bill_to: { contains: 'Acme', mode: 'insensitive' }, invoice_date: null,
+    })
+  })
+})

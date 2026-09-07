@@ -8,9 +8,9 @@ function isCanonicalPostgresBigint(value: string): boolean {
   return /^[1-9]\d*$/.test(value) && BigInt(value) <= POSTGRES_BIGINT_MAX
 }
 
-const invoiceIdSchema = z.string().refine(isCanonicalPostgresBigint, "账单 ID 无效或超出范围")
+export const invoiceIdSchema = z.string().refine(isCanonicalPostgresBigint, "账单 ID 无效或超出范围")
 
-function isRealIsoDate(value: string): boolean {
+export function isRealIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
   const [year, month, day] = value.split("-").map(Number)
   const date = new Date(Date.UTC(year, month - 1, day))

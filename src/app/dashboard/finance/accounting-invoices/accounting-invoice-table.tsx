@@ -80,6 +80,7 @@ import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
 import type { PaginatedData } from "@/lib/api/types"
 import { openPdf, reservePdfWindow } from "@/lib/utils/open-pdf"
 import { ACCOUNTING_BILLING_CATEGORY_OPTIONS } from "@/lib/finance/accounting-invoice-companies"
+import { MAX_NEGATIVE_INVOICE_DATE_BATCH } from "@/lib/finance/accounting-invoice-negative-date"
 import { MAX_ACCOUNTING_INVOICE_SEND } from "@/lib/finance/accounting-invoice-send"
 
 /** 列表行（API 返回 JSON：BigInt id 已转 string，Decimal 为 string） */
@@ -107,8 +108,8 @@ type Row = {
 }
 
 type ListData = PaginatedData<Row>
-type SelectedRow = Pick<Row, "id" | "company" | "invoice_number" | "invoice_date">
-type InvoiceTab = "all" | "unsent"
+type SelectedRow = Pick<Row, "id" | "company" | "invoice_number" | "invoice_date" | "invoice_price">
+type InvoiceTab = "all" | "unsent" | "negative"
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
@@ -212,6 +213,8 @@ export function AccountingInvoiceTable() {
   // 筛选条件（变更即回第一页）
   const [searchInput, setSearchInput] = React.useState("")
   const [appliedSearch, setAppliedSearch] = React.useState("")
+  const [brokerInput, setBrokerInput] = React.useState("")
+  const [appliedBroker, setAppliedBroker] = React.useState("")
   const [companies, setCompanies] = React.useState<string[]>([])
   const [companyOptions, setCompanyOptions] = React.useState<
     { code: string; name: string; has_active_template: boolean }[]
@@ -229,6 +232,9 @@ export function AccountingInvoiceTable() {
   const [sendTarget, setSendTarget] = React.useState<SendTarget | null>(null)
   const [sendDate, setSendDate] = React.useState(localToday)
   const [sending, setSending] = React.useState(false)
+  const [dateEditIds, setDateEditIds] = React.useState<string[] | null>(null)
+  const [negativeDate, setNegativeDate] = React.useState(localToday)
+  const [savingNegativeDate, setSavingNegativeDate] = React.useState(false)
   const [reconciliationTarget, setReconciliationTarget] = React.useState<Row | null>(null)
 
   React.useEffect(() => {
@@ -248,13 +254,14 @@ export function AccountingInvoiceTable() {
       params.set("order", sorting[0].desc ? "desc" : "asc")
     }
     if (appliedSearch) params.set("search", appliedSearch)
+    if (appliedBroker) params.set("bill_to", appliedBroker)
     if (companies.length > 0) params.set("company", companies.join(","))
     if (billingCategory) params.set("billing_category", billingCategory)
-    if (invoiceTab === "unsent") params.set("invoice_status", "unsent")
+    if (invoiceTab !== "all") params.set("invoice_status", invoiceTab)
     if (dateFrom) params.set("invoice_date_from", dateFrom)
     if (dateTo) params.set("invoice_date_to", dateTo)
     return params.toString()
-  }, [page, pageSize, sorting, appliedSearch, companies, billingCategory, invoiceTab, dateFrom, dateTo])
+  }, [page, pageSize, sorting, appliedSearch, appliedBroker, companies, billingCategory, invoiceTab, dateFrom, dateTo])
 
   React.useEffect(() => {
     let cancelled = false
@@ -436,6 +443,42 @@ export function AccountingInvoiceTable() {
     }
   }, [sendTarget, sendDate, refresh])
 
+  const openNegativeDateDialog = React.useCallback(() => {
+    if (!selected.size || selected.size > MAX_NEGATIVE_INVOICE_DATE_BATCH) {
+      toast.error(`请选择 1 至 ${MAX_NEGATIVE_INVOICE_DATE_BATCH} 条负数账单`)
+      return
+    }
+    if ([...selected.values()].some((row) => row.invoice_price == null || !(Number(row.invoice_price) < 0))) {
+      toast.error("选中记录包含非负数账单，请重新选择")
+      return
+    }
+    setDateEditIds([...selected.keys()])
+    setNegativeDate(localToday())
+  }, [selected])
+
+  const saveNegativeDate = React.useCallback(async () => {
+    if (!dateEditIds || !negativeDate || savingNegativeDate) return
+    setSavingNegativeDate(true)
+    try {
+      const result = await fetchJson<{ count: number }>(
+        "/api/finance/accounting-invoices/negative-date",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: dateEditIds, invoice_date: negativeDate }),
+        },
+      )
+      toast.success(`已修改 ${result.count} 条负数账单的 Invoice 日期`)
+      setDateEditIds(null)
+      setSelected(new Map())
+      refresh()
+    } catch (error) {
+      toast.error(getErrorMessage(error, "修改 Invoice 日期失败"))
+    } finally {
+      setSavingNegativeDate(false)
+    }
+  }, [dateEditIds, negativeDate, savingNegativeDate, refresh])
+
   const openCreate = React.useCallback(() => {
     setEditingRecord(null)
     setDialogOpen(true)
@@ -594,6 +637,8 @@ export function AccountingInvoiceTable() {
   const resetFilters = React.useCallback(() => {
     setSearchInput("")
     setAppliedSearch("")
+    setBrokerInput("")
+    setAppliedBroker("")
     setCompanies([])
     setBillingCategory("")
     setInvoiceTab("all")
@@ -604,8 +649,9 @@ export function AccountingInvoiceTable() {
 
   const applySearch = React.useCallback(() => {
     setAppliedSearch(searchInput.trim())
+    setAppliedBroker(brokerInput.trim())
     setPage(1)
-  }, [searchInput])
+  }, [searchInput, brokerInput])
 
   // —— 列定义（sortable 与源 config 一致） ——
   const columns = React.useMemo(
@@ -767,6 +813,14 @@ export function AccountingInvoiceTable() {
                 新建账单
               </Button>
               <AccountingInvoicesBatchPdf selectedRows={selectedRows} />
+              {invoiceTab === "negative" && (
+                <Button variant="outline" size="sm"
+                  className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  disabled={selected.size === 0 || loading} onClick={openNegativeDateDialog}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  批量修改 Invoice 日期
+                </Button>
+              )}
               {selected.size > 0 && (
                 <>
                   <Button
@@ -825,6 +879,7 @@ export function AccountingInvoiceTable() {
             {([
               ["all", "全部账单"],
               ["unsent", "未发账单"],
+              ["negative", "负数账单"],
             ] as const).map(([value, label]) => {
               const active = invoiceTab === value
               return (
@@ -838,6 +893,7 @@ export function AccountingInvoiceTable() {
                   }`}
                   onClick={() => {
                     setInvoiceTab(value)
+                    setSelected(new Map())
                     setPage(1)
                   }}
                 >
@@ -855,7 +911,7 @@ export function AccountingInvoiceTable() {
         </div>
 
         <div className="border-t bg-muted/30 px-3 py-3 sm:px-4">
-          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-col gap-2 2xl:flex-row 2xl:flex-wrap 2xl:items-center 2xl:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -939,34 +995,51 @@ export function AccountingInvoiceTable() {
               </div>
             </div>
 
-            <div className="flex h-10 w-full min-w-0 items-center gap-1 rounded-lg border border-input bg-background p-1 shadow-xs transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30 xl:ml-auto xl:max-w-md">
-              <Search
-                className="ml-1.5 size-4 shrink-0 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <Input
-                aria-label="搜索账单"
-                className="h-8 min-w-0 flex-1 rounded-none border-0 px-1 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0"
-                placeholder="发票号 / 货号 / Load# / 备注"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") applySearch()
-                }}
-              />
-              <Button size="sm" className="h-8 shrink-0" onClick={applySearch}>
-                搜索
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 shrink-0 text-muted-foreground"
-                onClick={resetFilters}
-                title="清空筛选条件"
-                aria-label="清空筛选条件"
-              >
-                <RotateCcw className="size-4" aria-hidden="true" />
-              </Button>
+            <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row 2xl:ml-auto 2xl:w-auto 2xl:flex-1">
+              <div className="flex h-10 w-full min-w-0 items-center gap-2 rounded-lg border border-input bg-background px-3 shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30 sm:w-64 sm:shrink-0">
+                <label htmlFor="broker-search" className="shrink-0 text-xs text-muted-foreground">
+                  客户 / BROKER
+                </label>
+                <Input
+                  id="broker-search"
+                  className="h-8 min-w-0 flex-1 rounded-none border-0 px-0 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0"
+                  placeholder="输入客户名称"
+                  value={brokerInput}
+                  onChange={(e) => setBrokerInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") applySearch()
+                  }}
+                />
+              </div>
+              <div className="flex h-10 w-full min-w-0 items-center gap-1 rounded-lg border border-input bg-background p-1 shadow-xs transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30 sm:flex-1">
+                <Search
+                  className="ml-1.5 size-4 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <Input
+                  aria-label="搜索账单"
+                  className="h-8 min-w-0 flex-1 rounded-none border-0 px-1 text-sm shadow-none focus-visible:border-transparent focus-visible:ring-0"
+                  placeholder="发票号 / 货号 / Load# / 备注"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") applySearch()
+                  }}
+                />
+                <Button size="sm" className="h-8 shrink-0" onClick={applySearch}>
+                  搜索
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 shrink-0 text-muted-foreground"
+                  onClick={resetFilters}
+                  title="清空筛选条件"
+                  aria-label="清空筛选条件"
+                >
+                  <RotateCcw className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -1171,7 +1244,7 @@ export function AccountingInvoiceTable() {
             <DialogTitle>{sendTarget?.isBatch ? "批量发账单" : "发账单"}</DialogTitle>
             <DialogDescription>
               确认后将为 {sendTarget?.label ?? "选中账单"} 设置 Invoice 日期并打开 PDF。
-              日期设置后不可修改。
+              普通账单日期设置后不可修改；负数账单可在“负数账单”中批量修改日期。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
@@ -1193,6 +1266,30 @@ export function AccountingInvoiceTable() {
             <Button onClick={() => void handleSend()} disabled={sending || !sendDate}>
               {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
               {sending ? "正在发送..." : "确认发送"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dateEditIds != null}
+        onOpenChange={(open) => { if (!open && !savingNegativeDate) setDateEditIds(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>批量修改 Invoice 日期</DialogTitle>
+            <DialogDescription>
+              将为选中的 {dateEditIds?.length ?? 0} 条负数账单统一设置 Invoice 日期，覆盖已有日期。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <label htmlFor="negative-invoice-date" className="text-sm font-medium">Invoice 日期</label>
+            <Input id="negative-invoice-date" type="date" value={negativeDate}
+              onChange={(event) => setNegativeDate(event.target.value)} disabled={savingNegativeDate} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDateEditIds(null)} disabled={savingNegativeDate}>取消</Button>
+            <Button onClick={() => void saveNegativeDate()} disabled={savingNegativeDate || !negativeDate}>
+              {savingNegativeDate && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {savingNegativeDate ? "正在保存..." : "确认修改"}
             </Button>
           </DialogFooter>
         </DialogContent>

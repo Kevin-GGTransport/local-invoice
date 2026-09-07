@@ -41,7 +41,9 @@ function dateParam(value: string | null, endOfDay = false): Date | null {
 /**
  * 解析查询参数 → where：
  *   search 关键词（5 字段不区分大小写模糊）
+ *   bill_to 客户名称（不区分大小写模糊匹配）
  *   company 多选（逗号分隔）、billing_category 单选
+ *   invoice_status=negative 负数账单（Invoice 金额小于 0）
  *   invoice_status=unsent 未发账单（Invoice 日期为空）
  *   invoice_date_from/to 日期区间
  */
@@ -56,8 +58,13 @@ export function buildAccountingInvoiceWhere(
     .filter(Boolean)
   if (companies.length > 0) where.company = { in: companies }
 
+  const billTo = params.get("bill_to")?.trim()
+  if (billTo) where.bill_to = { contains: billTo, mode: "insensitive" }
+
   const billingCategory = params.get("billing_category")?.trim()
   if (billingCategory) where.billing_category = billingCategory
+
+  if (params.get("invoice_status") === "negative") where.invoice_price = { lt: 0 }
 
   if (params.get("invoice_status") === "unsent") {
     where.invoice_date = null
