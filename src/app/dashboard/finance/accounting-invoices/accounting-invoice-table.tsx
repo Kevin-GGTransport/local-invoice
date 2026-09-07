@@ -15,6 +15,7 @@ import {
   getCoreRowModel,
   useReactTable,
   type SortingState,
+  type VisibilityState,
 } from "@tanstack/react-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -824,10 +825,17 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     [allSelected, toggleAll, selected, toggleRow, sorting, toggleSort, renderRowActions]
   )
 
+  // 视图：全部/未发账单不显示差额与扣钱列；负数、已收未平、有扣钱按需展示
+  const showSettlementColumns =
+    invoiceTab === "negative" || invoiceTab === "unmatched_paid" || invoiceTab === "with_deduction"
+  const columnVisibility: VisibilityState = showSettlementColumns
+    ? {}
+    : { difference: false, deduction: false }
+
   const table = useReactTable({
     data: rows,
     columns,
-    state: { sorting },
+    state: { sorting, columnVisibility },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     manualPagination: true,
@@ -1097,13 +1105,14 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                 onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur() }}
               />
               <Button type="button" variant={!dateFrom && !dateTo ? "default" : "outline"}
-                className="min-h-11" disabled={invoiceTab === "unsent"}
+                className={`min-h-11 ${!dateFrom && !dateTo ? "bg-amber-500 text-slate-950 hover:bg-amber-400 focus-visible:ring-amber-300/50" : ""}`}
+                disabled={invoiceTab === "unsent"}
                 aria-pressed={!dateFrom && !dateTo}
                 onClick={() => { setDateFrom(""); setDateTo(""); setPage(1) }}>
                 全部月份
               </Button>
               {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
-                <Button key={month} type="button" className="min-h-11 min-w-11 px-2"
+                <Button key={month} type="button" className={`min-h-11 min-w-11 px-2 ${activeMonth === month ? "bg-amber-500 text-slate-950 hover:bg-amber-400 focus-visible:ring-amber-300/50" : ""}`}
                   variant={activeMonth === month ? "default" : "outline"}
                   disabled={invoiceTab === "unsent"}
                   aria-pressed={activeMonth === month}
@@ -1261,7 +1270,9 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
 
               <dl className="grid grid-cols-2 gap-x-3 gap-y-3">
                 <CardField label="Invoice 金额" value={fmtMoney(row.invoice_price) || "—"} />
-                <CardField label="差额" value={fmtMoney(row.difference) || "—"} />
+                {showSettlementColumns && (
+                  <CardField label="差额" value={fmtMoney(row.difference) || "—"} />
+                )}
                 <CardField label="Load #" value={fmtText(row.broker_load_number)} />
                 <CardField label="总货号" value={fmtText(row.master_order_number)} />
                 <CardField label="货号" value={fmtText(row.order_number)} />
@@ -1274,7 +1285,9 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                     <TonuIcon value={row.tonu} />
                   </dd>
                 </div>
-                <CardField label="扣钱" value={fmtText(row.deduction)} />
+                {showSettlementColumns && (
+                  <CardField label="扣钱" value={fmtText(row.deduction)} />
+                )}
               </dl>
 
               <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-3">
