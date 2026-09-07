@@ -780,6 +780,20 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
           ),
           cell: (info) => fmtMoney(info.getValue()),
         }),
+        columnHelper.accessor("difference", {
+          header: "差额",
+          cell: (info) => {
+            const value = info.getValue()
+            if (value == null || value === "") return ""
+            const n = Number(value)
+            if (Number.isNaN(n) || n === 0) return ""
+            return (
+              <span className={n > 0 ? "font-medium text-rose-600 dark:text-rose-400" : "text-muted-foreground"} title={n > 0 ? "超收" : "未收足"}>
+                {fmtMoney(value)}
+              </span>
+            )
+          },
+        }),
       ] }),
       columnHelper.group({ id: "other", header: "备注与操作", columns: [
         columnHelper.accessor("deduction", {
@@ -1247,6 +1261,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
 
               <dl className="grid grid-cols-2 gap-x-3 gap-y-3">
                 <CardField label="Invoice 金额" value={fmtMoney(row.invoice_price) || "—"} />
+                <CardField label="差额" value={fmtMoney(row.difference) || "—"} />
                 <CardField label="Load #" value={fmtText(row.broker_load_number)} />
                 <CardField label="总货号" value={fmtText(row.master_order_number)} />
                 <CardField label="货号" value={fmtText(row.order_number)} />

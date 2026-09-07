@@ -1,9 +1,6 @@
 "use client"
 
 import React from "react"
-import Link from "next/link"
-import { ArrowUpRight } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { ReconciliationInvoiceList } from "./reconciliation-invoice-list"
 import { ReconciliationTable } from "./reconciliation-table"
@@ -23,7 +20,6 @@ export function CashierReconciliationWorkspace({ isAdmin, initialInvoiceId = "" 
         <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-950 px-4 py-5 text-white sm:px-6">
           <div><h1 className="text-xl font-semibold sm:text-2xl">出纳核销</h1>
           <p className="mt-2 text-sm text-slate-300">登记待收账单的收款，查询和管理已收记录。</p></div>
-          <Button asChild variant="outline" size="sm" className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><Link href="/dashboard/finance/reconciliation-differences">差额处理<ArrowUpRight className="ml-1 size-4" aria-hidden="true" /></Link></Button>
         </div>
         <div className="border-t border-slate-800 bg-slate-950 px-3 sm:px-4" role="tablist" aria-label="收款状态">
           {([ ["pending", "待收"], ["records", "已收"] ] as const).map(([value, label]) => (
@@ -53,7 +49,7 @@ export function CashierReconciliationWorkspace({ isAdmin, initialInvoiceId = "" 
         </div>
       </section>
       <div id="reconciliation-panel" role="tabpanel" aria-labelledby={`reconciliation-tab-${view}`} tabIndex={0}>
-      {view === "pending" ? <ReconciliationInvoiceList mode="pending" onViewRecords={openRecords} /> : <ReconciliationTable key={recordInvoiceId || "all"} isAdmin={isAdmin} initialInvoiceId={recordInvoiceId} />}
+      {view === "pending" ? <ReconciliationInvoiceList onViewRecords={openRecords} /> : <ReconciliationTable key={recordInvoiceId || "all"} isAdmin={isAdmin} initialInvoiceId={recordInvoiceId} />}
       </div>
     </div>
   )

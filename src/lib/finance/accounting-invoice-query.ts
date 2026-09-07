@@ -155,10 +155,6 @@ export function buildAccountingInvoiceSqlWhere(params: URLSearchParams): Prisma.
     i.invoice_date IS NOT NULL AND i.invoice_price > 0
     AND COALESCE(p.paid_amount, 0) < i.invoice_price
   `)
-  if (status === "reconciliation_exception") clauses.push(Prisma.sql`
-    i.invoice_date IS NOT NULL AND i.invoice_price IS NOT NULL
-    AND (i.invoice_price < 0 OR COALESCE(p.paid_amount, 0) > i.invoice_price)
-  `)
   if (status === "unmatched_paid") clauses.push(Prisma.sql`
     i.invoice_date IS NOT NULL AND i.invoice_price IS NOT NULL
     AND COALESCE(p.paid_amount, 0) <> 0

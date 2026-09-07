@@ -1,7 +1,6 @@
 "use client"
 
 import React from "react"
-import Link from "next/link"
 import { ChevronLeft, ChevronRight, CircleDollarSign, History, Loader2, RefreshCcw, Search } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -26,20 +25,14 @@ function money(value: string | null) {
   return Math.abs(Number(value)).toLocaleString("en-US", { style: "currency", currency: "USD" })
 }
 
-function StatusBadge({ row, exceptions }: { row: Invoice; exceptions: boolean }) {
-  const label = exceptions
-    ? Number(row.invoice_price) < 0 ? "负数账单待复核" : "超收待复核"
-    : Number(row.check_amount) > 0 ? "部分收款" : "未收款"
-  return <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-xs font-medium", exceptions
-    ? "border-amber-300/60 bg-amber-400/10 text-amber-700 dark:text-amber-300"
-    : "border-rose-300/60 bg-rose-400/10 text-rose-700 dark:text-rose-300")}>{label}</span>
+function StatusBadge({ row }: { row: Invoice }) {
+  const label = Number(row.check_amount) > 0 ? "部分收款" : "未收款"
+  return <span className="inline-flex rounded-full border border-rose-300/60 bg-rose-400/10 px-2 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300">{label}</span>
 }
 
-export function ReconciliationInvoiceList({ mode, onViewRecords }: {
-  mode: "pending" | "exceptions"
+export function ReconciliationInvoiceList({ onViewRecords }: {
   onViewRecords: (invoiceId: string) => void
 }) {
-  const exceptions = mode === "exceptions"
   const [rows, setRows] = React.useState<Invoice[]>([])
   const [total, setTotal] = React.useState(0)
   const [page, setPage] = React.useState(1)
@@ -62,7 +55,7 @@ export function ReconciliationInvoiceList({ mode, onViewRecords }: {
     let cancelled = false
     void Promise.resolve().then(() => { if (!cancelled) { setLoading(true); setError(null) } })
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize),
-      invoice_status: exceptions ? "reconciliation_exception" : "pending_receipt", sort: "invoice_date", order: "asc" })
+      invoice_status: "pending_receipt", sort: "invoice_date", order: "asc" })
     if (search) params.set("search", search)
     if (company !== "all") params.set("company", company)
     void fetchJson<ListData>(`/api/finance/accounting-invoices?${params}`)
@@ -81,21 +74,20 @@ export function ReconciliationInvoiceList({ mode, onViewRecords }: {
       })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [page, search, company, reload, exceptions])
+  }, [page, search, company, reload])
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const applySearch = () => { setSearch(searchInput.trim()); setPage(1) }
   const actions = (row: Invoice) => <>
-    {exceptions ? <Button asChild size="sm" variant="outline"><Link href={`/dashboard/finance/accounting-invoices/${row.id}`}>查看账单</Link></Button>
-      : <Button size="sm" onClick={() => setTarget(row)}><CircleDollarSign className="mr-1 size-4" aria-hidden="true" />登记收款</Button>}
+    <Button size="sm" onClick={() => setTarget(row)}><CircleDollarSign className="mr-1 size-4" aria-hidden="true" />登记收款</Button>
     <Button size="sm" variant="ghost" onClick={() => onViewRecords(row.id)}><History className="mr-1 size-4" aria-hidden="true" />收款记录</Button>
   </>
 
   return <div className="space-y-4">
     <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-        <div><p className="text-sm font-medium">共 {total} 条{exceptions ? "待复核" : "待收"}账单</p>
-          <p className="mt-1 text-xs text-muted-foreground">{exceptions ? "超收与已开票负数账单集中复核，可查看账单或修正收款记录。" : "仅显示已开票且未收足的正数账单，金额为剩余应收。"}</p></div>
+        <div><p className="text-sm font-medium">共 {total} 条待收账单</p>
+          <p className="mt-1 text-xs text-muted-foreground">仅显示已开票且未收足的正数账单，金额为剩余应收。</p></div>
         <Button variant="outline" size="sm" onClick={() => setReload((value) => value + 1)}><RefreshCcw className="mr-1 size-4" aria-hidden="true" />刷新</Button>
       </div>
       <div className="grid gap-2 bg-muted/30 p-4 sm:grid-cols-[minmax(16rem,1fr)_12rem]">
@@ -113,27 +105,27 @@ export function ReconciliationInvoiceList({ mode, onViewRecords }: {
     <section className="overflow-hidden rounded-lg border bg-card">
       {loading ? <div className="flex min-h-56 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" aria-hidden="true" />正在加载...</div>
         : error ? <div role="alert" className="flex min-h-56 flex-col items-center justify-center gap-3 p-4 text-sm"><p>{error}</p><Button variant="outline" onClick={() => setReload((value) => value + 1)}>重新加载</Button></div>
-        : rows.length === 0 ? <div className="flex min-h-56 flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground"><CircleDollarSign className="size-8" aria-hidden="true" /><p className="text-sm">没有符合条件的{exceptions ? "待复核" : "待收"}账单</p></div>
+        : rows.length === 0 ? <div className="flex min-h-56 flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground"><CircleDollarSign className="size-8" aria-hidden="true" /><p className="text-sm">没有符合条件的待收账单</p></div>
         : <>
           <div className="hidden overflow-x-auto md:block"><Table className="text-[13px]">
-            <TableHeader><TableRow>{["Invoice", "公司", "Broker / Load #", "Invoice 日期", exceptions ? "差额" : "剩余应收", "状态", "操作"].map((label, index) => <TableHead key={label} scope="col" className={cn(headStyle, (index === 4 || index === 6) && "text-right")}>{label}</TableHead>)}</TableRow></TableHeader>
+            <TableHeader><TableRow>{["Invoice", "公司", "Broker / Load #", "Invoice 日期", "剩余应收", "状态", "操作"].map((label, index) => <TableHead key={label} scope="col" className={cn(headStyle, (index === 4 || index === 6) && "text-right")}>{label}</TableHead>)}</TableRow></TableHeader>
             <TableBody>{rows.map((row) => <TableRow key={row.id}>
               <TableCell><p className="font-medium">{row.invoice_number}</p><p className="text-xs text-muted-foreground">{row.master_order_number || "—"} · {row.order_number || "—"}</p></TableCell>
               <TableCell>{row.company}</TableCell>
               <TableCell><p>{row.bill_to || "—"}</p><p className="text-xs text-muted-foreground">Load # {row.broker_load_number || "—"}</p></TableCell>
               <TableCell>{row.invoice_date?.slice(0, 10) || "—"}</TableCell>
-              <TableCell className={cn("text-right font-semibold tabular-nums", exceptions ? "text-amber-700 dark:text-amber-300" : "text-rose-700 dark:text-rose-300")}>{money(row.difference)}</TableCell>
-              <TableCell><StatusBadge row={row} exceptions={exceptions} /></TableCell>
+              <TableCell className="text-right font-semibold tabular-nums text-rose-700 dark:text-rose-300">{money(row.difference)}</TableCell>
+              <TableCell><StatusBadge row={row} /></TableCell>
               <TableCell><div className="flex justify-end gap-1">{actions(row)}</div></TableCell>
             </TableRow>)}</TableBody>
           </Table></div>
           <div className="divide-y md:hidden">{rows.map((row) => <article key={row.id} className="space-y-3 p-4">
-            <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{row.invoice_number}</p><p className="mt-1 text-xs text-muted-foreground">{row.company} · {row.bill_to || "—"}</p></div><StatusBadge row={row} exceptions={exceptions} /></div>
+            <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{row.invoice_number}</p><p className="mt-1 text-xs text-muted-foreground">{row.company} · {row.bill_to || "—"}</p></div><StatusBadge row={row} /></div>
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div><dt className="text-xs text-muted-foreground">总货号 / 货号</dt><dd>{row.master_order_number || "—"} / {row.order_number || "—"}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Load #</dt><dd className="break-all">{row.broker_load_number || "—"}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Invoice 日期</dt><dd>{row.invoice_date?.slice(0, 10) || "—"}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">{exceptions ? "差额" : "剩余应收"}</dt><dd className="font-semibold tabular-nums">{money(row.difference)}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">剩余应收</dt><dd className="font-semibold tabular-nums">{money(row.difference)}</dd></div>
             </dl><div className="flex flex-wrap justify-end gap-2 [&_button]:min-h-11 [&_a]:min-h-11">{actions(row)}</div>
           </article>)}</div>
         </>}
@@ -142,6 +134,6 @@ export function ReconciliationInvoiceList({ mode, onViewRecords }: {
       <Button variant="outline" size="sm" disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}><ChevronLeft className="mr-1 size-4" aria-hidden="true" />上一页</Button>
       <Button variant="outline" size="sm" disabled={page >= pageCount || loading} onClick={() => setPage((value) => value + 1)}>下一页<ChevronRight className="ml-1 size-4" aria-hidden="true" /></Button>
     </div></div>
-    {!exceptions ? <ReconciliationFormDialog invoice={formInvoice} open={target != null} onOpenChange={(open) => { if (!open) setTarget(null) }} onSuccess={() => setReload((value) => value + 1)} /> : null}
+    <ReconciliationFormDialog invoice={formInvoice} open={target != null} onOpenChange={(open) => { if (!open) setTarget(null) }} onSuccess={() => setReload((value) => value + 1)} />
   </div>
 }

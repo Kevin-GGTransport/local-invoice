@@ -59,19 +59,21 @@ test("database difference filtering, pagination and Excel agree", { skip: !url }
       assert.deepEqual(page.rows.map((row) => row.id), matching.slice(2, 4))
       const exported = await readAccountingInvoices(tx, params, { take: 10000 })
       assert.deepEqual(exported.rows.map((row) => row.id), matching)
-      // Cashier queues are disjoint: partial payments remain pending, while
-      // overpayments and issued negative invoices require separate review.
+      // 待收队列与已收未平互补：完全未收的只在待收；有收款且差额≠0
+      // （部分收款、超收）进入已收未平，供补扣钱说明；结清与零差额不出现在任一队列。
       const pendingParams = new URLSearchParams(params)
       pendingParams.set("invoice_status", "pending_receipt")
       const pending = await readAccountingInvoices(tx, pendingParams, { take: 100, count: true })
       assert.equal(pending.total, 3)
       assert.deepEqual(pending.rows.map((row) => row.id), [ids[0], ids[1], ids[4]])
-      const exceptionParams = new URLSearchParams(params)
-      exceptionParams.set("invoice_status", "reconciliation_exception")
-      const exceptions = await readAccountingInvoices(tx, exceptionParams, { take: 100, count: true })
-      assert.equal(exceptions.total, 2)
-      assert.deepEqual(exceptions.rows.map((row) => row.id), [ids[3], ids[5]])
-      assert.ok(pending.rows.every((row) => !exceptions.rows.some((other) => other.id === row.id)))
+      const unmatchedParams = new URLSearchParams(params)
+      unmatchedParams.set("invoice_status", "unmatched_paid")
+      const unmatched = await readAccountingInvoices(tx, unmatchedParams, { take: 100, count: true })
+      assert.equal(unmatched.total, 3)
+      assert.deepEqual(unmatched.rows.map((row) => row.id), [ids[1], ids[3], ids[4]])
+      // 部分收款同时出现在两个视图：待收看剩余应收，已收未平看差额并补扣钱。
+      assert.ok(unmatched.rows.some((row) => pending.rows.some((other) => other.id === row.id)))
+      assert.ok(!unmatched.rows.some((row) => row.id === ids[0] || row.id === ids[2] || row.id === ids[5]))
       const lastPending = await readAccountingInvoices(tx, pendingParams, { skip: 2, take: 1, count: true })
       assert.equal(lastPending.total, 3)
       assert.deepEqual(lastPending.rows.map((row) => row.id), [ids[4]])
