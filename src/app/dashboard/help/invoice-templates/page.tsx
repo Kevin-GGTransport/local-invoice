@@ -17,6 +17,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { auth } from "@/lib/auth";
 
 const steps = [
   { number: "01", title: "准备样张", description: "整理 Excel 格式、合并格和占位行", icon: FileSpreadsheet },
@@ -34,6 +35,7 @@ const toc = [
   ["fields", "4. 绑定基础字段"],
   ["lines", "5. 绑定明细数据"],
   ["publish", "6. 试打与发布"],
+  ["actual-invoice-check", "真实账单效果检查"],
   ["maintain", "7. 版本维护与删除"],
   ["troubleshooting", "常见问题"],
 ] as const;
@@ -99,7 +101,8 @@ function Callout({
   );
 }
 
-export default function InvoiceTemplateHelpPage() {
+export default async function InvoiceTemplateHelpPage() {
+  const session = await auth();
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="overflow-hidden rounded-2xl bg-slate-950 text-white shadow-lg">
@@ -116,14 +119,19 @@ export default function InvoiceTemplateHelpPage() {
               从 Excel 样张到可用的账单 PDF：上传解析后在网格中编辑版式、绑定字段与明细，试打确认后发布启用。
             </p>
           </div>
-          <Button asChild className="bg-amber-400 text-slate-950 hover:bg-amber-300">
+          {session?.user?.role === "admin" && <Button asChild className="bg-amber-400 text-slate-950 hover:bg-amber-300">
             <Link href="/dashboard/templates">
               打开账单模版管理
               <ArrowRight className="ml-2 size-4" aria-hidden="true" />
             </Link>
-          </Button>
+          </Button>}
         </div>
       </header>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-5 py-3 text-sm">
+        <p className="text-muted-foreground">模版管理仅管理员可操作；普通用户可阅读本手册，并使用已启用模版打印账单。</p>
+        <Link href="/dashboard/help/operations" className="inline-flex min-h-11 items-center gap-2 font-medium underline underline-offset-4">系统操作手册 <ArrowRight className="size-4" aria-hidden="true" /></Link>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {steps.map((step) => (
@@ -155,9 +163,9 @@ export default function InvoiceTemplateHelpPage() {
             <Checklist items={[
               "仅支持 .xlsx 文件，文件大小不超过 5MB。",
               "系统读取第一个工作表，最大解析 80 行 × 30 列。",
-              "保留列宽、行高、合并格、字号、对齐、颜色和边框。",
+              "支持列宽、行高、合并格、字号、对齐及部分颜色和边框；主题色和特殊边框效果以试打 PDF 为准。",
               "在明细表中预留至少一行样式完整的空白占位行。",
-              "当前 PDF 字体仅支持英文，样张中不要放中文文字。",
+              "PDF 使用 Helvetica 英文字体，不保留 Excel 原字体名称；中文、日文和部分全角字符可能导致上传失败。",
             ]} />
             <Callout>业务数据对应的单元格可以留空，但必须在 Excel 中先设好字号、对齐和边框。</Callout>
           </Section>
@@ -169,7 +177,7 @@ export default function InvoiceTemplateHelpPage() {
               <li>选择 .xlsx 样张，点击「上传解析」。</li>
               <li>解析成功后会生成「草稿」，自动进入独立编辑页完成配置。</li>
             </ol>
-            <Callout>已有相近模版且只想小改时，可跳过上传：在列表中点击该模版的「复制为草稿」，直接在复制出的草稿上编辑。</Callout>
+            <Callout>已有相近的启用或归档模版且只想小改时，可跳过上传：在列表中点击该模版的「复制为草稿」，直接在复制出的草稿上编辑。</Callout>
             <Callout>解析时会自动丢弃样张中空白区域的「幽灵样式」（Excel 里对大片空格设过的边框 / 填充），网格只保留发票实际内容范围。</Callout>
             <Callout tone="warning">同一公司可以有多个草稿，但同一时间只有一个启用模版。</Callout>
           </Section>
@@ -184,7 +192,7 @@ export default function InvoiceTemplateHelpPage() {
               "合并选中的多个单元格，或对合并格取消合并。",
               "拖动列标右侧、行号下方的边界，调整列宽与行高。",
             ]} />
-            <Callout tone="warning">编辑不会自动保存，修改后需点击「保存模版」。存在未保存修改时，离开或切换模版会弹出确认；意外离开后重新打开，可选择恢复上次的本地修改。</Callout>
+            <Callout tone="warning">编辑不会自动保存到服务器，修改后需点击「保存模版」。同一标签页会话内重新进入且服务器版本未变化时，可能提示恢复本地修改；关闭标签页后不保证恢复，请及时保存。</Callout>
             <Callout>只有「草稿」状态的模版可以编辑网格与绑定，已发布 / 已归档模版为只读（仍可改名）。网格上限为 80 行 × 30 列。</Callout>
           </Section>
 
@@ -195,18 +203,18 @@ export default function InvoiceTemplateHelpPage() {
               <li>同一字段需要落到多个单元格时，点击该字段旁的「添加位置」，再点选目标单元格。</li>
               <li>重复操作，完成发票号、发票日期、Load No.、Bill To、PICKUPS、DROPS 和 Total。</li>
             </ol>
-            <Callout>绑错时在「已绑定」区域点击「解绑」移除；「定位」可在网格中高亮查看该字段当前落点。</Callout>
+            <Callout>绑错时在「已绑定」区域点击「解绑」移除；「定位」可在网格中高亮查看该字段当前落点。基础字段按业务需要绑定，系统不会要求全部绑定；请人工核对发票号、日期、客户和总金额，且不要将基础字段绑定在明细行区域内。</Callout>
           </Section>
 
           <Section id="lines" number="05" title="绑定明细数据">
-            <p>明细区域会按账单实际数据重复生成，配置时要同时确定「行区域」和「字段列」。</p>
+            <p>明细区域会按账单实际数据重复生成，配置时要同时确定「行区域」和「字段列」。只框选数据占位行，不包含标题、总计或底部说明；系统使用起始行的样式和行高生成所有明细，其他占位行会被替换。</p>
             <ol className="list-decimal space-y-2 pl-5">
               <li>点击明细表第一个占位行，点击「选中行设为起始」；再点击最后一个占位行，点击「选中行设为结束」。也可以直接填写起始 / 结束行号，或拖动左侧行号选择范围。</li>
               <li>在右侧点击选中 Description 列角色，再点击目标列（或该列中任意单元格）完成绑定。</li>
               <li>用相同方式绑定 Amount / Total；Qty 和 Rate 可按样张需要选择绑定。</li>
-              <li>设置「最少行数」。实际数据不足时会自动补空行，超出时会自动增加。</li>
+              <li>设置「最少行数」（至少为 1）。实际数据不足时会自动补空行，超出时会自动增加。</li>
             </ol>
-            <Callout tone="warning">带 * 的 Description 和 Amount / Total 是发布必填列，不能绑定到同一列。蓝色网格是当前明细区域，发布前必须检查范围是否准确。</Callout>
+            <Callout tone="warning">带 * 的 Description 和 Amount / Total 是发布必填列；所有已选角色都必须使用不同列，且应落在起始行的独立单元格，不能选中被合并格覆盖的位置。蓝色网格是当前明细区域，发布前检查范围是否准确。</Callout>
           </Section>
 
           <Section id="publish" number="06" title="试打、保存与发布">
@@ -226,18 +234,28 @@ export default function InvoiceTemplateHelpPage() {
                 );
               })}
             </div>
-            <Callout>配置过程中可随时点击「保存模版」暂存进度，草稿不会影响当前启用版本的正常开票。</Callout>
+            <Callout>配置过程中可随时点击「保存模版」暂存进度。「试打 PDF」和「发布启用」都会先保存草稿，保存失败则不会继续。草稿不会影响当前启用版本。</Callout>
             <Checklist items={[
               "所有基础字段都落在预期单元格内。",
               "PICKUPS / DROPS 日期、公司和地址没有越界或遮挡。",
-              "多条明细能正确增长，总金额和底部内容会同步下移。",
+              "多条明细能正确生成，总金额和底部内容随生成行数自动调整位置。",
               "发票号、日期、Load No. 和金额格式正确。",
             ]} />
           </Section>
 
+          <section id="actual-invoice-check" className="scroll-mt-24 rounded-xl border bg-card p-4 sm:p-6" aria-labelledby="actual-invoice-title">
+            <h2 id="actual-invoice-title" className="mb-3 text-lg font-semibold">用真实账单确认效果</h2>
+            <div className="space-y-3 text-sm leading-7 text-slate-700 dark:text-slate-300">
+              <p>「查看示例数据」和「试打 PDF」使用系统内置示例（两条明细），不是业务账单。试打会在新窗口打开，请允许本站弹窗。</p>
+              <p>发布后进入「财务管理 → 陆运账单」，选取该公司的账单打开 PDF，检查长客户名称、取送货地址和多条费用明细。内容过宽或过高时会整体缩小到单页，尤其要核对文字是否清晰。</p>
+              <p>账单 PDF 按公司当前启用模版生成；发布新版本后重新打印旧账单，也会使用新版本。需要留存旧版文件时，请保存已生成的 PDF。</p>
+              <p>这里上传的是打印版式样张；批量录入业务数据请使用陆运账单的「导入账单」，并下载该入口提供的导入模板。</p>
+            </div>
+          </section>
+
           <Section id="maintain" number="07" title="版本维护与删除">
-            <p>发布新模版后，同公司原来的启用版会自动变为「已归档」。已发布 / 已归档模版为只读状态，仅供查看和试打预览。</p>
-            <p>需要调整版式时，在模版列表或详情中点击「复制为草稿」：系统会复制出一份「原名称 - 新版本」的草稿，在草稿上修改并发布后即可安全替换当前版本，无需重新上传样张。</p>
+            <p>发布新模版后，同公司原来的启用版会自动变为「已归档」。已发布 / 已归档模版的版式与绑定为只读，可查看和试打预览；仍可修改名称，再点击「保存名称」。</p>
+            <p>需要调整版式时，在模版列表或详情中点击「复制为草稿」：系统会复制出一份「原名称 - 新版本」的草稿，在草稿上修改并发布后即可安全替换当前版本，无需重新上传样张。复制使用服务器已保存内容，未保存修改不会带入新草稿。</p>
             <div className="flex gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-red-950 dark:border-red-900 dark:bg-red-950/30 dark:text-red-100">
               <Trash2 className="mt-1 size-4 shrink-0" aria-hidden="true" />
               <p>删除操作无法撤销。删除「启用中」的模版后，该公司将无法生成账单 PDF，应先发布替代版本。</p>
@@ -254,8 +272,9 @@ export default function InvoiceTemplateHelpPage() {
                 ["日期或编号太长", "系统会对不换行的窄单元格自动缩小字号。仍难以阅读时，可在草稿编辑器中直接加宽该列或调小字号。"],
                 ["无法合并单元格", "合并要求选区内至少两个单元格，且只能保留一个非空内容；选区不能与已有合并格、字段绑定或明细列交叉，请先解绑或调整明细绑定。"],
                 ["想修改已发布的模版", "已发布 / 已归档模版为只读。点击「复制为草稿」得到新草稿，修改后发布即可安全替换当前版本。"],
-                ["关闭页面后修改会丢失吗", "重新打开该模版时会提示恢复未保存的本地修改。本地恢复只保留在当前浏览器中，请养成及时「保存模版」的习惯。"],
-                ["无法发布", "检查是否已配置明细起止行，并绑定 Description 和 Amount / Total 两个必填列。"],
+                ["关闭页面后修改会丢失吗", "本地恢复只用于同一标签页会话，且要求服务器版本未变化。关闭标签页后不保证恢复，修改完成后请点击「保存模版」。"],
+                ["无法发布", "检查明细起止行、至少为 1 的最少行数、Description 和 Amount / Total 必填列。所有已选明细列不可重复，基础字段不能落在明细区域内；按页面提示修正后重试。"],
+                ["PDF 没打开或文字太小", "允许本站弹出窗口后重试。内容过宽或过高会整体缩小以适应单页；请精简版式、缩小空白区域，并用实际多明细账单检查可读性。"],
               ].map(([question, answer]) => (
                 <div key={question} className="py-4 first:pt-0 last:pb-0">
                   <h3 className="font-medium">{question}</h3>

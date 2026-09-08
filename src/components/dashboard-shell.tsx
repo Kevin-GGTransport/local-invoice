@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Building2, ChevronDown, CircleDollarSign, CircleHelp, FileSliders, Home, Landmark, Menu, ReceiptText, Route, Settings2, X } from "lucide-react";
+import { BookOpen, Building2, ChevronDown, CircleDollarSign, CircleHelp, FileSliders, Home, Landmark, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Route, Settings2, X } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ const basicChildren = [
 ];
 
 const helpChildren = [
+  { href: "/dashboard/help/operations", label: "系统操作手册", icon: BookOpen },
   { href: "/dashboard/help/invoice-templates", label: "账单模版操作手册", icon: BookOpen },
 ];
 
@@ -32,6 +33,7 @@ export function DashboardShell({
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const financeActive = pathname.startsWith("/dashboard/finance");
   const [financeOpen, setFinanceOpen] = React.useState(financeActive);
   const isAdmin = user.role === "admin";
@@ -66,12 +68,13 @@ export function DashboardShell({
         id="dashboard-navigation"
         aria-label="系统导航"
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-slate-800 bg-slate-950 text-slate-100 transition-transform duration-200 lg:translate-x-0",
-          menuOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[calc(100vw-2rem)] flex-col border-r border-slate-800 bg-slate-950 text-slate-100 transition-transform duration-200 motion-reduce:transition-none",
+          menuOpen ? "visible translate-x-0" : "invisible -translate-x-full",
+          sidebarCollapsed ? "lg:invisible lg:-translate-x-full" : "lg:visible lg:translate-x-0"
         )}
       >
         <div className="flex h-16 items-center justify-between gap-3 border-b border-white/10 px-4">
-          <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
+          <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="flex min-w-0 items-center gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-amber-400/40 bg-amber-400/15 text-amber-300">
               <Route className="size-4" aria-hidden="true" />
             </span>
@@ -85,7 +88,8 @@ export function DashboardShell({
           <Button
             variant="ghost"
             size="icon"
-            className="text-slate-300 hover:bg-white/10 hover:text-white lg:hidden"
+            aria-label="关闭菜单"
+            className="size-11 shrink-0 text-slate-300 hover:bg-white/10 hover:text-white lg:hidden"
             onClick={() => setMenuOpen(false)}
           >
             <X className="size-4" aria-hidden="true" />
@@ -262,19 +266,35 @@ export function DashboardShell({
         </div>
       </aside>
 
-      <div className="flex min-h-dvh min-w-0 flex-col lg:pl-72">
+      <div className={cn("flex min-h-dvh min-w-0 flex-col", !sidebarCollapsed && "lg:pl-72")}>
         <header className="sticky top-0 z-30 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-3 py-2 backdrop-blur sm:px-6 dark:border-slate-800 dark:bg-slate-900/95">
           <div className="flex min-w-0 items-center gap-3">
             <Button
               variant="outline"
               size="icon"
-              className="shrink-0 lg:hidden"
+              className="size-11 shrink-0 lg:hidden"
               aria-expanded={menuOpen}
               aria-controls="dashboard-navigation"
               onClick={() => setMenuOpen((open) => !open)}
             >
               <Menu className="size-4" aria-hidden="true" />
               <span className="sr-only">打开系统菜单</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="hidden size-11 shrink-0 lg:inline-flex"
+              aria-label={sidebarCollapsed ? "展开左侧菜单" : "收起左侧菜单"}
+              title={sidebarCollapsed ? "展开左侧菜单" : "收起左侧菜单"}
+              aria-expanded={!sidebarCollapsed}
+              aria-controls="dashboard-navigation"
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen className="size-4" aria-hidden="true" />
+              ) : (
+                <PanelLeftClose className="size-4" aria-hidden="true" />
+              )}
             </Button>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">G&amp;G 陆运系统</p>
@@ -296,7 +316,7 @@ export function DashboardShell({
           </div>
         </header>
 
-        <main className="flex-1 p-3 sm:p-4 lg:p-6">{children}</main>
+        <main className="min-w-0 flex-1 p-3 sm:p-4 lg:p-6">{children}</main>
       </div>
     </div>
   );
