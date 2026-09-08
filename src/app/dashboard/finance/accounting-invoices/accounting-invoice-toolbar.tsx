@@ -109,7 +109,7 @@ export function AccountingInvoiceToolbar({
       className="sticky top-16 z-30 overflow-hidden rounded-xl border bg-card shadow-sm"
     >
       {/* 状态 Tab + 右侧插槽（视图/列设置） */}
-      <div className="bg-slate-950 px-3 sm:px-4">
+      <div className="border-b bg-muted/40 px-3 sm:px-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap" role="tablist" aria-label="账单状态">
           {INVOICE_TABS.map(([value, label]) => {
@@ -120,8 +120,8 @@ export function AccountingInvoiceToolbar({
                 type="button"
                 role="tab"
                 aria-selected={active}
-                className={`relative px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300 ${
-                  active ? "text-amber-300" : "text-slate-400 hover:text-slate-100"
+                className={`relative px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+                  active ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 }`}
                 onClick={() => onInvoiceTabChange(value)}
               >
@@ -129,7 +129,7 @@ export function AccountingInvoiceToolbar({
                 {active && (
                   <span
                     aria-hidden="true"
-                    className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-amber-400"
+                    className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary"
                   />
                 )}
               </button>
@@ -241,13 +241,13 @@ export function AccountingInvoiceToolbar({
                 onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur() }}
               />
               <Button type="button" variant={!dateFrom && !dateTo ? "default" : "outline"}
-                className={`min-h-11 ${!dateFrom && !dateTo ? "bg-amber-500 text-slate-950 hover:bg-amber-400 focus-visible:ring-amber-300/50" : ""}`}
+                className={`min-h-11 ${!dateFrom && !dateTo ? "bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring/50" : ""}`}
                 aria-pressed={!dateFrom && !dateTo}
                 onClick={onClearMonth}>
                 全部月份
               </Button>
               {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
-                <Button key={month} type="button" className={`min-h-11 min-w-11 px-2 ${activeMonth === month ? "bg-amber-500 text-slate-950 hover:bg-amber-400 focus-visible:ring-amber-300/50" : ""}`}
+                <Button key={month} type="button" className={`min-h-11 min-w-11 px-2 ${activeMonth === month ? "bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring/50" : ""}`}
                   variant={activeMonth === month ? "default" : "outline"}
                   aria-pressed={activeMonth === month}
                   aria-label={`${filterYear}年${month}月`}

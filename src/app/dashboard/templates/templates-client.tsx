@@ -277,7 +277,7 @@ export function TemplatesClient() {
       </div>
 
       {/* 模版列表 */}
-      <div className="rounded-lg border bg-card">
+      <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>

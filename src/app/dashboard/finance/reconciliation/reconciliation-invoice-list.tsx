@@ -16,7 +16,6 @@ type Invoice = ReconciliationInvoice & {
   check_amount: string | null
 }
 type ListData = { rows: Invoice[]; pagination: { total: number; page: number; pageSize: number } }
-const headStyle = "h-10 whitespace-nowrap border-slate-800 bg-slate-950 px-3 text-[12px] font-semibold text-slate-100"
 
 function StatusBadge({ row }: { row: Invoice }) {
   const label = Number(row.check_amount) > 0 ? "部分收款" : "未收款"
@@ -100,7 +99,7 @@ export function ReconciliationInvoiceList({ onViewRecords }: {
         : rows.length === 0 ? <div className="flex min-h-56 flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground"><CircleDollarSign className="size-8" aria-hidden="true" /><p className="text-sm">没有符合条件的待收账单</p></div>
         : <>
           <div className="hidden overflow-x-auto md:block"><Table className="text-[13px]">
-            <TableHeader><TableRow>{["Invoice", "公司", "Broker / Load #", "Invoice 日期", "状态", "操作"].map((label, index) => <TableHead key={label} scope="col" className={cn(headStyle, index === 5 && "text-right")}>{label}</TableHead>)}</TableRow></TableHeader>
+            <TableHeader><TableRow>{["Invoice", "公司", "Broker / Load #", "Invoice 日期", "状态", "操作"].map((label, index) => <TableHead key={label} scope="col" className={cn(index === 5 && "text-right")}>{label}</TableHead>)}</TableRow></TableHeader>
             <TableBody>{rows.map((row) => <TableRow key={row.id}>
               <TableCell><p className="font-medium">{row.invoice_number}</p><p className="text-xs text-muted-foreground">{row.master_order_number || "—"} · {row.order_number || "—"}</p></TableCell>
               <TableCell>{row.company}</TableCell>

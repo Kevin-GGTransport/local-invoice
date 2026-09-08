@@ -74,11 +74,11 @@ export function TonuIcon({ value }: { value: boolean }) {
 /** 排序图标（服务端排序，点击表头在 desc/asc 间切换） */
 function SortIcon({ id, sorting }: { id: string; sorting: SortingState }) {
   const sorted = sorting.find((s) => s.id === id)
-  if (!sorted) return <ArrowUpDown className="ml-1 h-3 w-3 text-slate-400" />
+  if (!sorted) return <ArrowUpDown className="ml-1 h-3 w-3 text-primary-foreground/70" />
   return sorted.desc ? (
-    <ArrowDown className="ml-1 h-3 w-3 text-amber-300" />
+    <ArrowDown className="ml-1 h-3 w-3 text-primary-foreground" />
   ) : (
-    <ArrowUp className="ml-1 h-3 w-3 text-amber-300" />
+    <ArrowUp className="ml-1 h-3 w-3 text-primary-foreground" />
   )
 }
 
@@ -126,7 +126,7 @@ export function useInvoiceColumns({
         }),
         columnHelper.accessor("company", {
           header: ({ column }) => (
-            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            <button type="button" className="inline-flex items-center rounded-sm" onClick={() => toggleSort(column.id)}>
               公司
               <SortIcon id={column.id} sorting={sorting} />
             </button>
@@ -139,7 +139,7 @@ export function useInvoiceColumns({
       columnHelper.group({ id: "contract", header: "合同", columns: [
         columnHelper.accessor("contract_date", {
           header: ({ column }) => (
-            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            <button type="button" className="inline-flex items-center rounded-sm" onClick={() => toggleSort(column.id)}>
               合同日期
               <SortIcon id={column.id} sorting={sorting} />
             </button>
@@ -148,7 +148,7 @@ export function useInvoiceColumns({
         }),
         columnHelper.accessor("contract_price", {
           header: ({ column }) => (
-            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            <button type="button" className="inline-flex items-center rounded-sm" onClick={() => toggleSort(column.id)}>
               合同金额
               <SortIcon id={column.id} sorting={sorting} />
             </button>
@@ -169,7 +169,7 @@ export function useInvoiceColumns({
       columnHelper.group({ id: "invoice", header: "Invoice", columns: [
         columnHelper.accessor("invoice_number", {
           header: ({ column }) => (
-            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            <button type="button" className="inline-flex items-center rounded-sm" onClick={() => toggleSort(column.id)}>
               Invoice Number
               <SortIcon id={column.id} sorting={sorting} />
             </button>
@@ -178,7 +178,7 @@ export function useInvoiceColumns({
         }),
         columnHelper.accessor("invoice_date", {
           header: ({ column }) => (
-            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            <button type="button" className="inline-flex items-center rounded-sm" onClick={() => toggleSort(column.id)}>
               Invoice 日期
               <SortIcon id={column.id} sorting={sorting} />
             </button>
@@ -187,7 +187,7 @@ export function useInvoiceColumns({
         }),
         columnHelper.accessor("invoice_price", {
           header: ({ column }) => (
-            <button type="button" className="inline-flex items-center hover:text-foreground" onClick={() => toggleSort(column.id)}>
+            <button type="button" className="inline-flex items-center rounded-sm" onClick={() => toggleSort(column.id)}>
               Invoice 价格
               <SortIcon id={column.id} sorting={sorting} />
             </button>

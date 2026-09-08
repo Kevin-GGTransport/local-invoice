@@ -10,14 +10,14 @@ const Table = React.forwardRef<
     <table
       ref={ref}
       className={cn(
-        "w-full caption-bottom border-collapse text-xs tabular-nums leading-tight text-foreground",
+        "w-full caption-bottom border-separate border-spacing-0 text-[13px] tabular-nums leading-5 text-foreground",
         className
       )}
       {...props}
     />
   )
   if (noWrapper) return table
-  return <div className="relative w-full overflow-auto">{table}</div>
+  return <div className="relative w-full overflow-auto rounded-[inherit]">{table}</div>
 })
 Table.displayName = "Table"
 
@@ -35,7 +35,7 @@ const TableBody = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <tbody
     ref={ref}
-    className={cn("[&_tr:last-child]:border-0", className)}
+    className={cn("[&_tr:last-child>td]:border-b-0", className)}
     {...props}
   />
 ))
@@ -63,7 +63,7 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      "transition-colors hover:bg-muted/40 data-[state=selected]:bg-muted/60",
+      "bg-card transition-colors hover:bg-[var(--table-hover)] focus-within:bg-[var(--table-hover)] data-[state=selected]:bg-[var(--table-selected)] motion-reduce:transition-none",
       className
     )}
     {...props}
@@ -78,7 +78,7 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "h-6 min-h-6 px-1 py-0.5 text-left align-middle font-semibold text-foreground bg-muted/75 border border-border overflow-hidden [&:has([role=checkbox])]:w-8 [&:has([role=checkbox])]:px-0 [&:has([role=checkbox])]:pr-0",
+      "h-10 px-3 py-2 text-left align-middle text-xs font-semibold whitespace-nowrap text-[var(--table-heading)] bg-[var(--table-header)] border-b border-primary-foreground/20 [&:has([role=checkbox])]:w-10 [&:has([role=checkbox])]:text-center",
       className
     )}
     {...props}
@@ -93,7 +93,7 @@ const TableCell = React.forwardRef<
   <td
     ref={ref}
     className={cn(
-      "px-1 py-0.5 align-middle border border-border overflow-hidden [&:has([role=checkbox])]:w-8 [&:has([role=checkbox])]:px-0 [&:has([role=checkbox])]:pr-0",
+      "h-11 px-3 py-2 align-middle border-b border-border/70 [&:has([role=checkbox])]:w-10 [&:has([role=checkbox])]:text-center",
       className
     )}
     {...props}

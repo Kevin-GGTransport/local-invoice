@@ -82,11 +82,11 @@ export function DataTable<TData>({
 
   return (
     <div
-      className={cn("overflow-auto rounded-lg border bg-card", className)}
+      className={cn("overflow-auto rounded-xl border bg-card shadow-sm", className)}
       style={{ maxHeight }}
     >
-      <Table noWrapper className="text-[13px]">
-        <TableHeader>
+      <Table noWrapper>
+        <TableHeader className="sticky top-0 z-20">
           {table.getHeaderGroups().map((headerGroup) => {
             // depth 0 为分组行；仅在启用拖拽且该表头确实是分组（含子列）时可拖
             const isGroupRow =
@@ -95,7 +95,7 @@ export function DataTable<TData>({
             return (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
-                  const isDraggableHead = isGroupRow && header.subHeaders.length > 0
+                  const isDraggableHead = dragEnabled && isGroupRow && header.subHeaders.length > 0
                   return (
                     <TableHead
                       key={header.id}
@@ -116,12 +116,9 @@ export function DataTable<TData>({
                       onDrop={isDraggableHead ? (event) => event.preventDefault() : undefined}
                       onDragEnd={isDraggableHead ? clearDraggingGroup : undefined}
                       className={cn(
-                        "sticky h-10 whitespace-nowrap border-slate-800 bg-slate-950 px-3 text-[12px] font-semibold text-slate-100 [&_button]:text-slate-100 [&_button:hover]:text-white",
-                        isDraggableHead
-                          ? "top-0 z-20 cursor-grab select-none active:cursor-grabbing"
-                          : isGroupRow
-                            ? "top-0 z-20"
-                            : "top-10 z-10",
+                        "h-10 [&_button]:text-inherit [&_button:hover]:bg-primary-foreground/10 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-primary-foreground",
+                        isGroupRow && "bg-[var(--table-group)] border-r border-r-primary-foreground/20 last:border-r-0",
+                        isDraggableHead && "cursor-grab select-none active:cursor-grabbing",
                         isDraggableHead && draggingGroup === header.column.id ? "opacity-60" : ""
                       )}
                       style={{
@@ -163,9 +160,9 @@ export function DataTable<TData>({
             </TableRow>
           ) : (
             table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id}>
+              <TableRow key={row.id} data-state={row.getIsSelected() ? "selected" : undefined}>
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className="h-8 px-2 py-1.5">
+                  <TableCell key={cell.id} className="whitespace-nowrap">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}

@@ -17,11 +17,11 @@ export function CashierReconciliationWorkspace({ isAdmin, initialInvoiceId = "" 
   return (
     <div className="space-y-4">
       <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-950 px-4 py-5 text-white sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 bg-card px-4 py-5 text-card-foreground sm:px-6">
           <div><h1 className="text-xl font-semibold sm:text-2xl">出纳核销</h1>
-          <p className="mt-2 text-sm text-slate-300">登记待收账单的收款，查询和管理已收记录。</p></div>
+          <p className="mt-2 text-sm text-muted-foreground">登记待收账单的收款，查询和管理已收记录。</p></div>
         </div>
-        <div className="border-t border-slate-800 bg-slate-950 px-3 sm:px-4" role="tablist" aria-label="收款状态">
+        <div className="border-t border-border bg-card px-3 sm:px-4" role="tablist" aria-label="收款状态">
           {([ ["pending", "待收"], ["records", "已收"] ] as const).map(([value, label]) => (
             <button
               key={value}
@@ -40,10 +40,10 @@ export function CashierReconciliationWorkspace({ isAdmin, initialInvoiceId = "" 
                 else setView("pending")
                 document.getElementById(`reconciliation-tab-${next}`)?.focus()
               }}
-              className={cn("relative px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300", view === value ? "text-amber-300" : "text-slate-400 hover:text-slate-100")}
+              className={cn("relative px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", view === value ? "text-primary" : "text-muted-foreground hover:text-foreground")}
             >
               {label}
-              {view === value ? <span aria-hidden="true" className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-amber-400" /> : null}
+              {view === value ? <span aria-hidden="true" className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary" /> : null}
             </button>
           ))}
         </div>

@@ -1050,32 +1050,24 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     <div className="space-y-4">
       {/* 页面头部 + 操作工具栏 */}
       <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
-        <div className="relative overflow-hidden bg-slate-950 px-4 py-5 text-white sm:px-6">
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 opacity-70"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 82% 20%, rgba(245, 158, 11, 0.20), transparent 34%), radial-gradient(circle at 15% 100%, rgba(56, 189, 248, 0.16), transparent 30%)",
-            }}
-          />
+        <div className="relative overflow-hidden bg-card px-4 py-5 text-card-foreground sm:px-6">
           <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-300">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
                 财务管理
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">陆运账单</h1>
-                <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-xs text-slate-200">
+                <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs text-muted-foreground">
                   共 {total} 条
                 </span>
                 {selected.size > 0 && (
-                  <span className="rounded-full border border-amber-300/40 bg-amber-400/15 px-2.5 py-1 text-xs font-medium text-amber-200">
+                  <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
                     已选 {selected.size} 条
                   </span>
                 )}
               </div>
-              <p className="mt-2 text-sm text-slate-300">
+              <p className="mt-2 text-sm text-muted-foreground">
                 承运商对 Broker 开票与账单管理
               </p>
             </div>
@@ -1083,7 +1075,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
-                className="bg-amber-500 text-slate-950 hover:bg-amber-400 focus-visible:ring-amber-300/50"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
                 onClick={openCreate}
               >
                 <Plus className="mr-2 h-4 w-4" />
@@ -1092,7 +1084,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
               <Button
                 variant="outline"
                 size="sm"
-                className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
                 onClick={openImportDialog}
               >
                 <FileUp className="mr-2 h-4 w-4" />
@@ -1101,7 +1093,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
               <AccountingInvoicesBatchPdf selectedRows={selectedRows} />
               {invoiceTab === "negative" && (
                 <Button variant="outline" size="sm"
-                  className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
                   disabled={selected.size === 0 || loading} onClick={openNegativeDateDialog}>
                   <Pencil className="mr-2 h-4 w-4" />
                   批量修改 Invoice 日期
@@ -1109,7 +1101,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
               )}
               {(invoiceTab === "unmatched_paid" || invoiceTab === "with_deduction") && (
                 <Button variant="outline" size="sm"
-                  className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
                   disabled={selected.size === 0 || loading} onClick={openDeductionDialog}>
                   <Pencil className="mr-2 h-4 w-4" />
                   修改扣钱
@@ -1120,7 +1112,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                    className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
                     onClick={openBatchSend}
                   >
                     <Send className="mr-2 h-4 w-4" />
@@ -1129,7 +1121,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                    className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
                     onClick={handleBatchDelete}
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
@@ -1142,7 +1134,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                    className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
                   >
                     <Download className="mr-2 h-4 w-4" />
                     批量导出
@@ -1199,7 +1191,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
             <TableViewMenu
               views={viewItems}
               activeViewId={activeViewId}
-              buttonClassName="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+              buttonClassName="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
               onApply={handleApplyView}
               onSaveAs={saveView}
               onUpdateActive={updateActiveView}
@@ -1212,7 +1204,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
               columnVisibility={columnVisibility}
               onToggleColumn={handleToggleColumn}
               onResetColumns={() => setColumnOverrides({})}
-              buttonClassName="border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+              buttonClassName="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
             />
           </>
         }
@@ -1252,7 +1244,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-amber-300/60 bg-amber-400/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                    <span className="rounded-full border border-amber-300/60 bg-amber-400/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-primary">
                       {fmtText(row.company)}
                     </span>
                     <span className="text-xs text-muted-foreground">

@@ -7,6 +7,7 @@ import { BookOpen, Building2, ChevronDown, CircleDollarSign, CircleHelp, FileSli
 import { signOut } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 const financeChildren = [
@@ -54,7 +55,7 @@ export function DashboardShell({
   const homeActive = pathname === "/dashboard";
 
   return (
-    <div className="min-h-dvh bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="min-h-dvh bg-muted/40 text-foreground">
       {menuOpen && (
         <button
           type="button"
@@ -68,19 +69,19 @@ export function DashboardShell({
         id="dashboard-navigation"
         aria-label="系统导航"
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[calc(100vw-2rem)] flex-col border-r border-slate-800 bg-slate-950 text-slate-100 transition-transform duration-200 motion-reduce:transition-none",
+          "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[calc(100vw-2rem)] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-transform duration-200 motion-reduce:transition-none",
           menuOpen ? "visible translate-x-0" : "invisible -translate-x-full",
           sidebarCollapsed ? "lg:invisible lg:-translate-x-full" : "lg:visible lg:translate-x-0"
         )}
       >
-        <div className="flex h-16 items-center justify-between gap-3 border-b border-white/10 px-4">
+        <div className="flex h-16 items-center justify-between gap-3 border-b border-sidebar-border px-4">
           <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="flex min-w-0 items-center gap-3">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-amber-400/40 bg-amber-400/15 text-amber-300">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
               <Route className="size-4" aria-hidden="true" />
             </span>
             <span className="min-w-0">
               <span className="block text-sm font-semibold">G&amp;G</span>
-              <span className="block truncate text-[0.63rem] uppercase tracking-[0.18em] text-slate-400">
+              <span className="block truncate text-[0.63rem] uppercase tracking-[0.18em] text-muted-foreground">
                 Ground Transportation
               </span>
             </span>
@@ -89,7 +90,7 @@ export function DashboardShell({
             variant="ghost"
             size="icon"
             aria-label="关闭菜单"
-            className="size-11 shrink-0 text-slate-300 hover:bg-white/10 hover:text-white lg:hidden"
+            className="size-11 shrink-0 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground lg:hidden"
             onClick={() => setMenuOpen(false)}
           >
             <X className="size-4" aria-hidden="true" />
@@ -97,7 +98,7 @@ export function DashboardShell({
         </div>
 
         <nav className="flex-1 space-y-2 overflow-y-auto p-3">
-          <p className="px-3 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-slate-500">
+          <p className="px-3 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             导航
           </p>
 
@@ -106,8 +107,8 @@ export function DashboardShell({
             aria-current={homeActive ? "page" : undefined}
             onClick={() => setMenuOpen(false)}
             className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white",
-              homeActive && "bg-amber-400/15 font-medium text-amber-200"
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              homeActive && "bg-primary font-medium text-primary-foreground"
             )}
           >
             <Home className="size-4" aria-hidden="true" />
@@ -122,15 +123,15 @@ export function DashboardShell({
                 aria-controls="basic-navigation"
                 onClick={() => setBasicOpen((open) => !open)}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white",
-                  basicActive && "bg-white/5 font-medium text-white"
+                  "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  basicActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                 )}
               >
                 <Settings2 className="size-4" aria-hidden="true" />
                 <span className="min-w-0 flex-1 text-left">基础管理</span>
                 <ChevronDown
                   className={cn(
-                    "size-4 shrink-0 text-slate-400 transition-transform duration-200",
+                    "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
                     basicOpen && "rotate-180"
                   )}
                   aria-hidden="true"
@@ -138,7 +139,7 @@ export function DashboardShell({
               </button>
 
               {basicOpen && (
-                <ul id="basic-navigation" className="ml-4 space-y-1 border-l border-white/10 pl-3">
+                <ul id="basic-navigation" className="ml-4 space-y-1 border-l border-sidebar-border pl-3">
                   {basicChildren.map((item) => {
                     const active =
                       pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -149,8 +150,8 @@ export function DashboardShell({
                           aria-current={active ? "page" : undefined}
                           onClick={() => setMenuOpen(false)}
                           className={cn(
-                            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-white/10 hover:text-white",
-                            active && "bg-amber-400/15 font-medium text-amber-200"
+                            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                            active && "bg-primary font-medium text-primary-foreground"
                           )}
                         >
                           <item.icon className="size-4" aria-hidden="true" />
@@ -171,15 +172,15 @@ export function DashboardShell({
               aria-controls="finance-navigation"
               onClick={() => setFinanceOpen((open) => !open)}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white",
-                financeActive && "bg-white/5 font-medium text-white"
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                financeActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
               )}
             >
               <Landmark className="size-4" aria-hidden="true" />
               <span className="min-w-0 flex-1 text-left">财务管理</span>
               <ChevronDown
                 className={cn(
-                  "size-4 shrink-0 text-slate-400 transition-transform duration-200",
+                  "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
                   financeOpen && "rotate-180"
                 )}
                 aria-hidden="true"
@@ -187,7 +188,7 @@ export function DashboardShell({
             </button>
 
             {financeOpen && (
-              <ul id="finance-navigation" className="ml-4 space-y-1 border-l border-white/10 pl-3">
+              <ul id="finance-navigation" className="ml-4 space-y-1 border-l border-sidebar-border pl-3">
                 {financeChildren.map((item) => {
                   const active =
                     pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -198,9 +199,9 @@ export function DashboardShell({
                         aria-current={active ? "page" : undefined}
                         onClick={() => setMenuOpen(false)}
                         className={cn(
-                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-white/10 hover:text-white",
+                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                           active &&
-                            "bg-amber-400/15 font-medium text-amber-200"
+                            "bg-primary font-medium text-primary-foreground"
                         )}
                       >
                         <item.icon className="size-4" aria-hidden="true" />
@@ -220,15 +221,15 @@ export function DashboardShell({
               aria-controls="help-navigation"
               onClick={() => setHelpOpen((open) => !open)}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-300 transition-colors hover:bg-white/10 hover:text-white",
-                helpActive && "bg-white/5 font-medium text-white"
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                helpActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
               )}
             >
               <CircleHelp className="size-4" aria-hidden="true" />
               <span className="min-w-0 flex-1 text-left">帮助</span>
               <ChevronDown
                 className={cn(
-                  "size-4 shrink-0 text-slate-400 transition-transform duration-200",
+                  "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
                   helpOpen && "rotate-180"
                 )}
                 aria-hidden="true"
@@ -236,7 +237,7 @@ export function DashboardShell({
             </button>
 
             {helpOpen && (
-              <ul id="help-navigation" className="ml-4 space-y-1 border-l border-white/10 pl-3">
+              <ul id="help-navigation" className="ml-4 space-y-1 border-l border-sidebar-border pl-3">
                 {helpChildren.map((item) => {
                   const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
                   return (
@@ -246,8 +247,8 @@ export function DashboardShell({
                         aria-current={active ? "page" : undefined}
                         onClick={() => setMenuOpen(false)}
                         className={cn(
-                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-white/10 hover:text-white",
-                          active && "bg-amber-400/15 font-medium text-amber-200"
+                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                          active && "bg-primary font-medium text-primary-foreground"
                         )}
                       >
                         <item.icon className="size-4" aria-hidden="true" />
@@ -261,13 +262,13 @@ export function DashboardShell({
           </div>
         </nav>
 
-        <div className="border-t border-white/10 px-4 py-4 text-xs leading-5 text-slate-500">
+        <div className="border-t border-sidebar-border px-4 py-4 text-xs leading-5 text-muted-foreground">
           G&amp;G Ground Transportation System
         </div>
       </aside>
 
       <div className={cn("flex min-h-dvh min-w-0 flex-col", !sidebarCollapsed && "lg:pl-72")}>
-        <header className="sticky top-0 z-30 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-3 py-2 backdrop-blur sm:px-6 dark:border-slate-800 dark:bg-slate-900/95">
+        <header className="sticky top-0 z-30 flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-border bg-background/95 px-3 py-2 backdrop-blur sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Button
               variant="outline"
@@ -298,13 +299,14 @@ export function DashboardShell({
             </Button>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">G&amp;G 陆运系统</p>
-              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+              <p className="truncate text-xs text-muted-foreground">
                 运营与账单管理平台
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <ThemeToggle />
             <span className="max-w-32 truncate text-sm sm:max-w-none">{user.name ?? "用户"}</span>
             <Button
               variant="outline"
