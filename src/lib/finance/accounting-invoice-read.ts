@@ -30,8 +30,11 @@ export async function readAccountingInvoices(
   const order = buildAccountingInvoiceOrderBy(params)
   const [key, direction] = Object.entries(order[0])[0]
   // The identifier and direction are produced by the existing sort whitelist.
+  // 合同日期即账单创建日期，排序键 contract_date 实际按 created_at 排
   const sortField = key === "check_amount" ? Prisma.sql`COALESCE(p.paid_amount, 0)`
-    : key === "check_date" ? Prisma.sql`p.check_date` : Prisma.raw(`i."${key}"`)
+    : key === "check_date" ? Prisma.sql`p.check_date`
+    : key === "contract_date" ? Prisma.raw('i."created_at"')
+    : Prisma.raw(`i."${key}"`)
   const sortDirection = Prisma.raw(direction === "asc" ? "ASC" : "DESC")
   const ids = await tx.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
     SELECT i.id ${from}
@@ -62,6 +65,8 @@ export function invoiceWithReconciliationSummary(row: InvoiceWithPayments) {
   const summary = reconciliationSummary(row.invoice_price, active.map((record) => record.check_amount))
   return {
     ...invoice,
+    // 合同日期就是账单创建日期（列定义/导出沿用 contract_date 字段名）
+    contract_date: invoice.created_at,
     check_amount: summary.paid_amount,
     check_date: active[0]?.check_date ?? null,
     check_number: active.length ? active.map((record) => record.check_number).join("/") : null,

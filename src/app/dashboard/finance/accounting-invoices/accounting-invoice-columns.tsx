@@ -22,6 +22,7 @@ export type AccountingInvoiceRow = {
   company: string
   master_order_number: string | null
   order_number: string | null
+  /** 合同日期 = 账单创建日期（read 层以 created_at 填充） */
   contract_date: string | null
   contract_price: string | null
   bill_to: string | null

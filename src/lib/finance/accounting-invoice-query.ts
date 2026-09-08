@@ -114,7 +114,9 @@ export function buildAccountingInvoiceOrderBy(
   ).includes(sort)
     ? (sort as AccountingInvoiceSortKey)
     : "invoice_date"
-  return [{ [key]: order }, { id: order }]
+  // 合同日期即创建日期：排序键 contract_date 实际按 created_at 排（与 SQL 版一致）
+  const sortKey = key === "contract_date" ? "created_at" : key
+  return [{ [sortKey]: order }, { id: order }]
 }
 
 /** 解析 ?ids=1,2,3 → bigint[]；非法或为空返回 null */
