@@ -26,9 +26,6 @@ export type ReconciliationInvoice = {
   broker_load_number: string | null
   billing_category: string | null
   invoice_number: string
-  invoice_price?: string | null
-  check_amount?: string | null
-  difference?: string | null
 }
 
 type FormValues = {
@@ -44,19 +41,8 @@ function localToday() {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
-function emptyValues(invoice?: ReconciliationInvoice | null): FormValues {
-  const difference = Number(invoice?.difference)
-  const suggestedAmount = Number.isFinite(difference) && difference < 0
-    ? Math.abs(difference).toFixed(2)
-    : ""
-  return { checkDate: localToday(), checkAmount: suggestedAmount, checkNumber: "", notes: "" }
-}
-
-function money(value: string | null | undefined) {
-  if (value == null || value === "") return "—"
-  const amount = Number(value)
-  if (!Number.isFinite(amount)) return "—"
-  return amount.toLocaleString("en-US", { style: "currency", currency: "USD" })
+function emptyValues(): FormValues {
+  return { checkDate: localToday(), checkAmount: "", checkNumber: "", notes: "" }
 }
 
 function IdentityField({ label, value }: { label: string; value: string | null }) {
@@ -87,7 +73,7 @@ export function ReconciliationFormDialog({
   React.useEffect(() => {
     if (!open) return
     void Promise.resolve().then(() => {
-      setValues(emptyValues(invoice))
+      setValues(emptyValues())
       setRequestId(crypto.randomUUID())
       setErrors({})
     })
@@ -149,9 +135,6 @@ export function ReconciliationFormDialog({
               <IdentityField label="Load #" value={invoice.broker_load_number} />
               <IdentityField label="From-To" value={invoice.billing_category} />
               <div className="sm:col-span-2 lg:col-span-3"><IdentityField label="Invoice Number" value={invoice.invoice_number} /></div>
-              {invoice.invoice_price !== undefined ? <IdentityField label="Invoice 金额" value={money(invoice.invoice_price)} /> : null}
-              {invoice.check_amount !== undefined ? <IdentityField label="已收金额" value={money(invoice.check_amount)} /> : null}
-              {invoice.difference !== undefined ? <IdentityField label="待收金额" value={money(String(Math.abs(Number(invoice.difference))))} /> : null}
             </dl>
 
             <fieldset className="space-y-4">
