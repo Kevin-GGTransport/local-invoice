@@ -10,6 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ReconciliationFormDialog, type ReconciliationInvoice } from "@/components/finance/reconciliation-form-dialog"
 import { fetchJson } from "@/lib/api/client"
 import { cn } from "@/lib/utils"
+import { OverlayScroll } from "@/components/ui/overlay-scroll"
+import { StickyFooter } from "@/components/table-workspace"
 
 type Invoice = ReconciliationInvoice & {
   invoice_date: string | null
@@ -22,7 +24,9 @@ function StatusBadge({ row }: { row: Invoice }) {
   return <span className="inline-flex rounded-full border border-rose-300/60 bg-rose-400/10 px-2 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300">{label}</span>
 }
 
-export function ReconciliationInvoiceList({ onViewRecords }: {
+export function ReconciliationInvoiceList({ hideToolbar = false, onViewRecords }: {
+  /** 工具栏整栏折叠时隐藏筛选工具卡 */
+  hideToolbar?: boolean
   onViewRecords: (invoiceId: string) => void
 }) {
   const [rows, setRows] = React.useState<Invoice[]>([])
@@ -75,6 +79,7 @@ export function ReconciliationInvoiceList({ onViewRecords }: {
   </>
 
   return <div className="space-y-4">
+    {!hideToolbar && (
     <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
         <div><p className="text-sm font-medium">共 {total} 条待收账单</p>
@@ -92,13 +97,14 @@ export function ReconciliationInvoiceList({ onViewRecords }: {
         </Select>
       </div>
     </section>
+    )}
 
     <section className="overflow-hidden rounded-lg border bg-card">
       {loading ? <div className="flex min-h-56 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" aria-hidden="true" />正在加载...</div>
         : error ? <div role="alert" className="flex min-h-56 flex-col items-center justify-center gap-3 p-4 text-sm"><p>{error}</p><Button variant="outline" onClick={() => setReload((value) => value + 1)}>重新加载</Button></div>
         : rows.length === 0 ? <div className="flex min-h-56 flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground"><CircleDollarSign className="size-8" aria-hidden="true" /><p className="text-sm">没有符合条件的待收账单</p></div>
         : <>
-          <div className="hidden overflow-x-auto md:block"><Table className="text-[13px]">
+          <OverlayScroll className="hidden md:block" refreshKey={`${loading}-${rows.length}`}><Table className="text-[13px]">
             <TableHeader><TableRow>{["Invoice", "公司", "Broker / Load #", "Invoice 日期", "状态", "操作"].map((label, index) => <TableHead key={label} scope="col" className={cn(index === 5 && "text-right")}>{label}</TableHead>)}</TableRow></TableHeader>
             <TableBody>{rows.map((row) => <TableRow key={row.id}>
               <TableCell><p className="font-medium">{row.invoice_number}</p><p className="text-xs text-muted-foreground">{row.master_order_number || "—"} · {row.order_number || "—"}</p></TableCell>
@@ -108,7 +114,7 @@ export function ReconciliationInvoiceList({ onViewRecords }: {
               <TableCell><StatusBadge row={row} /></TableCell>
               <TableCell><div className="flex justify-end gap-1">{actions(row)}</div></TableCell>
             </TableRow>)}</TableBody>
-          </Table></div>
+          </Table></OverlayScroll>
           <div className="divide-y md:hidden">{rows.map((row) => <article key={row.id} className="space-y-3 p-4">
             <div className="flex items-start justify-between gap-3"><div><p className="font-semibold">{row.invoice_number}</p><p className="mt-1 text-xs text-muted-foreground">{row.company} · {row.bill_to || "—"}</p></div><StatusBadge row={row} /></div>
             <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -119,10 +125,12 @@ export function ReconciliationInvoiceList({ onViewRecords }: {
           </article>)}</div>
         </>}
     </section>
-    <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground"><span>第 {page}/{pageCount} 页</span><div className="flex gap-2">
-      <Button variant="outline" size="sm" disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}><ChevronLeft className="mr-1 size-4" aria-hidden="true" />上一页</Button>
-      <Button variant="outline" size="sm" disabled={page >= pageCount || loading} onClick={() => setPage((value) => value + 1)}>下一页<ChevronRight className="ml-1 size-4" aria-hidden="true" /></Button>
-    </div></div>
+    <StickyFooter>
+      <div className="flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground"><span>第 {page}/{pageCount} 页</span><div className="flex gap-2">
+        <Button variant="outline" size="sm" disabled={page <= 1 || loading} onClick={() => setPage((value) => value - 1)}><ChevronLeft className="mr-1 size-4" aria-hidden="true" />上一页</Button>
+        <Button variant="outline" size="sm" disabled={page >= pageCount || loading} onClick={() => setPage((value) => value + 1)}>下一页<ChevronRight className="ml-1 size-4" aria-hidden="true" /></Button>
+      </div></div>
+    </StickyFooter>
     <ReconciliationFormDialog invoice={target} open={target != null} onOpenChange={(open) => { if (!open) setTarget(null) }} onSuccess={() => setReload((value) => value + 1)} />
   </div>
 }

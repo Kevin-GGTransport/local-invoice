@@ -55,6 +55,8 @@ import {
   type TableViewItem,
 } from "@/components/data-table/table-view-menu"
 import { ColumnSettingsMenu } from "@/components/data-table/column-settings-menu"
+import { useToolbarWorkspace } from "@/hooks/use-toolbar-workspace"
+import { Workspace, StickyFooter } from "@/components/table-workspace"
 import {
   AccountingInvoiceToolbar,
   type CompanyOption,
@@ -1039,129 +1041,44 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
 
   // 吸顶工具栏高度（用于计算表格滚动容器 max-height）
   const [toolbarHeight, setToolbarHeight] = React.useState(0)
+
+  // 工具栏整栏折叠（localStorage 持久化）+ 应用内全屏
+  const {
+    collapsed: toolbarCollapsed,
+    toggleCollapsed: toggleToolbarCollapsed,
+    fullscreen,
+    toggleFullscreen,
+  } = useToolbarWorkspace("accounting-invoices.toolbar-collapsed.v1")
+
+  // 折叠细条角标：生效中的筛选数量（unsent Tab 下日期仍随请求发送，如实计数）
+  const activeFilterCount = React.useMemo(
+    () =>
+      [
+        companies.length > 0,
+        billingCategory !== "",
+        dateFrom !== "" || dateTo !== "",
+        appliedBroker !== "",
+        appliedSearch !== "",
+      ].filter(Boolean).length,
+    [companies, billingCategory, dateFrom, dateTo, appliedBroker, appliedSearch]
+  )
+
+  // 经验调校：常态顶栏 64px + 底部预留 80（沿旧值）；全屏时容器 p-3 sm:p-4 竖向
+  // 内边距 32（≥sm 为 16×2）+ 底部预留 90（分页条 58 + 上下两个 gap 16×2）
+  const shellOffset = fullscreen ? 32 : 64
+  const bottomAllowance = fullscreen ? 90 : 80
   const tableMaxHeight =
-    toolbarHeight > 0 ? `calc(100dvh - ${Math.round(toolbarHeight) + 64 + 80}px)` : undefined
+    toolbarHeight > 0
+      ? `calc(100dvh - ${Math.round(toolbarHeight) + shellOffset + bottomAllowance}px)`
+      : undefined
 
   // 卡片视图的差额/扣钱字段跟随有效列显隐
   const showDifferenceColumn = columnVisibility.difference !== false
   const showDeductionColumn = columnVisibility.deduction !== false
 
   return (
-    <div className="space-y-4">
-      {/* 页面头部 + 操作工具栏 */}
-      <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
-        <div className="relative overflow-hidden bg-card px-4 py-5 text-card-foreground sm:px-6">
-          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
-                财务管理
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">陆运账单</h1>
-                <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-                  共 {total} 条
-                </span>
-                {selected.size > 0 && (
-                  <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-                    已选 {selected.size} 条
-                  </span>
-                )}
-              </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                承运商对 Broker 开票与账单管理
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-                onClick={openCreate}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                新建账单
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
-                onClick={openImportDialog}
-              >
-                <FileUp className="mr-2 h-4 w-4" />
-                导入账单
-              </Button>
-              <AccountingInvoicesBatchPdf selectedRows={selectedRows} />
-              {invoiceTab === "negative" && (
-                <Button variant="outline" size="sm"
-                  className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
-                  disabled={selected.size === 0 || loading} onClick={openNegativeDateDialog}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  批量修改 Invoice 日期
-                </Button>
-              )}
-              {(invoiceTab === "unmatched_paid" || invoiceTab === "with_deduction") && (
-                <Button variant="outline" size="sm"
-                  className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
-                  disabled={selected.size === 0 || loading} onClick={openDeductionDialog}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  修改扣钱
-                </Button>
-              )}
-              {selected.size > 0 && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
-                    onClick={openBatchSend}
-                  >
-                    <Send className="mr-2 h-4 w-4" />
-                    批量发账单
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
-                    onClick={handleBatchDelete}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    批量删除
-                  </Button>
-                </>
-              )}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    批量导出
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={handleExportFiltered}>
-                    <FileSpreadsheet className="mr-2 h-4 w-4" />
-                    导出筛选结果（{total}条）
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExportAll}>
-                    <Database className="mr-2 h-4 w-4" />
-                    导出全部数据（{total}条）
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExportSelected}>
-                    <Download className="mr-2 h-4 w-4" />
-                    导出选中（{selected.size}条）
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-        </div>
-
-      </section>
-
-      {/* 吸顶工具栏：状态 Tab + 视图/列设置 + 筛选/搜索区（sticky 于顶部导航栏下方） */}
+    <Workspace fullscreen={fullscreen}>
+      {/* 吸顶工具栏：标题/计数 + 状态 Tab + 操作按钮 + 视图/列设置 + 筛选/搜索区；支持整栏折叠与应用内全屏 */}
       <AccountingInvoiceToolbar
         invoiceTab={invoiceTab}
         onInvoiceTabChange={handleInvoiceTabChange}
@@ -1186,6 +1103,99 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
         onApplySearch={applySearch}
         onResetFilters={resetFilters}
         onHeightChange={setToolbarHeight}
+        totalCount={total}
+        selectedCount={selected.size}
+        actionsSlot={
+          <>
+            <Button
+              size="sm"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={openCreate}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              新建账单
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={openImportDialog}
+            >
+              <FileUp className="mr-2 h-4 w-4" />
+              导入账单
+            </Button>
+            <AccountingInvoicesBatchPdf selectedRows={selectedRows} />
+            {invoiceTab === "negative" && (
+              <Button variant="outline" size="sm"
+                className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
+                disabled={selected.size === 0 || loading} onClick={openNegativeDateDialog}>
+                <Pencil className="mr-2 h-4 w-4" />
+                批量修改 Invoice 日期
+              </Button>
+            )}
+            {(invoiceTab === "unmatched_paid" || invoiceTab === "with_deduction") && (
+              <Button variant="outline" size="sm"
+                className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
+                disabled={selected.size === 0 || loading} onClick={openDeductionDialog}>
+                <Pencil className="mr-2 h-4 w-4" />
+                修改扣钱
+              </Button>
+            )}
+            {selected.size > 0 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={openBatchSend}
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  批量发账单
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={handleBatchDelete}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  批量删除
+                </Button>
+              </>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  批量导出
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleExportFiltered}>
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
+                  导出筛选结果（{total}条）
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportAll}>
+                  <Database className="mr-2 h-4 w-4" />
+                  导出全部数据（{total}条）
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportSelected}>
+                  <Download className="mr-2 h-4 w-4" />
+                  导出选中（{selected.size}条）
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+        collapsed={toolbarCollapsed}
+        onToggleCollapsed={toggleToolbarCollapsed}
+        activeFilterCount={activeFilterCount}
+        fullscreen={fullscreen}
+        onToggleFullscreen={toggleFullscreen}
         rightSlot={
           <>
             <TableViewMenu
@@ -1296,16 +1306,18 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
         )}
       </div>
 
-      {/* 分页 */}
-      <TablePagination
-        total={total}
-        page={page}
-        pageCount={pageCount}
-        pageSize={pageSize}
-        loading={loading}
-        onPageChange={setPage}
-        onPageSizeChange={changePageSize}
-      />
+      {/* 分页：吸底浮动——卡片视图/全屏下滚动长列表时也能随时翻页 */}
+      <StickyFooter>
+        <TablePagination
+          total={total}
+          page={page}
+          pageCount={pageCount}
+          pageSize={pageSize}
+          loading={loading}
+          onPageChange={setPage}
+          onPageSizeChange={changePageSize}
+        />
+      </StickyFooter>
 
       {/* 新建/编辑弹窗：复用模版编辑表单 */}
       <InvoiceFormDialog
@@ -1355,6 +1367,6 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
         onConfirm={() => void saveDeduction()}
         onClose={() => setDeductionEditIds(null)}
       />
-    </div>
+    </Workspace>
   )
 }

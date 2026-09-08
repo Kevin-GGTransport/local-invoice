@@ -3,6 +3,7 @@
 /**
  * 通用数据表格外壳（配合 TanStack Table 实例渲染）
  * - 双行表头（分组行 + 叶子行）sticky 吸顶；传入受控 groupOrder 后分组表头可拖拽整组换位
+ * - 滚动区用 OverlayScroll：原生滚动条隐藏，浮层滑块替代（表头背景/圆角延伸到边缘）
  * - 滚动容器 maxHeight 由外部按吸顶工具栏高度计算传入
  * - 响应式显隐（如 2xl:block 配卡片视图）由调用方通过 className 控制
  */
@@ -11,6 +12,7 @@ import React from "react"
 import { flexRender, type Table as TanStackTable } from "@tanstack/react-table"
 import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { OverlayScroll } from "@/components/ui/overlay-scroll"
 import {
   Table,
   TableBody,
@@ -81,9 +83,10 @@ export function DataTable<TData>({
   const clearDraggingGroup = React.useCallback(() => setDraggingGroup(null), [])
 
   return (
-    <div
-      className={cn("overflow-auto rounded-xl border bg-card shadow-sm", className)}
-      style={{ maxHeight }}
+    <OverlayScroll
+      className={cn("rounded-xl border bg-card shadow-sm", className)}
+      maxHeight={maxHeight}
+      refreshKey={`${loading}-${table.getRowModel().rows.length}`}
     >
       <Table noWrapper>
         <TableHeader className="sticky top-0 z-20">
@@ -171,6 +174,6 @@ export function DataTable<TData>({
           )}
         </TableBody>
       </Table>
-    </div>
+    </OverlayScroll>
   )
 }

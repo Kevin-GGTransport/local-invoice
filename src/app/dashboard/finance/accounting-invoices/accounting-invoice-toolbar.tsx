@@ -1,9 +1,9 @@
 "use client"
 
 /**
- * 陆运账单工具栏（状态 Tab + 筛选/搜索区）
- * 吸顶显示：sticky 于顶部导航栏（64px）下方；通过 onHeightChange 回报自身高度，
- * 供父级计算表格滚动容器的 max-height。
+ * 陆运账单工具栏（标题/计数 + 状态 Tab + 操作按钮 + 筛选/搜索区）
+ * 外壳（吸顶卡、右上角固定的折叠/全屏按钮、折叠细条、高度回报）由公共
+ * ToolbarShell 提供，本组件只填充各插槽与筛选行。
  */
 
 import React from "react"
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ChevronDown, RotateCcw, Search } from "lucide-react"
 import { ACCOUNTING_BILLING_CATEGORY_OPTIONS } from "@/lib/finance/accounting-invoice-companies"
+import { ToolbarShell } from "@/components/table-workspace"
 
 export type InvoiceTab = "all" | "unsent" | "negative" | "unmatched_paid" | "with_deduction"
 
@@ -63,6 +64,20 @@ type AccountingInvoiceToolbarProps = {
   onHeightChange: (height: number) => void
   /** 渲染在状态 Tab 行右侧的插槽（如视图切换、列设置菜单） */
   rightSlot?: React.ReactNode
+  /** 共 N 条（原页头徽章，压缩进工具栏） */
+  totalCount: number
+  /** 已选 N 条（>0 时显示） */
+  selectedCount: number
+  /** 平铺操作按钮簇（新建/导入/批量…），渲染在右侧插槽前 */
+  actionsSlot?: React.ReactNode
+  /** 整栏折叠（只留细横条） */
+  collapsed: boolean
+  onToggleCollapsed: () => void
+  /** 折叠细条上显示的生效筛选数量角标 */
+  activeFilterCount: number
+  /** 应用内全屏（盖住侧栏/顶栏） */
+  fullscreen: boolean
+  onToggleFullscreen: () => void
 }
 
 export function AccountingInvoiceToolbar({
@@ -90,28 +105,56 @@ export function AccountingInvoiceToolbar({
   onResetFilters,
   onHeightChange,
   rightSlot,
+  totalCount,
+  selectedCount,
+  actionsSlot,
+  collapsed,
+  onToggleCollapsed,
+  activeFilterCount,
+  fullscreen,
+  onToggleFullscreen,
 }: AccountingInvoiceToolbarProps) {
-  const stickyRef = React.useRef<HTMLDivElement>(null)
-
-  React.useEffect(() => {
-    const el = stickyRef.current
-    if (!el) return
-    const report = () => onHeightChange(el.offsetHeight)
-    report()
-    const observer = new ResizeObserver(report)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [onHeightChange])
-
   return (
-    <div
-      ref={stickyRef}
-      className="sticky top-16 z-30 overflow-hidden rounded-xl border bg-card shadow-sm"
-    >
-      {/* 状态 Tab + 右侧插槽（视图/列设置） */}
-      <div className="border-b bg-muted/40 px-3 sm:px-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap" role="tablist" aria-label="账单状态">
+    <ToolbarShell
+      fullscreen={fullscreen}
+      collapsed={collapsed}
+      onToggleCollapsed={onToggleCollapsed}
+      onToggleFullscreen={onToggleFullscreen}
+      title="陆运账单"
+      activeFilterCount={activeFilterCount}
+      onHeightChange={onHeightChange}
+      collapsedMeta={
+        <>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            共 {totalCount} 条
+          </span>
+          {selectedCount > 0 && (
+            <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+              已选 {selectedCount} 条
+            </span>
+          )}
+          {activeFilterCount > 0 && (
+            <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+              筛选 {activeFilterCount} 项
+            </span>
+          )}
+        </>
+      }
+      headerLeft={
+        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="text-sm font-semibold tracking-tight">陆运账单</h1>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            共 {totalCount} 条
+          </span>
+          {selectedCount > 0 && (
+            <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+              已选 {selectedCount} 条
+            </span>
+          )}
+        </div>
+      }
+      tabs={
+        <div className="flex flex-wrap" role="tablist" aria-label="账单状态">
           {INVOICE_TABS.map(([value, label]) => {
             const active = invoiceTab === value
             return (
@@ -135,14 +178,16 @@ export function AccountingInvoiceToolbar({
               </button>
             )
           })}
-          </div>
-          {rightSlot && (
-            <div className="flex shrink-0 items-center gap-1.5 py-2">{rightSlot}</div>
-          )}
         </div>
-      </div>
-
-      {/* 筛选与搜索 */}
+      }
+      actions={
+        <>
+          {actionsSlot}
+          {rightSlot}
+        </>
+      }
+    >
+      {/* 行2：筛选与搜索 */}
       <div className="border-t bg-muted/30 px-3 py-3 sm:px-4">
         <div className="flex flex-col gap-2 2xl:flex-row 2xl:flex-wrap 2xl:items-center 2xl:justify-between">
           <div className="flex flex-wrap items-center gap-2">
@@ -306,6 +351,6 @@ export function AccountingInvoiceToolbar({
           </div>
         </div>
       </div>
-    </div>
+    </ToolbarShell>
   )
 }
