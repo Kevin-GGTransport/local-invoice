@@ -5,7 +5,12 @@
  * 行高/列宽单位换算 pt ↔ px（×4/3）在本层完成。
  */
 
-import { BORDER_WIDTH_PT, EXCEL_BORDER_TO_LINE, widthToLineStyle } from "./border-style";
+import {
+  BORDER_WIDTH_PT,
+  TEMPLATE_LINE_TO_UNIVER_ENUM,
+  UNIVER_ENUM_TO_LINE,
+  widthToLineStyle,
+} from "./border-style";
 import type {
   TemplateBorderLineStyle,
   TemplateCell,
@@ -14,11 +19,12 @@ import type {
   TemplatePageConfig,
 } from "./types";
 
-// ---------- Univer 数据契约最小子集（结构化兼容官方 IWorkbookData） ----------
+// ---------- Univer 数据契约最小子集（0.25.1 键名与数值枚举契约：bd.t.s / ht / vt / tb 数值、styles Record） ----------
 
+/** 边框（0.25.1 短键契约）：s 为 BorderStyleTypes 数值枚举，cl 为颜色（契约必填，无色时为空对象） */
 export interface UniverBorderData {
-  style: string;
-  color?: string;
+  s: number;
+  cl: { rgb?: string };
 }
 
 export interface UniverStyle {
@@ -30,9 +36,12 @@ export interface UniverStyle {
   ff?: string;
   cl?: { rgb: string };
   bg?: { rgb: string };
-  bd?: Partial<Record<"top" | "right" | "bottom" | "left", UniverBorderData>>;
-  at?: string;
-  vt?: string;
+  bd?: Partial<Record<"t" | "r" | "b" | "l", UniverBorderData>>;
+  /** HorizontalAlign 数值枚举：1=left 2=center 3=right */
+  ht?: number;
+  /** VerticalAlign 数值枚举：1=top 2=middle 3=bottom */
+  vt?: number;
+  /** WrapStrategy 数值枚举：3=WRAP */
   tb?: number;
 }
 
@@ -97,17 +106,36 @@ const ptToPx = (pt: number) => Math.round(pt * PT_TO_PX * 10) / 10;
 const DEFAULT_ROW_HEIGHT_PT = 15;
 const DEFAULT_COL_WIDTH_PT = 48;
 
-const LINE_TO_UNIVER: Record<TemplateBorderLineStyle, string> = {
-  thin: "thin",
-  medium: "medium",
-  thick: "thick",
-  dashed: "dashed",
-  dotted: "dotted",
-  double: "double",
+// ---------- 对齐/换行枚举（0.25.1 数值契约，仅桥接消费；边框数值映射在 border-style.ts 单点维护） ----------
+
+const UNIVER_HT_ENUM: Record<NonNullable<TemplateCellStyle["halign"]>, number> = {
+  left: 1,
+  center: 2,
+  right: 3,
+};
+const UNIVER_HT_BACK: Record<number, NonNullable<TemplateCellStyle["halign"]>> = {
+  1: "left",
+  2: "center",
+  3: "right",
 };
 
-const UNIVER_VT: Record<string, string> = { top: "vertical", middle: "middle", bottom: "horizontal" };
-const UNIVER_VT_BACK: Record<string, string> = { vertical: "top", middle: "middle", horizontal: "bottom" };
+const UNIVER_VT_ENUM: Record<NonNullable<TemplateCellStyle["valign"]>, number> = {
+  top: 1,
+  middle: 2,
+  bottom: 3,
+};
+const UNIVER_VT_BACK: Record<number, NonNullable<TemplateCellStyle["valign"]>> = {
+  1: "top",
+  2: "middle",
+  3: "bottom",
+};
+
+/** WrapStrategy.WRAP（0.25.1 text-style.d.ts：UNSPECIFIED=0 OVERFLOW=1 CLIP=2 WRAP=3） */
+const UNIVER_WRAP = 3;
+
+/** 模板边框侧 ↔ 0.25.1 短键 */
+const SIDE_TO_UNIVER_KEY = { top: "t", right: "r", bottom: "b", left: "l" } as const;
+const UNIVER_KEY_TO_SIDE = { t: "top", r: "right", b: "bottom", l: "left" } as const;
 
 // ---------- TemplateGrid → Univer ----------
 
@@ -119,16 +147,19 @@ function templateStyleToUniver(style: TemplateCellStyle, baseFontSize: number): 
   if (style.strike) u.st = { s: 1 };
   if (style.color) u.cl = { rgb: style.color };
   if (style.fill) u.bg = { rgb: style.fill };
-  if (style.halign) u.at = style.halign;
-  if (style.valign) u.vt = UNIVER_VT[style.valign];
-  if (style.wrap) u.tb = 1;
+  if (style.halign) u.ht = UNIVER_HT_ENUM[style.halign];
+  if (style.valign) u.vt = UNIVER_VT_ENUM[style.valign];
+  if (style.wrap) u.tb = UNIVER_WRAP;
   const b = style.borders;
   if (b) {
     const bd: UniverStyle["bd"] = {};
     for (const side of ["top", "right", "bottom", "left"] as const) {
       if (b[side] == null) continue;
       const line = b.styles?.[side] ?? widthToLineStyle(b[side]!);
-      bd[side] = { style: LINE_TO_UNIVER[line], ...(b.color ? { color: b.color } : {}) };
+      bd[SIDE_TO_UNIVER_KEY[side]] = {
+        s: TEMPLATE_LINE_TO_UNIVER_ENUM[line],
+        cl: b.color ? { rgb: b.color } : {},
+      };
     }
     if (Object.keys(bd).length > 0) u.bd = bd;
   }
@@ -217,22 +248,23 @@ function univerStyleToTemplate(
   if (u.fs != null && u.fs !== baseFontSize) style.fontSize = u.fs;
   if (u.cl?.rgb) style.color = u.cl.rgb;
   if (u.bg?.rgb) style.fill = u.bg.rgb;
-  if (u.at === "left" || u.at === "center" || u.at === "right") style.halign = u.at;
-  if (u.vt && UNIVER_VT_BACK[u.vt]) style.valign = UNIVER_VT_BACK[u.vt] as TemplateCellStyle["valign"];
-  if (u.tb === 1) style.wrap = true;
+  if (u.ht != null && UNIVER_HT_BACK[u.ht]) style.halign = UNIVER_HT_BACK[u.ht];
+  if (u.vt != null && UNIVER_VT_BACK[u.vt]) style.valign = UNIVER_VT_BACK[u.vt];
+  if (u.tb === UNIVER_WRAP) style.wrap = true;
   if (u.bd) {
     const borders: Record<string, number> = {};
     const borderStyles: Record<string, TemplateBorderLineStyle> = {};
-    for (const side of ["top", "right", "bottom", "left"] as const) {
-      const edge = u.bd[side];
+    for (const key of ["t", "r", "b", "l"] as const) {
+      const edge = u.bd[key];
       if (!edge) continue;
       // 反向统一走 border-style 单点映射：hair/dashDot/mediumDashed 等真实快照线型归一化，而非丢弃
-      const line = EXCEL_BORDER_TO_LINE[edge.style];
+      const line = UNIVER_ENUM_TO_LINE[edge.s];
       if (!line) continue;
+      const side = UNIVER_KEY_TO_SIDE[key];
       borders[side] = BORDER_WIDTH_PT[line];
       // 仅当宽度反推不出线型时才回写 styles：thin/medium/thick 宽度与线型互推一致不写，dashed/dotted/double 必须写
       if (widthToLineStyle(BORDER_WIDTH_PT[line]) !== line) borderStyles[side] = line;
-      if (edge.color) (borders as Record<string, unknown>).color = edge.color;
+      if (edge.cl?.rgb) (borders as Record<string, unknown>).color = edge.cl.rgb;
     }
     if (Object.keys(borders).length > 0) {
       style.borders = {

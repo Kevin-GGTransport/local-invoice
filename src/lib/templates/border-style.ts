@@ -49,3 +49,30 @@ export const EXCEL_BORDER_TO_LINE: Record<string, TemplateBorderLineStyle> = {
   mediumDashDot: 'dashed',
   mediumDashDotDot: 'dashed',
 }
+
+/** 模板线型 → Univer BorderStyleTypes 数值枚举（0.25.1 契约：1=thin 3=dotted 4=dashed 7=double 8=medium 13=thick） */
+export const TEMPLATE_LINE_TO_UNIVER_ENUM: Record<TemplateBorderLineStyle, number> = {
+  thin: 1,
+  medium: 8,
+  thick: 13,
+  dashed: 4,
+  dotted: 3,
+  double: 7,
+}
+
+/** Univer BorderStyleTypes 数值枚举 → 模板线型（hair/dashDot 等变体归一化到 dashed；0=NONE 不映射） */
+export const UNIVER_ENUM_TO_LINE: Record<number, TemplateBorderLineStyle> = {
+  1: 'thin',
+  2: 'dashed',
+  3: 'dotted',
+  4: 'dashed',
+  5: 'dashed',
+  6: 'dashed',
+  7: 'double',
+  8: 'medium',
+  9: 'dashed',
+  10: 'dashed',
+  11: 'dashed',
+  12: 'dashed',
+  13: 'thick',
+}

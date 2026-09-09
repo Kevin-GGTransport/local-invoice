@@ -50,19 +50,41 @@ describe('univer-bridge round-trip', () => {
     assert.ok(!back.cells[0].text.includes('='))
   })
 
-  it('真实快照扩展线型归一化（hair → dashed 0.5pt，不丢弃）', () => {
+  it('真实快照扩展线型归一化（hair=2 / mediumDashed=9 → dashed 0.5pt，不丢弃）', () => {
     const workbook = templateGridToWorkbookData(
       { colWidths: [48], rowHeights: [15], cells: [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: 'x', style: {} }] },
       pageConfig
     )
     const sheet = workbook.sheets[workbook.sheetOrder[0]]
-    sheet.cellData[0] = { 0: { v: 'x', s: { bd: { top: { style: 'hair' }, bottom: { style: 'mediumDashed' } } } } }
+    sheet.cellData[0] = { 0: { v: 'x', s: { bd: { t: { s: 2, cl: {} }, b: { s: 9, cl: {} } } } } }
     const back = workbookDataToTemplateGrid(workbook, pageConfig)
     const borders = back.cells[0].style.borders
     assert.equal(borders?.top, 0.5)
     assert.equal(borders?.styles?.top, 'dashed')
     assert.equal(borders?.bottom, 0.5)
     assert.equal(borders?.styles?.bottom, 'dashed')
+  })
+
+  it('写入侧样式为 0.25.1 短键数值契约（bd.t.s / ht / vt / tb）', () => {
+    const grid: TemplateGrid = {
+      colWidths: [48],
+      rowHeights: [15],
+      cells: [
+        {
+          row: 0, col: 0, rowSpan: 1, colSpan: 1, text: 'x',
+          style: { halign: 'center', valign: 'middle', wrap: true, borders: { top: 1, color: '#333333' } },
+        },
+      ],
+    }
+    const workbook = templateGridToWorkbookData(grid, pageConfig)
+    const sheet = workbook.sheets[workbook.sheetOrder[0]]
+    const id = sheet.cellData[0]?.[0]?.s as string
+    const u = workbook.styles[id]
+    assert.equal(u.bd?.t?.s, 1) // thin
+    assert.equal(u.bd?.t?.cl?.rgb, '#333333')
+    assert.equal(u.ht, 2) // HorizontalAlign.CENTER
+    assert.equal(u.vt, 2) // VerticalAlign.MIDDLE
+    assert.equal(u.tb, 3) // WrapStrategy.WRAP
   })
 
   it('样式注册表为 Record 且 cell.s 为字符串 id（Univer 0.25.1 契约）', () => {

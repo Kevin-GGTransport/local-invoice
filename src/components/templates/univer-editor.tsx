@@ -8,7 +8,7 @@
 
 import React from "react";
 import { useTheme } from "next-themes";
-import { createUniver, defaultTheme, LocaleType, type IWorkbookData } from "@univerjs/presets";
+import { createUniver, defaultTheme, LocaleType } from "@univerjs/presets";
 import { UniverSheetsCorePreset } from "@univerjs/presets/preset-sheets-core";
 import zhCN from "@univerjs/preset-sheets-core/locales/zh-CN";
 import "@univerjs/presets/lib/styles/preset-sheets-core.css";
@@ -71,11 +71,7 @@ export const UniverEditor = React.forwardRef<UniverEditorHandle, UniverEditorPro
         presets: [UniverSheetsCorePreset({ container })],
       });
       apiRef.current = univerAPI;
-      // styles 已是 0.25.1 的 Record 形态；UniverStyle 的 vt 为字符串（遗留形态）与
-      // IStyleData 的数值枚举不兼容，此处保留单点类型转换（详见任务报告的契约差异记录）。
-      univerAPI.createWorkbook(
-        templateGridToWorkbookData(grid, pageConfig) as unknown as Partial<IWorkbookData>
-      );
+      univerAPI.createWorkbook(templateGridToWorkbookData(grid, pageConfig));
 
       let timer: ReturnType<typeof setTimeout> | null = null;
       const scheduleSync = () => {
