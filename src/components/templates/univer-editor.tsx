@@ -8,10 +8,13 @@
 
 import React from "react";
 import { useTheme } from "next-themes";
-import { createUniver, defaultTheme, LocaleType } from "@univerjs/presets";
+import { createUniver, defaultTheme, LocaleType, mergeLocales } from "@univerjs/presets";
 import { UniverSheetsCorePreset } from "@univerjs/presets/preset-sheets-core";
+import { UniverSheetsFindReplacePreset } from "@univerjs/presets/preset-sheets-find-replace";
 import zhCN from "@univerjs/preset-sheets-core/locales/zh-CN";
+import findReplaceZhCN from "@univerjs/presets/preset-sheets-find-replace/locales/zh-CN";
 import "@univerjs/presets/lib/styles/preset-sheets-core.css";
+import "@univerjs/presets/lib/styles/preset-sheets-find-replace.css";
 
 import {
   templateGridToWorkbookData,
@@ -61,35 +64,58 @@ export const UniverEditor = React.forwardRef<UniverEditorHandle, UniverEditorPro
     React.useEffect(() => {
       const container = containerRef.current;
       if (!container) return;
-      const isDark = resolvedTheme === "dark";
-      const { univerAPI, univer } = createUniver({
-        locale: LocaleType.ZH_CN,
-        locales: { [LocaleType.ZH_CN]: zhCN },
-        theme: defaultTheme,
-        darkMode: isDark,
-        // container 缺省为 "app" 字符串 id，页面无 #app 元素时 Univer 会挂到游离节点上（永远不可见）
-        presets: [UniverSheetsCorePreset({ container })],
-      });
-      apiRef.current = univerAPI;
-      univerAPI.createWorkbook(templateGridToWorkbookData(grid, pageConfig));
+      let univerInstance: ReturnType<typeof createUniver>["univer"] | null = null;
+      let disposable: { dispose?: () => void } | null = null;
+      let syncTimer: ReturnType<typeof setTimeout> | null = null;
+      const initializeTimer = setTimeout(() => {
+        const isDark = resolvedTheme === "dark";
+        const { univerAPI, univer } = createUniver({
+          locale: LocaleType.ZH_CN,
+          locales: { [LocaleType.ZH_CN]: mergeLocales(zhCN, findReplaceZhCN) },
+          theme: defaultTheme,
+          darkMode: isDark,
+          // container 缺省为 "app" 字符串 id，页面无 #app 元素时 Univer 会挂到游离节点上（永远不可见）
+          presets: [
+            UniverSheetsCorePreset({
+              container,
+              header: true,
+              toolbar: true,
+              ribbonType: "classic",
+              formulaBar: true,
+              contextMenu: true,
+              footer: {
+                sheetBar: true,
+                statisticBar: true,
+                menus: true,
+                zoomSlider: true,
+              },
+            }),
+            UniverSheetsFindReplacePreset(),
+          ],
+        });
+        univerInstance = univer;
+        apiRef.current = univerAPI;
+        univerAPI.createWorkbook(templateGridToWorkbookData(grid, pageConfig));
 
-      let timer: ReturnType<typeof setTimeout> | null = null;
-      const scheduleSync = () => {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => {
+        const scheduleSync = () => {
+          if (syncTimer) clearTimeout(syncTimer);
+          syncTimer = setTimeout(() => {
           const snapshot = univerAPI
             .getActiveWorkbook()
-            ?.getSnapshot() as unknown as UniverSnapshot | undefined;
+            ?.save() as unknown as UniverSnapshot | undefined;
           if (snapshot) onGridChangeRef.current(workbookDataToTemplateGrid(snapshot, pageConfig));
-        }, SYNC_DEBOUNCE_MS);
-      };
-      const disposable = univerAPI.onCommandExecuted(() => scheduleSync());
+          }, SYNC_DEBOUNCE_MS);
+        };
+        disposable = univerAPI.onCommandExecuted(() => scheduleSync());
+      }, 0);
 
       return () => {
+        clearTimeout(initializeTimer);
         disposable?.dispose?.();
-        if (timer) clearTimeout(timer);
-        void univer.dispose();
-        apiRef.current = null;
+        if (syncTimer) clearTimeout(syncTimer);
+        const instanceToDispose = univerInstance;
+        setTimeout(() => void instanceToDispose?.dispose(), 0);
+        if (univerInstance && apiRef.current) apiRef.current = null;
       };
       // grid/pageConfig 仅用于初始化；编辑回传走 onGridChange，避免循环重建。
       // 主题切换重建实例（编辑内容已经防抖外传，由父层 state 恢复）。
@@ -98,6 +124,7 @@ export const UniverEditor = React.forwardRef<UniverEditorHandle, UniverEditorPro
 
     return (
       <div
+        key={resolvedTheme}
         ref={containerRef}
         className="h-[calc(100dvh-16rem)] min-h-[28rem] w-full overflow-hidden rounded-md border"
       />

@@ -8,7 +8,15 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Copy, Loader2, Megaphone, Save } from "lucide-react";
+import {
+  ArrowLeft,
+  Copy,
+  Loader2,
+  Megaphone,
+  PanelRightClose,
+  PanelRightOpen,
+  Save,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -24,6 +32,7 @@ import {
 import type { UniverEditorHandle } from "@/components/templates/univer-editor";
 import { TemplatePreview } from "@/components/templates/template-preview";
 import { fetchJson, getApiErrorMessage } from "@/lib/api/client";
+import { cn } from "@/lib/utils";
 import { loadIntoPdfWindow, reservePdfWindow } from "@/lib/utils/open-pdf";
 import { renderTemplateData, sampleTemplateRenderData } from "@/lib/templates/render-template-data";
 import {
@@ -93,6 +102,7 @@ export function TemplateEditorClient({ id }: { id: string }) {
   const [publishing, setPublishing] = React.useState(false);
   const [duplicating, setDuplicating] = React.useState(false);
   const [showSample, setShowSample] = React.useState(false);
+  const [focusEditor, setFocusEditor] = React.useState(false);
   const [savedSnapshot, setSavedSnapshot] = React.useState("");
   const editorRef = React.useRef<UniverEditorHandle | null>(null);
 
@@ -474,7 +484,12 @@ export function TemplateEditorClient({ id }: { id: string }) {
       </div>
 
       {/* 主体：左侧 Univer 电子表格，右侧令牌面板（sticky） */}
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div
+        className={cn(
+          "grid items-start gap-4",
+          focusEditor ? "grid-cols-1" : "xl:grid-cols-[minmax(0,1fr)_380px]"
+        )}
+      >
         <div className="rounded-lg border bg-card p-3">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm font-medium">
@@ -485,6 +500,22 @@ export function TemplateEditorClient({ id }: { id: string }) {
                 <p className="hidden text-xs text-muted-foreground md:block">
                   在表格中直接编辑；把要变成发票数据的位置写成令牌（右侧可一键插入）
                 </p>
+              ) : null}
+              {detail.status === "draft" && !showSample ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFocusEditor((value) => !value)}
+                  aria-pressed={focusEditor}
+                  title={focusEditor ? "显示令牌面板" : "隐藏令牌面板，展开完整工具栏"}
+                >
+                  {focusEditor ? (
+                    <PanelRightOpen className="mr-1 size-3.5" />
+                  ) : (
+                    <PanelRightClose className="mr-1 size-3.5" />
+                  )}
+                  {focusEditor ? "显示令牌面板" : "专注编辑"}
+                </Button>
               ) : null}
               <Button variant="outline" size="sm" onClick={() => setShowSample((v) => !v)}>
                 {showSample ? "查看原始样张" : "查看示例数据效果"}
@@ -530,10 +561,11 @@ export function TemplateEditorClient({ id }: { id: string }) {
         </div>
 
         {detail.status === "draft" ? (
-          <fieldset
-            disabled={isBusy}
-            className="min-w-0 space-y-4 border-0 p-0 pb-4 xl:sticky xl:top-24 xl:max-h-[calc(100dvh-7rem)] xl:overflow-auto"
-          >
+          !focusEditor ? (
+            <fieldset
+              disabled={isBusy}
+              className="min-w-0 space-y-4 border-0 p-0 pb-4 xl:sticky xl:top-24 xl:max-h-[calc(100dvh-7rem)] xl:overflow-auto"
+            >
             <div className="rounded-md border p-3">
               <p className="text-sm font-medium">字段令牌</p>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -618,7 +650,8 @@ export function TemplateEditorClient({ id }: { id: string }) {
                 <p className="mt-2 text-muted-foreground">尚未定义明细模板行</p>
               )}
             </div>
-          </fieldset>
+            </fieldset>
+          ) : null
         ) : (
           <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground xl:sticky xl:top-24">
             该模版为「{STATUS_LABEL[detail.status]}」状态，仅草稿可编辑网格与绑定。
