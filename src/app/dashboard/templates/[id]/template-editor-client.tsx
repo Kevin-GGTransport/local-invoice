@@ -147,8 +147,8 @@ export function TemplateEditorClient({ id }: { id: string }) {
               window.confirm("检测到这个模版有未保存的本地修改，是否恢复？")
             ) {
               nextGrid = recovery.grid;
-              // 恢复载荷不再携带绑定：最少行数从恢复的网格推导一次
-              nextMinRows = deriveBindingFromGrid(recovery.grid).binding.lineItems?.minRows ?? 10;
+              // 恢复载荷不再携带绑定：网格仍有明细模板行则保留已持久化的最少行数，否则回默认 10
+              nextMinRows = deriveBindingFromGrid(recovery.grid).binding.lineItems ? nextMinRows : 10;
               restoredName = recovery.name;
               const recoveredCompanyIsSelectable =
                 recovery.companyId === d.company.id ||
@@ -588,6 +588,7 @@ export function TemplateEditorClient({ id }: { id: string }) {
                   id="line-min-rows"
                   type="number"
                   min={1}
+                  max={80}
                   value={minRows}
                   onChange={(e) => {
                     const v = Number(e.target.value);
