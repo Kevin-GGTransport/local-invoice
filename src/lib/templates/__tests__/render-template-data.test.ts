@@ -116,4 +116,46 @@ describe('renderTemplateData', () => {
     assert.equal(out.cells.find((c) => c.row === 1 && c.col === 0)?.text, 'placeholder')
     assert.equal(out.cells.find((c) => c.row === 1 && c.col === 1)?.text, '')
   })
+
+  it('绑定格含令牌时只替换令牌、保留静态文本，并强制 wrap', () => {
+    const g = grid(2, 2)
+    g.cells = [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: 'Invoice No: {{发票号}}', style: {} }]
+    const binding: TemplateBinding = {
+      fields: { invoice_number: { cells: [{ row: 0, col: 0 }], format: 'text' } },
+      lineItems: null,
+    }
+    const out = renderTemplateData(g, binding, sampleTemplateRenderData())
+    const target = out.cells.find((c) => c.row === 0 && c.col === 0)!
+    assert.equal(target.text, 'Invoice No: AA082026001')
+    assert.equal(target.style.wrap, true)
+  })
+
+  it('绑定格不含令牌（旧数据）时整格替换，行为与旧版一致', () => {
+    const g = grid(2, 2)
+    g.cells = [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: '旧占位文本', style: {} }]
+    const binding: TemplateBinding = {
+      fields: { invoice_number: { cells: [{ row: 0, col: 0 }], format: 'text' } },
+      lineItems: null,
+    }
+    const out = renderTemplateData(g, binding, sampleTemplateRenderData())
+    const target = out.cells.find((c) => c.row === 0 && c.col === 0)!
+    assert.equal(target.text, 'AA082026001')
+    assert.equal(target.style.wrap, true)
+  })
+
+  it('明细模板行令牌格生成的数据行也强制 wrap', () => {
+    const g = grid(3, 2)
+    g.cells = [
+      { row: 1, col: 0, rowSpan: 1, colSpan: 1, text: '{{描述}}', style: {} },
+      { row: 1, col: 1, rowSpan: 1, colSpan: 1, text: '{{金额}}', style: {} },
+    ]
+    const binding: TemplateBinding = {
+      fields: {},
+      lineItems: { startRow: 1, endRow: 1, columns: { description: 0, amount: 1 }, minRows: 2 },
+    }
+    const out = renderTemplateData(g, binding, sampleTemplateRenderData())
+    const desc = out.cells.find((c) => c.row === 1 && c.col === 0)!
+    assert.equal(desc.text, 'Carrier Charge')
+    assert.equal(desc.style.wrap, true)
+  })
 })

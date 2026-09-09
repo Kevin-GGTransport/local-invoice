@@ -75,7 +75,7 @@ export function containsFieldToken(text: string, key: TemplateFieldKey): boolean
 
 export function replaceFieldToken(text: string, key: TemplateFieldKey, value: string): string {
   if (!text.includes("{{")) return text;
-  return text.replace(tokenRegex(key), value);
+  return text.replace(tokenRegex(key), () => value);
 }
 
 export function deriveBindingFromGrid(

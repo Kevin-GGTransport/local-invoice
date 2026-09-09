@@ -6,7 +6,8 @@
  * HTML 预览与 PDF 渲染器消费同一输出，保证两者一致。
  */
 
-import type { TemplateBinding, TemplateGrid, TemplateRenderData } from './types'
+import { containsFieldToken, replaceFieldToken } from './token-binding'
+import type { TemplateBinding, TemplateFieldKey, TemplateGrid, TemplateRenderData } from './types'
 
 const FIELD_VALUE_KEY: Record<string, keyof TemplateRenderData> = {
   invoice_number: 'invoiceNumber',
@@ -30,14 +31,23 @@ export function renderTemplateData(
   if (!binding) return grid
 
   // —— 1. 简单字段替换 ——
+  // 含令牌的格只替换令牌部分（支持「Invoice No: {{发票号}}」标签+值模式）；
+  // 不含令牌的旧数据整格替换。替换过值的格强制 wrap：
+  // 下游排版走「多行 + 行高自适应」分支，永不缩字号。
   let cells = grid.cells.map((cell) => ({ ...cell, style: { ...cell.style } }))
   for (const [key, fb] of Object.entries(binding.fields)) {
     if (!fb) continue
     const valueKey = FIELD_VALUE_KEY[key]
     if (!valueKey) continue
+    const fieldKey = key as TemplateFieldKey
+    const value = String(data[valueKey] ?? '')
     for (const anchor of fb.cells) {
       const target = cells.find((c) => c.row === anchor.row && c.col === anchor.col)
-      if (target) target.text = String(data[valueKey] ?? '')
+      if (!target) continue
+      target.text = containsFieldToken(target.text, fieldKey)
+        ? replaceFieldToken(target.text, fieldKey, value)
+        : value
+      target.style.wrap = true
     }
   }
 
@@ -78,6 +88,7 @@ export function renderTemplateData(
       const textFn = lineTexts[src.col]
       if (textFn) {
         generated.text = textFn(line)
+        generated.style.wrap = true
       } else if (src.text) {
         // 区域行上的静态装饰单元格：保留但避免每行重复文案
         generated.text = i === 0 ? src.text : ''
