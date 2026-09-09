@@ -25,7 +25,10 @@
       "@prisma/engines",
       "prisma",
       "esbuild"
-    ]
+    ],
+    "patchedDependencies": {
+      "@react-pdf/hyphenate@0.1.0": "patches/@react-pdf__hyphenate@0.1.0.patch"
+    }
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
