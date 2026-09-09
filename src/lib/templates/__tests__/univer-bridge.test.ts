@@ -64,4 +64,44 @@ describe('univer-bridge round-trip', () => {
     assert.equal(borders?.bottom, 0.5)
     assert.equal(borders?.styles?.bottom, 'dashed')
   })
+
+  it('样式注册表为 Record 且 cell.s 为字符串 id（Univer 0.25.1 契约）', () => {
+    const grid: TemplateGrid = {
+      colWidths: [48],
+      rowHeights: [15, 15],
+      cells: [
+        { row: 0, col: 0, rowSpan: 1, colSpan: 1, text: 'A', style: { bold: true } },
+        { row: 1, col: 0, rowSpan: 1, colSpan: 1, text: 'B', style: { bold: true } },
+      ],
+    }
+    const workbook = templateGridToWorkbookData(grid, pageConfig)
+    const sheet = workbook.sheets[workbook.sheetOrder[0]]
+    const s0 = sheet.cellData[0]?.[0]?.s
+    const s1 = sheet.cellData[1]?.[0]?.s
+    assert.equal(typeof s0, 'string')
+    assert.equal(s0, s1) // 相同样式复用同一 id
+    assert.equal(typeof workbook.styles[s0 as string], 'object')
+    // 读取侧兼容：历史数组形态 + 数值下标也能解析（防御真实快照之外的形态）
+    const legacy = workbookDataToTemplateGrid(
+      {
+        id: 'w',
+        sheetOrder: ['s'],
+        styles: [{ it: 1 }],
+        sheets: {
+          s: {
+            id: 's',
+            name: 'x',
+            cellData: { 0: { 0: { v: 'L', s: 0 } } },
+            columnData: {},
+            rowData: {},
+            mergeData: [],
+            rowCount: 1,
+            columnCount: 1,
+          },
+        },
+      },
+      pageConfig
+    )
+    assert.deepEqual(legacy.cells[0].style, { italic: true })
+  })
 })

@@ -39,7 +39,8 @@ export interface UniverStyle {
 export interface UniverCell {
   v?: string | number | boolean;
   f?: string;
-  s?: number | UniverStyle;
+  /** 样式注册表 id（字符串键，Univer 0.25.1 契约）或内联样式对象 */
+  s?: string | UniverStyle;
 }
 
 export interface UniverMergeData {
@@ -63,12 +64,30 @@ export interface UniverWorksheetData {
 export interface UniverWorkbookData {
   id: string;
   sheetOrder: string[];
-  styles: UniverStyle[];
+  /** 样式注册表：字符串 id → 样式（对齐 Univer 0.25.1 IWorkbookData.styles 的 Record 形态；数值下标 id 不被运行时解析） */
+  styles: Record<string, UniverStyle>;
   sheets: Record<string, UniverWorksheetData>;
 }
 
-/** Univer getSnapshot() 的返回（工作簿多了元数据字段，结构化兼容） */
-export type UniverSnapshot = UniverWorkbookData;
+/** 快照单元格（读取侧宽松）：真实运行时为字符串 id，历史数组形态为数值下标，也可能是内联样式对象 */
+export interface UniverSnapshotCell {
+  v?: string | number | boolean;
+  f?: string;
+  s?: number | string | UniverStyle;
+}
+
+/** 快照工作表（读取侧）：cellData 单元格形态放宽以兼容上述三种 cell.s */
+export interface UniverSnapshotWorksheet extends Omit<UniverWorksheetData, "cellData"> {
+  cellData: Record<number, Record<number, UniverSnapshotCell>>;
+}
+
+/** Univer getSnapshot() 的返回（读取侧宽松：工作簿多了元数据字段，结构化兼容；styles 兼容 Record 与历史数组形态） */
+export interface UniverSnapshotWorkbookData extends Omit<UniverWorkbookData, "styles" | "sheets"> {
+  styles: Record<string, UniverStyle> | UniverStyle[];
+  sheets: Record<string, UniverSnapshotWorksheet>;
+}
+
+export type UniverSnapshot = UniverSnapshotWorkbookData;
 
 // ---------- 单位换算与常量 ----------
 
@@ -120,19 +139,21 @@ export function templateGridToWorkbookData(
   grid: TemplateGrid,
   pageConfig: TemplatePageConfig
 ): UniverWorkbookData {
-  const styles: UniverStyle[] = [];
-  const styleIndex = new Map<string, number>();
-  const internStyle = (style: TemplateCellStyle): number | undefined => {
+  const styles: Record<string, UniverStyle> = {};
+  let styleSeq = 0;
+  const styleIndex = new Map<string, string>();
+  const internStyle = (style: TemplateCellStyle): string | undefined => {
     const u = templateStyleToUniver(style, pageConfig.baseFontSize);
     if (Object.keys(u).length === 0) return undefined;
     const key = JSON.stringify(u);
-    let idx = styleIndex.get(key);
-    if (idx == null) {
-      styles.push(u);
-      idx = styles.length - 1;
-      styleIndex.set(key, idx);
+    let id = styleIndex.get(key);
+    if (id == null) {
+      id = String(styleSeq);
+      styleSeq += 1;
+      styles[id] = u;
+      styleIndex.set(key, id);
     }
-    return idx;
+    return id;
   };
 
   const sheetId = "sheet-01";
@@ -230,10 +251,14 @@ export function workbookDataToTemplateGrid(
   const sheetId = snapshot.sheetOrder[0];
   const sheet = snapshot.sheets[sheetId];
 
-  const styleOf = (cell: UniverCell): TemplateCellStyle =>
-    typeof cell.s === "number"
-      ? univerStyleToTemplate(snapshot.styles?.[cell.s], pageConfig.baseFontSize)
-      : univerStyleToTemplate(cell.s, pageConfig.baseFontSize);
+  // 真实运行时 styles 为 Record（字符串 id）；历史数组形态的数值下标经字符串键同样命中
+  const stylesMap = (snapshot.styles ?? {}) as Record<string, UniverStyle | undefined>;
+  const styleOf = (cell: UniverSnapshotCell): TemplateCellStyle => {
+    const s = cell.s;
+    if (s == null) return {};
+    if (typeof s === "object") return univerStyleToTemplate(s, pageConfig.baseFontSize);
+    return univerStyleToTemplate(stylesMap[s], pageConfig.baseFontSize);
+  };
 
   const covered = new Set<string>();
   for (const merge of sheet.mergeData ?? []) {

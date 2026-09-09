@@ -21,7 +21,7 @@ import {
 import type { TemplateGrid, TemplatePageConfig } from "@/lib/templates/types";
 
 export interface UniverEditorHandle {
-  /** 把令牌追加写入当前选中单元格（无选中时提示并返回 false） */
+  /** 把令牌追加写入当前选中单元格（无选中时仅返回 false，提示由外层令牌面板负责） */
   insertTokenAtSelection: (token: string) => boolean;
 }
 
@@ -67,11 +67,12 @@ export const UniverEditor = React.forwardRef<UniverEditorHandle, UniverEditorPro
         locales: { [LocaleType.ZH_CN]: zhCN },
         theme: defaultTheme,
         darkMode: isDark,
-        presets: [UniverSheetsCorePreset({})],
+        // container 缺省为 "app" 字符串 id，页面无 #app 元素时 Univer 会挂到游离节点上（永远不可见）
+        presets: [UniverSheetsCorePreset({ container })],
       });
       apiRef.current = univerAPI;
-      // 0.25.1 的 IWorkbookData.styles 类型为 Record<string, IStyleData>，桥接层产出数组形态；
-      // Univer 运行时按 for...in 读取，数值键数组与 Record 等价，此处仅做类型层转换。
+      // styles 已是 0.25.1 的 Record 形态；UniverStyle 的 vt 为字符串（遗留形态）与
+      // IStyleData 的数值枚举不兼容，此处保留单点类型转换（详见任务报告的契约差异记录）。
       univerAPI.createWorkbook(
         templateGridToWorkbookData(grid, pageConfig) as unknown as Partial<IWorkbookData>
       );
