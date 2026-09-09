@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+
+import { templateGridToWorkbookData, workbookDataToTemplateGrid } from '../univer-bridge'
+import type { TemplateGrid, TemplatePageConfig } from '../types'
+
+const pageConfig: TemplatePageConfig = {
+  size: 'A4',
+  margin: { top: 24, right: 24, bottom: 24, left: 24 },
+  fontFamily: 'Noto Sans SC',
+  baseFontSize: 10,
+  textColor: '#000000',
+}
+
+describe('univer-bridge round-trip', () => {
+  it('文本/样式/合并/尺寸往返等价（模型支持子集）', () => {
+    const grid: TemplateGrid = {
+      colWidths: [48, 60, 72],
+      rowHeights: [15, 20, 24],
+      cells: [
+        { row: 0, col: 0, rowSpan: 1, colSpan: 2, text: '标题', style: { bold: true, fontSize: 14, underline: true } },
+        { row: 1, col: 2, rowSpan: 2, colSpan: 1, text: '{{发票号}}', style: { italic: true, strike: true, color: '#FF0000', fill: '#FFFF00', halign: 'center', valign: 'middle', wrap: true } },
+        { row: 2, col: 0, rowSpan: 1, colSpan: 1, text: '带框', style: { borders: { top: 1, right: 2, bottom: 0.5, left: 2.5, color: '#333333', styles: { bottom: 'dashed', left: 'double' } } } },
+      ],
+    }
+    const workbook = templateGridToWorkbookData(grid, pageConfig)
+    const back = workbookDataToTemplateGrid(workbook, pageConfig)
+    assert.deepEqual(back, grid)
+  })
+
+  it('空文本但有样式的格保留', () => {
+    const grid: TemplateGrid = {
+      colWidths: [48],
+      rowHeights: [15],
+      cells: [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: '', style: { fill: '#EEEEEE' } }],
+    }
+    const back = workbookDataToTemplateGrid(templateGridToWorkbookData(grid, pageConfig), pageConfig)
+    assert.deepEqual(back, grid)
+  })
+
+  it('公式格取显示值（v），不保留公式', () => {
+    const workbook = templateGridToWorkbookData(
+      { colWidths: [48], rowHeights: [15], cells: [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: '', style: {} }] },
+      pageConfig
+    )
+    const sheet = workbook.sheets[workbook.sheetOrder[0]]
+    sheet.cellData[0] = { 0: { v: 42, f: '=SUM(1,41)' } }
+    const back = workbookDataToTemplateGrid(workbook, pageConfig)
+    assert.equal(back.cells.find((c) => c.row === 0 && c.col === 0)?.text, '42')
+    assert.ok(!back.cells[0].text.includes('='))
+  })
+})
