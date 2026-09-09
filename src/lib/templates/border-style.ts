@@ -23,6 +23,16 @@ export function widthToLineStyle(widthPt: number): TemplateBorderLineStyle {
   return 'thin'
 }
 
+/** 线型 → CSS border-style；double 用 CSS 原生支持 */
+export const CSS_BORDER_STYLE: Record<TemplateBorderLineStyle, string> = {
+  thin: 'solid',
+  medium: 'solid',
+  thick: 'solid',
+  dashed: 'dashed',
+  dotted: 'dotted',
+  double: 'double',
+}
+
 /** ExcelJS / Univer 共用的线型字符串 → 模板线型 */
 export const EXCEL_BORDER_TO_LINE: Record<string, TemplateBorderLineStyle> = {
   thin: 'thin',

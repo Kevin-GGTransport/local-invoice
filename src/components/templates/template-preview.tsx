@@ -1,6 +1,7 @@
 import React from "react";
 
 import { layoutCellText } from "@/lib/templates/cell-layout";
+import { widthToLineStyle, CSS_BORDER_STYLE } from "@/lib/templates/border-style";
 import type { GridRange } from "@/lib/templates/template-grid";
 import type { TemplateCellStyle, TemplateGrid } from "@/lib/templates/types";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,17 @@ function borderPx(pt: number | undefined): number | undefined {
   return pt == null ? undefined : Math.max(1, Math.round(pt * PT_TO_PX * 10) / 10);
 }
 
+/** 每边 CSS border-style：显式线型优先，缺省按宽度反推（double 用 CSS 原生支持） */
+function borderSideStyle(
+  style: TemplateCellStyle,
+  side: "top" | "right" | "bottom" | "left"
+): string | undefined {
+  const b = style.borders;
+  if (b?.[side] == null) return undefined;
+  const line = b.styles?.[side] ?? widthToLineStyle(b[side]!);
+  return CSS_BORDER_STYLE[line];
+}
+
 /** 背景层样式：原始格矩形 + 填充 + 边框 */
 function cellBackgroundStyle(
   style: TemplateCellStyle,
@@ -48,10 +60,22 @@ function cellBackgroundStyle(
     height: height * PT_TO_PX,
     boxSizing: "border-box",
     backgroundColor: style.fill,
-    borderTop: b?.top != null ? `${borderPx(b.top)}px solid ${borderColor}` : undefined,
-    borderRight: b?.right != null ? `${borderPx(b.right)}px solid ${borderColor}` : undefined,
-    borderBottom: b?.bottom != null ? `${borderPx(b.bottom)}px solid ${borderColor}` : undefined,
-    borderLeft: b?.left != null ? `${borderPx(b.left)}px solid ${borderColor}` : undefined,
+    borderTop:
+      b?.top != null
+        ? `${borderPx(b.top)}px ${borderSideStyle(style, "top")} ${borderColor}`
+        : undefined,
+    borderRight:
+      b?.right != null
+        ? `${borderPx(b.right)}px ${borderSideStyle(style, "right")} ${borderColor}`
+        : undefined,
+    borderBottom:
+      b?.bottom != null
+        ? `${borderPx(b.bottom)}px ${borderSideStyle(style, "bottom")} ${borderColor}`
+        : undefined,
+    borderLeft:
+      b?.left != null
+        ? `${borderPx(b.left)}px ${borderSideStyle(style, "left")} ${borderColor}`
+        : undefined,
   };
 }
 
@@ -66,6 +90,14 @@ function cellTextStyle(style: TemplateCellStyle, fontSize: number): React.CSSPro
     fontSize: fontSize * PT_TO_PX,
     lineHeight: 1.1,
     textAlign: style.halign ?? "left",
+    textDecoration:
+      style.underline && style.strike
+        ? "underline line-through"
+        : style.underline
+          ? "underline"
+          : style.strike
+            ? "line-through"
+            : undefined,
     display: "flex",
     alignItems:
       style.valign === "bottom" ? "flex-end" : style.valign === "middle" ? "center" : "flex-start",

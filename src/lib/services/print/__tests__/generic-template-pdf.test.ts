@@ -177,4 +177,28 @@ describe('GenericTemplateDocument', () => {
     )
     assert.doesNotMatch(stream, /\/F\d+ (5\.5|6\.\d+) Tf/, '日期不应再被缩号')
   })
+
+  it('新样式写入绘制指令：dashed 虚线模式、double 内线、underline/strike 装饰线', async () => {
+    const mk = (cells: TemplateGrid['cells']): TemplateGrid => ({ colWidths: [100], rowHeights: [20], cells })
+    const base = { row: 0, col: 0, rowSpan: 1, colSpan: 1 }
+    const strokeCount = (s: string) => (s.match(/\nS\n/g) ?? []).length
+    const decorCount = (s: string) => (s.match(/0\.5 w/g) ?? []).length
+
+    // dashed 边框 → 非空 dash 模式操作符（solid 只会输出 [] 0 d 复位）
+    const dashed = await renderPdfStream(mk([{ ...base, text: '', style: { borders: { top: 2, styles: { top: 'dashed' } } } }]))
+    assert.match(dashed, /\[[\d.]+ [\d.]+\] 0 d/, 'dashed 边框应写入非空 dash 模式')
+
+    // double 边框 → 外线之内多画一条内缩细线（描边次数比单实线多一次）
+    const solid = await renderPdfStream(mk([{ ...base, text: '', style: { borders: { bottom: 2 } } }]))
+    const dbl = await renderPdfStream(mk([{ ...base, text: '', style: { borders: { bottom: 2, styles: { bottom: 'double' } } } }]))
+    assert.equal(strokeCount(dbl), strokeCount(solid) + 1, 'double 应在外线之内多画一条细线')
+
+    // underline / strike → 各画一条 0.5pt 装饰线（无装饰时为零）
+    const plain = await renderPdfStream(mk([{ ...base, text: 'A', style: {} }]))
+    const under = await renderPdfStream(mk([{ ...base, text: 'U', style: { underline: true } }]))
+    const struck = await renderPdfStream(mk([{ ...base, text: 'S', style: { strike: true } }]))
+    assert.equal(decorCount(plain), 0, '无装饰时不应有装饰线')
+    assert.equal(decorCount(under), 1, 'underline 应画一条装饰线')
+    assert.equal(decorCount(struck), 1, 'strike 应画一条装饰线')
+  })
 })

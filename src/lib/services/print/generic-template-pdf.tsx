@@ -11,7 +11,8 @@ import React from 'react'
 import path from 'node:path'
 import { Document, Font, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
 import { layoutCellText } from '@/lib/templates/cell-layout'
-import type { TemplateGrid, TemplatePageConfig } from '@/lib/templates/types'
+import { widthToLineStyle } from '@/lib/templates/border-style'
+import type { TemplateBorderLineStyle, TemplateGrid, TemplatePageConfig } from '@/lib/templates/types'
 
 export { fitSingleLineFontSize } from '@/lib/templates/cell-layout'
 
@@ -26,6 +27,20 @@ const PAGE_SIZES: Record<TemplatePageConfig['size'], [number, number]> = {
 }
 
 const PDF_FONT_FAMILY = 'Noto Sans SC'
+
+/** 线型 → react-pdf BorderStyle；double 由外层实线 + 内层细线双 View 模拟 */
+const PDF_BORDER_STYLE: Record<Exclude<TemplateBorderLineStyle, 'double'>, 'solid' | 'dashed' | 'dotted'> = {
+  thin: 'solid',
+  medium: 'solid',
+  thick: 'solid',
+  dashed: 'dashed',
+  dotted: 'dotted',
+}
+
+function pdfBorderStyle(line: TemplateBorderLineStyle | undefined): 'solid' | 'dashed' | 'dotted' {
+  if (line && line !== 'double') return PDF_BORDER_STYLE[line]
+  return 'solid'
+}
 
 // PDF 必须嵌入中文字形；依赖操作系统字体会导致开发机正常、服务器打印乱码。
 // 同一个可变字体文件覆盖常规和粗体，且保留 Helvetica 配置的历史模板也会自动升级。
@@ -98,24 +113,52 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
           {grid.cells.map((cell, i) => {
             const { left, top, width, height } = cellRect(cell)
             const b = cell.style.borders
+            const lineOf = (side: 'top' | 'right' | 'bottom' | 'left'): TemplateBorderLineStyle | undefined =>
+              b?.styles?.[side] ?? (b?.[side] != null ? widthToLineStyle(b[side]!) : undefined)
+            const doubleSides = (['top', 'right', 'bottom', 'left'] as const).filter(
+              (side) => lineOf(side) === 'double' && b?.[side] != null
+            )
             return (
-              <View
-                key={`bg-${i}`}
-                style={{
-                  position: 'absolute',
-                  left,
-                  top,
-                  width,
-                  height,
-                  backgroundColor: cell.style.fill,
-                  borderWidth: 0,
-                  borderTopWidth: b?.top != null ? b.top * scale : 0,
-                  borderRightWidth: b?.right != null ? b.right * scale : 0,
-                  borderBottomWidth: b?.bottom != null ? b.bottom * scale : 0,
-                  borderLeftWidth: b?.left != null ? b.left * scale : 0,
-                  borderColor: b?.color ?? '#000000',
-                }}
-              />
+              <React.Fragment key={`bg-${i}`}>
+                <View
+                  style={{
+                    position: 'absolute',
+                    left,
+                    top,
+                    width,
+                    height,
+                    backgroundColor: cell.style.fill,
+                    borderWidth: 0,
+                    borderTopWidth: b?.top != null ? b.top * scale : 0,
+                    borderRightWidth: b?.right != null ? b.right * scale : 0,
+                    borderBottomWidth: b?.bottom != null ? b.bottom * scale : 0,
+                    borderLeftWidth: b?.left != null ? b.left * scale : 0,
+                    borderColor: b?.color ?? '#000000',
+                    borderTopStyle: pdfBorderStyle(lineOf('top')),
+                    borderRightStyle: pdfBorderStyle(lineOf('right')),
+                    borderBottomStyle: pdfBorderStyle(lineOf('bottom')),
+                    borderLeftStyle: pdfBorderStyle(lineOf('left')),
+                  }}
+                />
+                {doubleSides.length > 0 ? (
+                  // double：内缩细线与外线组成双线
+                  <View
+                    style={{
+                      position: 'absolute',
+                      left: left + 1.5 * scale,
+                      top: top + 1.5 * scale,
+                      width: Math.max(0, width - 3 * scale),
+                      height: Math.max(0, height - 3 * scale),
+                      borderWidth: 0,
+                      borderTopWidth: doubleSides.includes('top') ? 0.5 * scale : 0,
+                      borderRightWidth: doubleSides.includes('right') ? 0.5 * scale : 0,
+                      borderBottomWidth: doubleSides.includes('bottom') ? 0.5 * scale : 0,
+                      borderLeftWidth: doubleSides.includes('left') ? 0.5 * scale : 0,
+                      borderColor: b?.color ?? '#000000',
+                    }}
+                  />
+                ) : null}
+              </React.Fragment>
             )
           })}
           {/* 第二遍：文本（盒可为左/右溢出扩展宽度，画在空邻居填充之上） */}
@@ -157,6 +200,14 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
                       color: s.color ?? pageConfig.textColor,
                       textAlign: s.halign ?? 'left',
                       width: '100%',
+                      textDecoration:
+                        s.underline && s.strike
+                          ? 'underline line-through'
+                          : s.underline
+                            ? 'underline'
+                            : s.strike
+                              ? 'line-through'
+                              : undefined,
                       // 含显式换行符的多行单元格不限制行数，避免 maxLines 截掉第二行
                       maxLines: s.wrap || cell.text.includes('\n') ? undefined : 1,
                     }}
