@@ -6,6 +6,7 @@
  * HTML 预览与 PDF 渲染器消费同一输出，保证两者一致。
  */
 
+import { autoFitRowHeights } from './auto-fit-row-heights'
 import { containsFieldToken, replaceFieldToken } from './token-binding'
 import type { TemplateBinding, TemplateFieldKey, TemplateGrid, TemplateRenderData } from './types'
 
@@ -35,6 +36,7 @@ export function renderTemplateData(
   // 不含令牌的旧数据整格替换。替换过值的格强制 wrap：
   // 下游排版走「多行 + 行高自适应」分支，永不缩字号。
   let cells = grid.cells.map((cell) => ({ ...cell, style: { ...cell.style } }))
+  const replacedCoords = new Set<string>()
   for (const [key, fb] of Object.entries(binding.fields)) {
     if (!fb) continue
     const valueKey = FIELD_VALUE_KEY[key]
@@ -48,12 +50,13 @@ export function renderTemplateData(
         ? replaceFieldToken(target.text, fieldKey, value)
         : value
       target.style.wrap = true
+      replacedCoords.add(`${target.row}:${target.col}`)
     }
   }
 
   // —— 2. 明细区域扩展 ——
   const li = binding.lineItems
-  if (!li) return { colWidths: grid.colWidths, rowHeights: grid.rowHeights, cells }
+  if (!li) return autoFitRowHeights({ colWidths: grid.colWidths, rowHeights: grid.rowHeights, cells }, replacedCoords)
 
   const regionRows = li.endRow - li.startRow + 1
   const dataRows = Math.max(li.minRows, data.lines.length)
@@ -89,6 +92,7 @@ export function renderTemplateData(
       if (textFn) {
         generated.text = textFn(line)
         generated.style.wrap = true
+        replacedCoords.add(`${generated.row}:${generated.col}`)
       } else if (src.text) {
         // 区域行上的静态装饰单元格：保留但避免每行重复文案
         generated.text = i === 0 ? src.text : ''
@@ -98,7 +102,7 @@ export function renderTemplateData(
   }
 
   cells.sort((a, b) => a.row - b.row || a.col - b.col)
-  return { colWidths: grid.colWidths, rowHeights, cells }
+  return autoFitRowHeights({ colWidths: grid.colWidths, rowHeights, cells }, replacedCoords)
 }
 
 /** 供绑定向导 / 试打预览使用的示例数据 */

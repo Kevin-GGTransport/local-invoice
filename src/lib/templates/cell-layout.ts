@@ -92,6 +92,48 @@ export function overflowTextWidth(
   return Math.max(width, baseWidth);
 }
 
+/** 多行排版的行高系数（行高自适应 / PDF / HTML 共用单一来源） */
+export const LINE_HEIGHT_FACTOR = 1.3;
+
+/** 单字符宽度（em）：折行估算用；CJK/全角按 1em，其余沿用 ASCII 经验值 */
+function charEmWidth(char: string): number {
+  if (/\d/.test(char)) return 0.56;
+  if (/[A-Z]/.test(char)) return 0.65;
+  if (/[a-z]/.test(char)) return 0.5;
+  if (/\s/.test(char)) return 0.28;
+  if (/[　-ヿ㐀-䶿一-鿿豈-﫿＀-￯]/.test(char)) return 1;
+  return 0.6;
+}
+
+/** 按盒宽把文本折成行（尊重显式 \n；CJK 可在任意字符间断行） */
+export function wrapTextLines(
+  text: string,
+  fontSize: number,
+  boxWidth: number,
+  bold = false
+): string[] {
+  if (!text) return [""];
+  const maxEm = Math.max(0.01, boxWidth / fontSize / (bold ? 1.05 : 1));
+  const out: string[] = [];
+  for (const paragraph of text.split(/\r?\n/)) {
+    let line = "";
+    let em = 0;
+    for (const char of paragraph) {
+      const w = charEmWidth(char);
+      if (em > 0 && em + w > maxEm) {
+        out.push(line);
+        line = char;
+        em = w;
+      } else {
+        line += char;
+        em += w;
+      }
+    }
+    out.push(line);
+  }
+  return out;
+}
+
 export interface CellTextLayout {
   /** 文本盒左缘（pt，网格原点起）：左溢出时向左扩展，否则为格左缘 */
   textBoxLeft: number;
