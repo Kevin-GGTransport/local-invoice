@@ -10,6 +10,7 @@ import {
   parseTemplateXlsx,
   TEMPLATE_UPLOAD_MAX_BYTES,
 } from "@/lib/templates/parse-xlsx"
+import { deriveBindingFromGrid } from "@/lib/templates/token-binding"
 
 export async function POST(request: NextRequest) {
   const { session, error } = await requireAdmin()
@@ -40,6 +41,14 @@ export async function POST(request: NextRequest) {
       return jsonError(err instanceof Error ? err.message : "样张解析失败", 400)
     }
 
+    // 样张中已含令牌则自动完成绑定；未知令牌收集为警告返回前端提示
+    const derived = deriveBindingFromGrid(parsed.grid)
+    const warnings: string[] = []
+    if (derived.unknownTokens.length > 0) {
+      warnings.push(`样张中存在未知令牌：${derived.unknownTokens.map((t) => `{{${t}}}`).join("、")}`)
+    }
+    if (derived.errors.length > 0) warnings.push(...derived.errors)
+
     const template = await prisma.invoice_templates.create({
       data: {
         company_id: companyId,
@@ -47,13 +56,13 @@ export async function POST(request: NextRequest) {
         status: "draft",
         page_config: parsed.pageConfig as unknown as object,
         grid_config: parsed.grid as unknown as object,
-        binding_config: { fields: {}, lineItems: null },
+        binding_config: derived.binding as unknown as object,
         created_by: userIdBigint(session),
         updated_by: userIdBigint(session),
       },
     })
 
-    return jsonOk({ id: template.id, name: template.name, status: template.status }, 201)
+    return jsonOk({ id: template.id, name: template.name, status: template.status, warnings }, 201)
   } catch (err) {
     return handleDbError(err, "上传样张失败")
   }
