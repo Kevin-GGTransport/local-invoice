@@ -39,6 +39,7 @@ const bindingFieldsSchema = z.record(
 
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
+  company_id: z.string().regex(/^\d+$/, "请选择有效公司").optional(),
   binding_config: z
     .object({
       fields: bindingFieldsSchema,
@@ -107,43 +108,74 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   }
 
   try {
-    const existing = await prisma.invoice_templates.findUnique({ where: { id: BigInt(id) } })
-    if (!existing) return jsonError("模版不存在", 404)
+    return await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM invoice_templates WHERE id = ${BigInt(id)} FOR UPDATE`
+      const existing = await tx.invoice_templates.findUnique({ where: { id: BigInt(id) } })
+      if (!existing) return jsonError("模版不存在", 404)
 
-    // 仅改名称时任何状态都允许；改绑定/网格仍限草稿
-    const binding = parsed.data.binding_config as TemplateBinding | undefined
-    const grid = parsed.data.grid_config as TemplateGrid | undefined
-    const editsStructure = Boolean(binding || grid)
-    if (editsStructure && existing.status !== "draft") {
-      return jsonError("仅草稿模版可编辑绑定，请复制为草稿后修改", 400)
-    }
+      const requestedCompanyId = parsed.data.company_id
+        ? BigInt(parsed.data.company_id)
+        : undefined
+      const changesCompany =
+        requestedCompanyId !== undefined && requestedCompanyId !== existing.company_id
 
-    // 绑定保存时做结构校验（非发布级校验，允许未完成状态保存）
-    if (binding) {
-      if (binding.lineItems && binding.lineItems.endRow < binding.lineItems.startRow) {
-        return jsonError("明细区域结束行不能小于起始行", 400)
+      // 仅改名称时任何状态都允许；公司、绑定与网格只允许草稿修改
+      const binding = parsed.data.binding_config as TemplateBinding | undefined
+      const grid = parsed.data.grid_config as TemplateGrid | undefined
+      const editsDraftOnlyFields = Boolean(binding || grid || changesCompany)
+      if (editsDraftOnlyFields && existing.status !== "draft") {
+        return jsonError("模版状态已变化，仅草稿模版可修改公司或绑定", 409)
       }
-      void validateBindingForPublish // 发布接口使用；此处仅做宽松保存
-    }
 
-    if (grid || binding) {
-      const nextGrid = grid ?? (existing.grid_config as unknown as TemplateGrid)
-      const nextBinding = binding ?? (existing.binding_config as unknown as TemplateBinding)
-      const gridErrors = validateTemplateGrid(nextGrid, nextBinding)
-      if (gridErrors.length > 0) return jsonError(gridErrors[0], 400)
-    }
+      if (changesCompany && requestedCompanyId !== undefined) {
+        await tx.$queryRaw`SELECT id FROM companies WHERE id = ${requestedCompanyId} FOR SHARE`
+        const company = await tx.companies.findUnique({
+          where: { id: requestedCompanyId },
+          select: { is_active: true },
+        })
+        if (!company) return jsonError("公司不存在", 404)
+        if (!company.is_active) return jsonError("不能将模版转移到已停用的公司", 400)
+      }
 
-    const result = await prisma.invoice_templates.updateMany({
-      where: editsStructure ? { id: BigInt(id), status: "draft" } : { id: BigInt(id) },
-      data: {
-        ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-        ...(binding ? { binding_config: binding as unknown as object } : {}),
-        ...(grid ? { grid_config: grid as unknown as object } : {}),
-        updated_by: userIdBigint(session),
-      },
+      // 绑定保存时做结构校验（非发布级校验，允许未完成状态保存）
+      if (binding) {
+        if (binding.lineItems && binding.lineItems.endRow < binding.lineItems.startRow) {
+          return jsonError("明细区域结束行不能小于起始行", 400)
+        }
+        void validateBindingForPublish // 发布接口使用；此处仅做宽松保存
+      }
+
+      if (grid || binding) {
+        const nextGrid = grid ?? (existing.grid_config as unknown as TemplateGrid)
+        const nextBinding = binding ?? (existing.binding_config as unknown as TemplateBinding)
+        const gridErrors = validateTemplateGrid(nextGrid, nextBinding)
+        if (gridErrors.length > 0) return jsonError(gridErrors[0], 400)
+      }
+
+      const result = await tx.invoice_templates.updateMany({
+        where: editsDraftOnlyFields ? { id: BigInt(id), status: "draft" } : { id: BigInt(id) },
+        data: {
+          ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+          ...(changesCompany ? { company_id: requestedCompanyId } : {}),
+          ...(binding ? { binding_config: binding as unknown as object } : {}),
+          ...(grid ? { grid_config: grid as unknown as object } : {}),
+          updated_by: userIdBigint(session),
+        },
+      })
+      if (result.count === 0) return jsonError("模版状态已变化，仅草稿模版可保存", 409)
+
+      const updated = await tx.invoice_templates.findUnique({
+        where: { id: BigInt(id) },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          company: { select: { id: true, code: true, name: true } },
+        },
+      })
+      if (!updated) return jsonError("模版不存在", 404)
+      return jsonOk(updated)
     })
-    if (result.count === 0) return jsonError("模版状态已变化，仅草稿模版可保存", 409)
-    return jsonOk({ id, name: parsed.data.name ?? existing.name, status: existing.status })
   } catch (err) {
     return handleDbError(err, "保存模版失败")
   }

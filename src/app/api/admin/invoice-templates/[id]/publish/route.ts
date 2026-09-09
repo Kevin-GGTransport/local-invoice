@@ -17,16 +17,21 @@ export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: s
   if (!/^\d+$/.test(id)) return jsonError("无效的模版 ID", 400)
 
   try {
-    const template = await prisma.invoice_templates.findUnique({ where: { id: BigInt(id) } })
-    if (!template) return jsonError("模版不存在", 404)
-    if (template.status === "archived") return jsonError("已归档模版不能重新发布", 400)
+    return await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM invoice_templates WHERE id = ${BigInt(id)} FOR UPDATE`
+      const template = await tx.invoice_templates.findUnique({ where: { id: BigInt(id) } })
+      if (!template) return jsonError("模版不存在", 404)
+      if (template.status !== "draft") {
+        return jsonError("模版状态已变化，仅草稿模版可发布", 409)
+      }
+      // 同一公司的发布串行化，防止两个草稿同时成为 active。
+      await tx.$queryRaw`SELECT id FROM companies WHERE id = ${template.company_id} FOR UPDATE`
 
-    const binding = template.binding_config as unknown as TemplateBinding
-    const grid = template.grid_config as unknown as TemplateGrid
-    const errors = [...validateTemplateGrid(grid, binding), ...validateBindingForPublish(binding)]
-    if (errors.length > 0) return jsonError(errors.join("；"), 400)
+      const binding = template.binding_config as unknown as TemplateBinding
+      const grid = template.grid_config as unknown as TemplateGrid
+      const errors = [...validateTemplateGrid(grid, binding), ...validateBindingForPublish(binding)]
+      if (errors.length > 0) return jsonError(errors.join("；"), 400)
 
-    await prisma.$transaction(async (tx) => {
       await tx.invoice_templates.updateMany({
         where: { company_id: template.company_id, status: "active" },
         data: { status: "archived" },
@@ -35,9 +40,9 @@ export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: s
         where: { id: template.id },
         data: { status: "active", updated_by: userIdBigint(session) },
       })
-    })
 
-    return jsonOk({ id: template.id, status: "active" })
+      return jsonOk({ id: template.id, status: "active" })
+    })
   } catch (err) {
     return handleDbError(err, "发布模版失败")
   }

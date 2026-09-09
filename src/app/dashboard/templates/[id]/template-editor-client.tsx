@@ -14,6 +14,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { TemplateEditor } from "@/components/templates/template-editor";
 import { TemplatePreview } from "@/components/templates/template-preview";
 import { fetchJson, getApiErrorMessage } from "@/lib/api/client";
@@ -38,6 +45,20 @@ interface TemplateDetail {
   grid_config: TemplateGrid;
   binding_config: TemplateBinding;
   company: { id: string; code: string; name: string };
+}
+
+interface CompanyRow {
+  id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+}
+
+interface TemplateSaveResult {
+  id: string;
+  name: string;
+  status: TemplateDetail["status"];
+  company: TemplateDetail["company"];
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -73,6 +94,8 @@ export function TemplateEditorClient({ id }: { id: string }) {
   const [detail, setDetail] = React.useState<TemplateDetail | null>(null);
   const [loadError, setLoadError] = React.useState("");
   const [name, setName] = React.useState("");
+  const [companyId, setCompanyId] = React.useState("");
+  const [companies, setCompanies] = React.useState<CompanyRow[]>([]);
   const [binding, setBinding] = React.useState<TemplateBinding>({ fields: {}, lineItems: null });
   const [grid, setGrid] = React.useState<TemplateGrid | null>(null);
   const [selected, setSelected] = React.useState<string | null>(null);
@@ -87,29 +110,44 @@ export function TemplateEditorClient({ id }: { id: string }) {
   const [savedSnapshot, setSavedSnapshot] = React.useState("");
 
   const currentSnapshot = React.useMemo(
-    () => JSON.stringify({ name, grid, binding }),
-    [name, grid, binding]
+    () => JSON.stringify({ name, companyId, grid, binding }),
+    [name, companyId, grid, binding]
   );
   const isDirty = Boolean(detail && savedSnapshot && currentSnapshot !== savedSnapshot);
+  const isBusy = saving || previewing || publishing || duplicating;
 
   // 初始加载（含本地草稿恢复）
   React.useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const d = await fetchJson<TemplateDetail>(`/api/admin/invoice-templates/${id}`);
+        const [d, companyList] = await Promise.all([
+          fetchJson<TemplateDetail>(`/api/admin/invoice-templates/${id}`),
+          fetchJson<CompanyRow[]>("/api/companies").catch(() => null),
+        ]);
         if (cancelled) return;
+        if (d.status === "draft" && !companyList) {
+          throw new Error("加载公司列表失败，请刷新后重试");
+        }
+        const availableCompanies = companyList ?? [];
         const nextBinding = d.binding_config ?? { fields: {}, lineItems: null };
-        const baseSnapshot = JSON.stringify({ name: d.name, grid: d.grid_config, binding: nextBinding });
+        const baseSnapshot = JSON.stringify({
+          name: d.name,
+          companyId: d.company.id,
+          grid: d.grid_config,
+          binding: nextBinding,
+        });
         let nextGrid = d.grid_config;
         let restoredBinding = nextBinding;
         let restoredName = d.name;
+        let restoredCompanyId = d.company.id;
         const stored = sessionStorage.getItem(draftStorageKey(id));
         if (stored) {
           try {
             const recovery = JSON.parse(stored) as {
               baseSnapshot: string;
               name: string;
+              companyId: string;
               grid: TemplateGrid;
               binding: TemplateBinding;
             };
@@ -120,6 +158,17 @@ export function TemplateEditorClient({ id }: { id: string }) {
               nextGrid = recovery.grid;
               restoredBinding = recovery.binding;
               restoredName = recovery.name;
+              const recoveredCompanyIsSelectable =
+                recovery.companyId === d.company.id ||
+                availableCompanies.some(
+                  (company) => company.id === recovery.companyId && company.is_active
+                );
+              restoredCompanyId = recoveredCompanyIsSelectable
+                ? recovery.companyId
+                : d.company.id;
+              if (!recoveredCompanyIsSelectable) {
+                toast.warning("未保存的目标公司已停用，所属公司已恢复为原公司");
+              }
               toast.success("已恢复未保存的模版修改");
             } else {
               sessionStorage.removeItem(draftStorageKey(id));
@@ -129,7 +178,9 @@ export function TemplateEditorClient({ id }: { id: string }) {
           }
         }
         setDetail(d);
+        setCompanies(availableCompanies);
         setName(restoredName);
+        setCompanyId(restoredCompanyId);
         setBinding(restoredBinding);
         setGrid(nextGrid);
         setSavedSnapshot(baseSnapshot);
@@ -185,54 +236,59 @@ export function TemplateEditorClient({ id }: { id: string }) {
     if (!isDirty || !detail || !grid) return;
     sessionStorage.setItem(
       draftStorageKey(detail.id),
-      JSON.stringify({ baseSnapshot: savedSnapshot, name, grid, binding })
+      JSON.stringify({ baseSnapshot: savedSnapshot, name, companyId, grid, binding })
     );
-  }, [binding, detail, grid, isDirty, name, savedSnapshot]);
+  }, [binding, companyId, detail, grid, isDirty, name, savedSnapshot]);
 
-  const save = async (): Promise<boolean> => {
-    if (!detail) return false;
+  const save = async (): Promise<TemplateDetail | null> => {
+    if (!detail) return null;
     const trimmed = name.trim();
     if (!trimmed) {
       toast.error("模版名称不能为空");
-      return false;
+      return null;
+    }
+    if (detail.status === "draft" && !companyId) {
+      toast.error("请选择所属公司");
+      return null;
     }
     setSaving(true);
     try {
-      // 非草稿仅允许改名；草稿连同网格与绑定一起保存
+      // 非草稿仅允许改名；草稿连同公司、网格与绑定一起保存
       const body =
         detail.status === "draft" && grid
-          ? { name: trimmed, grid_config: grid, binding_config: binding }
+          ? { name: trimmed, company_id: companyId, grid_config: grid, binding_config: binding }
           : { name: trimmed };
-      await fetchJson(`/api/admin/invoice-templates/${detail.id}`, {
+      const saved = await fetchJson<TemplateSaveResult>(`/api/admin/invoice-templates/${detail.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       setName(trimmed);
+      setCompanyId(saved.company.id);
       setSavedSnapshot(
         JSON.stringify({
           name: trimmed,
+          companyId: saved.company.id,
           grid: detail.status === "draft" && grid ? grid : detail.grid_config,
           binding: detail.status === "draft" ? binding : detail.binding_config,
         })
       );
       sessionStorage.removeItem(draftStorageKey(detail.id));
-      setDetail((current) =>
-        current
-          ? {
-              ...current,
-              name: trimmed,
-              ...(detail.status === "draft" && grid
-                ? { grid_config: grid, binding_config: binding }
-                : {}),
-            }
-          : current
-      );
+      const nextDetail: TemplateDetail = {
+        ...detail,
+        name: saved.name,
+        status: saved.status,
+        company: saved.company,
+        ...(detail.status === "draft" && grid
+          ? { grid_config: grid, binding_config: binding }
+          : {}),
+      };
+      setDetail(nextDetail);
       toast.success(detail.status === "draft" ? "模版已保存" : "模版名称已保存");
-      return true;
+      return nextDetail;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "保存失败");
-      return false;
+      return null;
     } finally {
       setSaving(false);
     }
@@ -246,15 +302,15 @@ export function TemplateEditorClient({ id }: { id: string }) {
       toast.error("浏览器拦截了弹窗，请允许本站弹出窗口后重试");
       return;
     }
-    if (detail.status === "draft") {
-      const ok = await save();
-      if (!ok) {
-        popup.close();
-        return;
-      }
-    }
     setPreviewing(true);
     try {
+      if (detail.status === "draft") {
+        const saved = await save();
+        if (!saved) {
+          popup.close();
+          return;
+        }
+      }
       await loadIntoPdfWindow(popup, async () => {
         const res = await fetch(`/api/admin/invoice-templates/${detail.id}/preview-pdf`, {
           method: "POST",
@@ -274,12 +330,12 @@ export function TemplateEditorClient({ id }: { id: string }) {
 
   const publish = async () => {
     if (!detail) return;
-    const ok = await save();
-    if (!ok) return;
     setPublishing(true);
     try {
+      const saved = await save();
+      if (!saved) return;
       await fetchJson(`/api/admin/invoice-templates/${detail.id}/publish`, { method: "POST" });
-      toast.success(`模版已发布启用：${detail.company.name} 之后的发票 PDF 将使用该模版`);
+      toast.success(`模版已发布启用：${saved.company.name} 之后的发票 PDF 将使用该模版`);
       sessionStorage.removeItem(draftStorageKey(detail.id));
       router.push(LIST_URL);
     } catch (err) {
@@ -447,43 +503,65 @@ export function TemplateEditorClient({ id }: { id: string }) {
         </Button>
         <Input
           value={name}
+          disabled={isBusy}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => setName((v) => v.trim())}
           maxLength={100}
           aria-label="模版名称"
           className="h-9 w-72 max-w-full text-base font-semibold"
         />
-        <span className="text-sm text-muted-foreground">
-          {detail.company.name}（{detail.company.code}）· {STATUS_LABEL[detail.status]}
-        </span>
+        {detail.status === "draft" ? (
+          <div className="w-56 max-w-full">
+            <Label htmlFor="template-company" className="sr-only">所属公司</Label>
+            <Select value={companyId} onValueChange={setCompanyId} disabled={isBusy}>
+              <SelectTrigger id="template-company" aria-label="所属公司" className="h-9">
+                <SelectValue placeholder="选择所属公司" />
+              </SelectTrigger>
+              <SelectContent>
+                {companies
+                  .filter((company) => company.is_active || company.id === detail.company.id)
+                  .map((company) => (
+                    <SelectItem key={company.id} value={company.id}>
+                      {company.name}（{company.code}）{company.is_active ? "" : " · 已停用"}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <span className="text-sm text-muted-foreground">
+            {detail.company.name}（{detail.company.code}）
+          </span>
+        )}
+        <span className="text-sm text-muted-foreground">· {STATUS_LABEL[detail.status]}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {isDirty ? <span className="text-xs font-medium text-amber-700">有未保存修改</span> : null}
           {detail.status === "draft" ? (
             <>
-              <Button variant="outline" size="sm" onClick={() => void save()} disabled={saving}>
+              <Button variant="outline" size="sm" onClick={() => void save()} disabled={isBusy}>
                 {saving ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Save className="mr-1 size-3.5" />}
                 保存模版
               </Button>
-              <Button variant="outline" size="sm" onClick={() => void previewPdf()} disabled={previewing}>
+              <Button variant="outline" size="sm" onClick={() => void previewPdf()} disabled={isBusy}>
                 {previewing ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : null}
                 试打 PDF
               </Button>
-              <Button size="sm" onClick={() => void publish()} disabled={publishing}>
+              <Button size="sm" onClick={() => void publish()} disabled={isBusy}>
                 {publishing ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Megaphone className="mr-1 size-3.5" />}
                 发布启用
               </Button>
             </>
           ) : (
             <>
-              <Button variant="outline" size="sm" onClick={() => void save()} disabled={saving || !isDirty}>
+              <Button variant="outline" size="sm" onClick={() => void save()} disabled={isBusy || !isDirty}>
                 {saving ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Save className="mr-1 size-3.5" />}
                 保存名称
               </Button>
-              <Button variant="outline" size="sm" onClick={() => void previewPdf()} disabled={previewing}>
+              <Button variant="outline" size="sm" onClick={() => void previewPdf()} disabled={isBusy}>
                 {previewing ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : null}
                 试打 PDF
               </Button>
-              <Button variant="outline" size="sm" onClick={() => void duplicate()} disabled={duplicating}>
+              <Button variant="outline" size="sm" onClick={() => void duplicate()} disabled={isBusy}>
                 {duplicating ? (
                   <Loader2 className="mr-1 size-3.5 animate-spin" />
                 ) : (
@@ -520,6 +598,7 @@ export function TemplateEditorClient({ id }: { id: string }) {
                 key={detail.id}
                 grid={grid}
                 binding={binding}
+                disabled={isBusy}
                 onChange={(nextGrid, nextBinding) => {
                   setGrid(nextGrid);
                   if (nextBinding) setBinding(nextBinding);
@@ -574,7 +653,10 @@ export function TemplateEditorClient({ id }: { id: string }) {
         </div>
 
         {detail.status === "draft" ? (
-          <div className="space-y-4 pb-4 xl:sticky xl:top-24 xl:max-h-[calc(100dvh-7rem)] xl:overflow-auto">
+          <fieldset
+            disabled={isBusy}
+            className="min-w-0 space-y-4 border-0 p-0 pb-4 xl:sticky xl:top-24 xl:max-h-[calc(100dvh-7rem)] xl:overflow-auto"
+          >
             <div className="rounded-md border p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
@@ -785,7 +867,7 @@ export function TemplateEditorClient({ id }: { id: string }) {
                 />
               </div>
             </div>
-          </div>
+          </fieldset>
         ) : (
           <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground xl:sticky xl:top-24">
             该模版为「{STATUS_LABEL[detail.status]}」状态，仅草稿可编辑网格与绑定。

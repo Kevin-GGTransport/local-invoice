@@ -36,6 +36,7 @@ import type { TemplateBinding, TemplateGrid } from "@/lib/templates/types";
 interface TemplateEditorProps {
   grid: TemplateGrid;
   binding: TemplateBinding;
+  disabled?: boolean;
   onChange: (grid: TemplateGrid, binding?: TemplateBinding) => void;
   onCellActivate?: (row: number, col: number) => void;
   onRowRangeChange?: (startRow: number, endRow: number) => void;
@@ -59,6 +60,7 @@ function cellAddress(row: number, col: number): string {
 export function TemplateEditor({
   grid,
   binding,
+  disabled = false,
   onChange,
   onCellActivate,
   onRowRangeChange,
@@ -80,10 +82,12 @@ export function TemplateEditor({
   const selectedStyle = selectedAnchor?.style ?? {};
 
   const patchStyle = (patch: Parameters<typeof patchCellStyle>[2]) => {
+    if (disabled) return;
     onChange(patchCellStyle(grid, selection, patch));
   };
 
   const startEditing = (row: number, col: number) => {
+    if (disabled) return;
     const anchor = findAnchorAt(grid, row, col);
     const target = anchor ?? { row, col, text: "" };
     setEditingCell({ row: target.row, col: target.col });
@@ -91,12 +95,13 @@ export function TemplateEditor({
   };
 
   const commitEdit = () => {
-    if (!editingCell) return;
+    if (!editingCell || disabled) return;
     onChange(setCellText(grid, editingCell.row, editingCell.col, editValue));
     setEditingCell(null);
   };
 
   const handleMerge = () => {
+    if (disabled) return;
     const result = mergeRange(grid, binding, selection);
     if (result.error) {
       toast.error(result.error);
@@ -106,6 +111,7 @@ export function TemplateEditor({
   };
 
   const handleUnmerge = () => {
+    if (disabled) return;
     const next = unmergeAt(grid, selection.startRow, selection.startCol);
     if (next === grid) {
       toast.info("当前单元格不是合并单元格");
@@ -124,6 +130,7 @@ export function TemplateEditor({
     kind: "row" | "col",
     deleting = false
   ) => {
+    if (disabled) return;
     const result = operation(grid, binding, index);
     if (result.error) {
       toast.error(result.error);
@@ -149,7 +156,7 @@ export function TemplateEditor({
   };
 
   return (
-    <div className="space-y-2">
+    <fieldset disabled={disabled} className="min-w-0 space-y-2 border-0 p-0">
       <div className="flex flex-wrap items-center gap-1 rounded-md border bg-muted/30 p-2" role="toolbar" aria-label="单元格格式">
         <span className="mr-1 min-w-14 rounded border bg-background px-2 py-1 text-center font-mono text-xs font-semibold">
           {cellAddress(selection.startRow, selection.startCol)}
@@ -278,20 +285,20 @@ export function TemplateEditor({
         showCoordinates
         scale={0.75}
         selection={selection}
-        onSelectionChange={setSelection}
-        onCellClick={(row, col) => {
+        onSelectionChange={disabled ? undefined : setSelection}
+        onCellClick={disabled ? undefined : (row, col) => {
           const anchor = findAnchorAt(grid, row, col);
           onCellActivate?.(anchor?.row ?? row, anchor?.col ?? col);
         }}
-        onCellDoubleClick={startEditing}
-        onRowRangeChange={onRowRangeChange}
-        onColumnPick={onColumnPick}
-        onResizeRow={(row, height) => onChange(resizeRow(grid, row, height))}
-        onResizeColumn={(col, width) => onChange(resizeColumn(grid, col, width))}
+        onCellDoubleClick={disabled ? undefined : startEditing}
+        onRowRangeChange={disabled ? undefined : onRowRangeChange}
+        onColumnPick={disabled ? undefined : onColumnPick}
+        onResizeRow={disabled ? undefined : (row, height) => onChange(resizeRow(grid, row, height))}
+        onResizeColumn={disabled ? undefined : (col, width) => onChange(resizeColumn(grid, col, width))}
         selectedCell={selectedCell}
         lineItemRegion={lineItemRegion}
         fieldBadges={fieldBadges}
       />
-    </div>
+    </fieldset>
   );
 }
