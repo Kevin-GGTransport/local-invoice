@@ -134,8 +134,11 @@ export function TemplatesClient() {
       form.set("file", uploadFile);
       const res = await fetch("/api/admin/invoice-templates/upload", { method: "POST", body: form });
       if (!res.ok) throw new Error(await getApiErrorMessage(res, "上传失败"));
-      const created = (await res.json()) as { data?: { id?: string } };
+      const created = (await res.json()) as { data?: { id?: string; warnings?: string[] } };
       toast.success("样张已解析为草稿模版，即将进入编辑页绑定字段");
+      if (created.data?.warnings?.length) {
+        toast.warning(created.data.warnings.join("；"));
+      }
       setUploadFile(null);
       setUploadName("");
       await loadCompanies();

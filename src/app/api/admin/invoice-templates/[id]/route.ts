@@ -109,7 +109,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
       const grid = parsed.data.grid_config as TemplateGrid | undefined
       const editsDraftOnlyFields = Boolean(grid || changesCompany)
       if (editsDraftOnlyFields && existing.status !== "draft") {
-        return jsonError("模版状态已变化，仅草稿模版可修改公司或绑定", 409)
+        return jsonError("模版状态已变化，仅草稿模版可修改公司或网格", 409)
       }
 
       if (changesCompany && requestedCompanyId !== undefined) {

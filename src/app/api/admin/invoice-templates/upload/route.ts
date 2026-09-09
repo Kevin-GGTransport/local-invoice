@@ -1,6 +1,6 @@
 /**
  * 账单模版 - 上传 .xlsx 样张（仅 admin）
- * 解析第一个 sheet 的布局并落为 draft，随后在绑定向导中配置字段映射
+ * 解析第一个 sheet 的布局并落为 draft；样张中的 {{令牌}} 会自动推导为字段绑定
  */
 
 import { NextRequest } from "next/server"
