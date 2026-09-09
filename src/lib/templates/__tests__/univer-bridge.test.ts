@@ -49,4 +49,19 @@ describe('univer-bridge round-trip', () => {
     assert.equal(back.cells.find((c) => c.row === 0 && c.col === 0)?.text, '42')
     assert.ok(!back.cells[0].text.includes('='))
   })
+
+  it('真实快照扩展线型归一化（hair → dashed 0.5pt，不丢弃）', () => {
+    const workbook = templateGridToWorkbookData(
+      { colWidths: [48], rowHeights: [15], cells: [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: 'x', style: {} }] },
+      pageConfig
+    )
+    const sheet = workbook.sheets[workbook.sheetOrder[0]]
+    sheet.cellData[0] = { 0: { v: 'x', s: { bd: { top: { style: 'hair' }, bottom: { style: 'mediumDashed' } } } } }
+    const back = workbookDataToTemplateGrid(workbook, pageConfig)
+    const borders = back.cells[0].style.borders
+    assert.equal(borders?.top, 0.5)
+    assert.equal(borders?.styles?.top, 'dashed')
+    assert.equal(borders?.bottom, 0.5)
+    assert.equal(borders?.styles?.bottom, 'dashed')
+  })
 })

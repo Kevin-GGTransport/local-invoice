@@ -5,7 +5,7 @@
  * 行高/列宽单位换算 pt ↔ px（×4/3）在本层完成。
  */
 
-import { BORDER_WIDTH_PT, widthToLineStyle } from "./border-style";
+import { BORDER_WIDTH_PT, EXCEL_BORDER_TO_LINE, widthToLineStyle } from "./border-style";
 import type {
   TemplateBorderLineStyle,
   TemplateCell,
@@ -205,9 +205,8 @@ function univerStyleToTemplate(
     for (const side of ["top", "right", "bottom", "left"] as const) {
       const edge = u.bd[side];
       if (!edge) continue;
-      const line = (Object.keys(BORDER_WIDTH_PT) as TemplateBorderLineStyle[]).find(
-        (l) => LINE_TO_UNIVER[l] === edge.style
-      );
+      // 反向统一走 border-style 单点映射：hair/dashDot/mediumDashed 等真实快照线型归一化，而非丢弃
+      const line = EXCEL_BORDER_TO_LINE[edge.style];
       if (!line) continue;
       borders[side] = BORDER_WIDTH_PT[line];
       // 仅当宽度反推不出线型时才回写 styles：thin/medium/thick 宽度与线型互推一致不写，dashed/dotted/double 必须写
