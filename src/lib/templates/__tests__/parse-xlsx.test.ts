@@ -47,13 +47,15 @@ describe('parseTemplateXlsx', () => {
     assert.ok(grid.colWidths[1] > grid.colWidths[0])
   })
 
-  it('空文件与中文样张被拒绝', async () => {
+  it('空文件被拒绝，中文样张可正常解析', async () => {
     const empty = await workbookBuffer(() => {})
     await assert.rejects(() => parseTemplateXlsx(empty), /内容为空/)
     const cjk = await workbookBuffer((ws) => {
       ws.getCell('A1').value = '中文标题'
     })
-    await assert.rejects(() => parseTemplateXlsx(cjk), /中文/)
+    const parsed = await parseTemplateXlsx(cjk)
+    assert.equal(parsed.grid.cells[0]?.text, '中文标题')
+    assert.equal(parsed.pageConfig.fontFamily, 'Noto Sans SC')
   })
 })
 

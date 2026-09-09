@@ -54,6 +54,24 @@ async function renderPdfText(grid: TemplateGrid): Promise<string> {
 }
 
 describe('GenericTemplateDocument', () => {
+  it('嵌入中文字体并可生成包含中文的 PDF', async () => {
+    const grid: TemplateGrid = {
+      colWidths: [240],
+      rowHeights: [24],
+      cells: [
+        { row: 0, col: 0, rowSpan: 1, colSpan: 1, text: '中文账单：客户名称', style: { bold: true } },
+      ],
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const element: React.ReactElement<any> = React.createElement(GenericTemplateDocument, {
+      pageConfig: PAGE_CONFIG,
+      grid,
+    })
+    const pdf = Buffer.from(await renderToBuffer(element))
+    assert.ok(pdf.length > 1_000, '中文 PDF 应成功生成并嵌入字体')
+    assert.ok(pdf.toString('latin1').includes('/FontFile2'), 'PDF 应包含嵌入的 TrueType 字体')
+  })
+
   it('单元格内换行（非 wrap）的多行头部文本在 PDF 中完整保留', async () => {
     const grid: TemplateGrid = {
       colWidths: [267.8, 227.3],

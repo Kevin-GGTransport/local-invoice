@@ -8,7 +8,8 @@
  */
 
 import React from 'react'
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
+import path from 'node:path'
+import { Document, Font, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
 import { layoutCellText } from '@/lib/templates/cell-layout'
 import type { TemplateGrid, TemplatePageConfig } from '@/lib/templates/types'
 
@@ -24,7 +25,20 @@ const PAGE_SIZES: Record<TemplatePageConfig['size'], [number, number]> = {
   LETTER: [612, 792],
 }
 
+const PDF_FONT_FAMILY = 'Noto Sans SC'
+
+// PDF 必须嵌入中文字形；依赖操作系统字体会导致开发机正常、服务器打印乱码。
+// 同一个可变字体文件覆盖常规和粗体，且保留 Helvetica 配置的历史模板也会自动升级。
+Font.register({
+  family: PDF_FONT_FAMILY,
+  fonts: [
+    { src: path.join(process.cwd(), 'public', 'NotoSansSC-VF.ttf'), fontWeight: 400 },
+    { src: path.join(process.cwd(), 'public', 'NotoSansSC-VF.ttf'), fontWeight: 700 },
+  ],
+})
+
 function fontFamily(style: { bold?: boolean; italic?: boolean }, base: string): string {
+  if (base === PDF_FONT_FAMILY) return base
   const prefix = base.replace(/-(Bold|Oblique|BoldOblique)$/, '')
   if (style.bold && style.italic) return `${prefix}-BoldOblique`
   if (style.bold) return `${prefix}-Bold`
@@ -33,6 +47,9 @@ function fontFamily(style: { bold?: boolean; italic?: boolean }, base: string): 
 }
 
 export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDocumentProps) {
+  const containsCjk = grid.cells.some((cell) => /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(cell.text))
+  const baseFontFamily =
+    pageConfig.fontFamily === PDF_FONT_FAMILY || containsCjk ? PDF_FONT_FAMILY : pageConfig.fontFamily
   const [pageW, pageH] = PAGE_SIZES[pageConfig.size] ?? PAGE_SIZES.A4
   const margin = pageConfig.margin
   const contentW = pageW - margin.left - margin.right
@@ -53,7 +70,7 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
       paddingRight: margin.right,
       paddingBottom: margin.bottom,
       paddingLeft: margin.left,
-      fontFamily: pageConfig.fontFamily,
+      fontFamily: baseFontFamily,
       fontSize: pageConfig.baseFontSize,
       color: pageConfig.textColor,
     },
@@ -133,7 +150,8 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
                 >
                   <Text
                     style={{
-                      fontFamily: fontFamily(s, pageConfig.fontFamily),
+                      fontFamily: fontFamily(s, baseFontFamily),
+                      fontWeight: baseFontFamily === PDF_FONT_FAMILY ? (s.bold ? 700 : 400) : undefined,
                       fontSize: fontSize * scale,
                       lineHeight: 1.1,
                       color: s.color ?? pageConfig.textColor,

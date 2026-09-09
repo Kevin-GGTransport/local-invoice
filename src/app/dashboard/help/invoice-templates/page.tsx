@@ -165,7 +165,7 @@ export default async function InvoiceTemplateHelpPage() {
               "系统读取第一个工作表，最大解析 80 行 × 30 列。",
               "支持列宽、行高、合并格、字号、对齐及部分颜色和边框；主题色和特殊边框效果以试打 PDF 为准。",
               "在明细表中预留至少一行样式完整的空白占位行。",
-              "PDF 使用 Helvetica 英文字体，不保留 Excel 原字体名称；中文、日文和部分全角字符可能导致上传失败。",
+              "PDF 使用内嵌的 Noto Sans SC 字体，不保留 Excel 原字体名称；支持中文、英文和常用全角字符。",
             ]} />
             <Callout>业务数据对应的单元格可以留空，但必须在 Excel 中先设好字号、对齐和边框。</Callout>
           </Section>

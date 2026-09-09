@@ -59,7 +59,6 @@ function borderWidthPt(style: string | undefined): number | undefined {
   }
 }
 
-const CJK_RE = /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/
 
 /** 解析 'A1:B2' 形式的合并区域为 0 起始索引 */
 function parseMergeRange(range: string): { r1: number; c1: number; r2: number; c2: number } | null {
@@ -111,7 +110,6 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
   const collected: TemplateCell[] = []
   let maxRow = 0
   let maxCol = 0
-  const allTexts: string[] = []
 
   ws.eachRow({ includeEmpty: true }, (row, rowNum) => {
     const r = rowNum - 1
@@ -179,16 +177,12 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
 
       const span = anchorSpan.get(`${r}:${c}`) ?? { rowSpan: 1, colSpan: 1 }
       collected.push({ row: r, col: c, rowSpan: span.rowSpan, colSpan: span.colSpan, text: rawText, style })
-      if (rawText) allTexts.push(rawText)
       maxRow = Math.max(maxRow, r + span.rowSpan - 1)
       maxCol = Math.max(maxCol, c + span.colSpan - 1)
     })
   })
 
   if (collected.length === 0) throw new Error('样张内容为空，请上传包含版式的 Excel 账单样张')
-  if (CJK_RE.test(allTexts.join(''))) {
-    throw new Error('样张包含中文字符，当前版本 PDF 仅支持英文字体，请先移除中文内容')
-  }
 
   // 合并区域可能超出有样式单元格的范围
   for (const range of merges) {
@@ -216,7 +210,7 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
     pageConfig: {
       size: 'A4',
       margin: { top: 24, right: 24, bottom: 24, left: 24 },
-      fontFamily: 'Helvetica',
+      fontFamily: 'Noto Sans SC',
       baseFontSize: 10,
       textColor: '#000000',
     },
