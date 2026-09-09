@@ -57,6 +57,22 @@ describe('parseTemplateXlsx', () => {
     assert.equal(parsed.grid.cells[0]?.text, '中文标题')
     assert.equal(parsed.pageConfig.fontFamily, 'Noto Sans SC')
   })
+
+  it('导入下划线、删除线与边框线型', async () => {
+    const buf = await workbookBuffer((ws) => {
+      const c = ws.getCell(1, 1)
+      c.value = 'x'
+      c.font = { underline: true, strike: true }
+      c.border = { top: { style: 'double' }, bottom: { style: 'dashed' } }
+    })
+    const { grid } = await parseTemplateXlsx(buf)
+    const cell = grid.cells[0]
+    assert.equal(cell.style.underline, true)
+    assert.equal(cell.style.strike, true)
+    assert.equal(cell.style.borders?.styles?.top, 'double')
+    assert.equal(cell.style.borders?.styles?.bottom, 'dashed')
+    assert.equal(cell.style.borders?.top, 2.5)
+  })
 })
 
 describe('validateBindingForPublish', () => {

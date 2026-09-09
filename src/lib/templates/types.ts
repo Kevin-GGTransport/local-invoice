@@ -13,6 +13,15 @@ export interface TemplatePageConfig {
   textColor: string
 }
 
+/** 边框线型（与 Univer BorderStyleType 对齐的子集） */
+export type TemplateBorderLineStyle =
+  | 'thin'
+  | 'medium'
+  | 'thick'
+  | 'dashed'
+  | 'dotted'
+  | 'double'
+
 /** 单元格边框（宽度单位 pt） */
 export interface TemplateCellBorders {
   top?: number
@@ -20,12 +29,21 @@ export interface TemplateCellBorders {
   bottom?: number
   left?: number
   color?: string
+  /** 每边线型；缺省按宽度渲染实线（宽度→thin/medium/thick） */
+  styles?: {
+    top?: TemplateBorderLineStyle
+    right?: TemplateBorderLineStyle
+    bottom?: TemplateBorderLineStyle
+    left?: TemplateBorderLineStyle
+  }
 }
 
 /** 单元格样式（从 xlsx 样式归一化而来） */
 export interface TemplateCellStyle {
   bold?: boolean
   italic?: boolean
+  underline?: boolean
+  strike?: boolean
   fontSize?: number
   color?: string
   fill?: string

@@ -6,8 +6,10 @@
  */
 
 import ExcelJS from 'exceljs'
+import { BORDER_WIDTH_PT, EXCEL_BORDER_TO_LINE } from './border-style'
 import { trimGridToContent } from './template-grid'
 import type {
+  TemplateBorderLineStyle,
   TemplateCell,
   TemplateCellStyle,
   TemplateGrid,
@@ -38,25 +40,8 @@ function colorToHex(color: { argb?: string; rgb?: string; theme?: number } | und
 
 /** Excel 边框样式 → 近似 pt 宽度 */
 function borderWidthPt(style: string | undefined): number | undefined {
-  switch (style) {
-    case 'hair':
-    case 'dotted':
-    case 'dashed':
-    case 'dashDot':
-    case 'dashDotDot':
-    case 'slantDashDot':
-      return 0.5
-    case 'thin':
-      return 1
-    case 'medium':
-      return 2
-    case 'thick':
-      return 3
-    case 'double':
-      return 2.5
-    default:
-      return undefined
-  }
+  const line = style != null ? EXCEL_BORDER_TO_LINE[style] : undefined
+  return line == null ? undefined : BORDER_WIDTH_PT[line]
 }
 
 
@@ -136,7 +121,7 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
       const hasBorder =
         border && [border.top, border.right, border.bottom, border.left].some((e) => e?.style)
       const fontColor = font ? colorToHex(font.color) : null
-      const hasFont = font && (font.bold || font.italic || font.size || fontColor)
+      const hasFont = font && (font.bold || font.italic || font.underline || font.strike || font.size || fontColor)
       const hasAlign = alignment && (alignment.horizontal || alignment.vertical || alignment.wrapText)
 
       if (!rawText && !fillColor && !hasBorder && !hasFont && !hasAlign) return
@@ -144,19 +129,30 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
       const style: TemplateCellStyle = {}
       if (font?.bold) style.bold = true
       if (font?.italic) style.italic = true
+      if (font?.underline) style.underline = true
+      if (font?.strike) style.strike = true
       if (font?.size) style.fontSize = font.size
       if (fontColor) style.color = fontColor
       if (fillColor) style.fill = fillColor
       if (hasBorder) {
         const borders: Record<string, number> = {}
+        const borderStyles: Record<string, TemplateBorderLineStyle> = {}
         const sides = ['top', 'right', 'bottom', 'left'] as const
         for (const side of sides) {
-          const w = borderWidthPt(border?.[side]?.style)
+          const rawStyle = border?.[side]?.style
+          if (rawStyle == null) continue
+          const w = borderWidthPt(rawStyle)
           if (w != null) borders[side] = w
+          const line = EXCEL_BORDER_TO_LINE[rawStyle]
+          if (line) borderStyles[side] = line
         }
         if (Object.keys(borders).length > 0) {
           const bc = colorToHex(border?.top?.color) ?? colorToHex(border?.bottom?.color)
-          style.borders = { ...borders, ...(bc ? { color: bc } : {}) }
+          style.borders = {
+            ...borders,
+            ...(bc ? { color: bc } : {}),
+            ...(Object.keys(borderStyles).length > 0 ? { styles: borderStyles } : {}),
+          }
         }
       }
       if (
