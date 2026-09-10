@@ -6,8 +6,9 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAdmin, userIdBigint, jsonOk, jsonError, handleDbError } from "@/lib/api-helpers"
-import { validateBindingForPublish, type TemplateBinding, type TemplateGrid } from "@/lib/templates/types"
+import { validateBindingForPublish, type TemplateGrid } from "@/lib/templates/types"
 import { validateTemplateGrid } from "@/lib/templates/template-grid"
+import { deriveBindingFromGrid } from "@/lib/templates/token-binding"
 
 export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { session, error } = await requireAdmin()
@@ -27,8 +28,9 @@ export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: s
       // 同一公司的发布串行化，防止两个草稿同时成为 active。
       await tx.$queryRaw`SELECT id FROM companies WHERE id = ${template.company_id} FOR UPDATE`
 
-      const binding = template.binding_config as unknown as TemplateBinding
+      // 绑定由网格现场推导后校验（与打印同源），存储值仅供编辑器展示
       const grid = template.grid_config as unknown as TemplateGrid
+      const binding = deriveBindingFromGrid(grid).binding
       const errors = [...validateTemplateGrid(grid, binding), ...validateBindingForPublish(binding)]
       if (errors.length > 0) return jsonError(errors.join("；"), 400)
 

@@ -8,8 +8,9 @@ import { renderToBuffer } from "@react-pdf/renderer"
 import React from "react"
 import { prisma } from "@/lib/prisma"
 import { requireAdmin, jsonError, handleDbError } from "@/lib/api-helpers"
-import type { TemplateBinding, TemplateGrid, TemplatePageConfig } from "@/lib/templates/types"
+import type { TemplateGrid, TemplatePageConfig } from "@/lib/templates/types"
 import { renderTemplateData, sampleTemplateRenderData } from "@/lib/templates/render-template-data"
+import { deriveBindingFromGrid } from "@/lib/templates/token-binding"
 import { GenericTemplateDocument } from "@/lib/services/print/generic-template-pdf"
 
 export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -25,7 +26,8 @@ export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: s
 
     const pageConfig = template.page_config as unknown as TemplatePageConfig
     const grid = template.grid_config as unknown as TemplateGrid
-    const binding = template.binding_config as unknown as TemplateBinding
+    // 绑定由网格现场推导（与打印同源），草稿试打即反映最新推导规则
+    const binding = deriveBindingFromGrid(grid).binding
     const rendered = renderTemplateData(grid, binding, sampleTemplateRenderData())
 
     const buf = await renderToBuffer(

@@ -92,7 +92,8 @@ export interface SimpleFieldBinding {
   format: TemplateFieldFormat
 }
 
-/** 明细行区域绑定：样张中 startRow..endRow 的占位行运行时被数据行替换 */
+/** 明细行区域绑定：区域 = 令牌行 + 推导时并入的下方连续空行（设计容量），
+ *  渲染时明细数 ≤ 容量逐行填值、下方零移动；超出容量才克隆令牌行增长并下移 */
 export interface LineItemsBinding {
   startRow: number
   endRow: number
@@ -102,6 +103,7 @@ export interface LineItemsBinding {
     unitPrice?: number
     amount?: number
   }
+  /** 区域行数（= 容量），由推导生成，恒等于 endRow - startRow + 1 */
   minRows: number
 }
 

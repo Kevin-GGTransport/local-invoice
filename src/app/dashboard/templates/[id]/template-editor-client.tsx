@@ -96,7 +96,6 @@ export function TemplateEditorClient({ id }: { id: string }) {
   const [companyId, setCompanyId] = React.useState("");
   const [companies, setCompanies] = React.useState<CompanyRow[]>([]);
   const [grid, setGrid] = React.useState<TemplateGrid | null>(null);
-  const [minRows, setMinRows] = React.useState(10);
   const [saving, setSaving] = React.useState(false);
   const [previewing, setPreviewing] = React.useState(false);
   const [publishing, setPublishing] = React.useState(false);
@@ -113,11 +112,9 @@ export function TemplateEditorClient({ id }: { id: string }) {
   const isDirty = Boolean(detail && savedSnapshot && currentSnapshot !== savedSnapshot);
   const isBusy = saving || previewing || publishing || duplicating;
 
-  // 绑定不再独立存储：由网格中的 {{令牌}} + 最少行数实时推导
-  const derived = React.useMemo(
-    () => (grid ? deriveBindingFromGrid(grid, { minRows }) : null),
-    [grid, minRows]
-  );
+  // 绑定不再独立存储：由网格中的 {{令牌}} 实时推导
+  // （明细容量 = 令牌行 + 下方连续空行，随模板设计自然决定）
+  const derived = React.useMemo(() => (grid ? deriveBindingFromGrid(grid) : null), [grid]);
   const binding: TemplateBinding = derived?.binding ?? { fields: {}, lineItems: null };
 
   // 初始加载（含本地草稿恢复）
@@ -140,7 +137,6 @@ export function TemplateEditorClient({ id }: { id: string }) {
           grid: d.grid_config,
         });
         let nextGrid = d.grid_config;
-        let nextMinRows = d.binding_config?.lineItems?.minRows ?? 10;
         let restoredName = d.name;
         let restoredCompanyId = d.company.id;
         const stored = sessionStorage.getItem(draftStorageKey(id));
@@ -157,8 +153,6 @@ export function TemplateEditorClient({ id }: { id: string }) {
               window.confirm("检测到这个模版有未保存的本地修改，是否恢复？")
             ) {
               nextGrid = recovery.grid;
-              // 恢复载荷不再携带绑定：网格仍有明细模板行则保留已持久化的最少行数，否则回默认 10
-              nextMinRows = deriveBindingFromGrid(recovery.grid).binding.lineItems ? nextMinRows : 10;
               restoredName = recovery.name;
               const recoveredCompanyIsSelectable =
                 recovery.companyId === d.company.id ||
@@ -184,7 +178,6 @@ export function TemplateEditorClient({ id }: { id: string }) {
         setName(restoredName);
         setCompanyId(restoredCompanyId);
         setGrid(nextGrid);
-        setMinRows(nextMinRows);
         setSavedSnapshot(baseSnapshot);
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "加载模版失败");
@@ -255,10 +248,10 @@ export function TemplateEditorClient({ id }: { id: string }) {
     }
     setSaving(true);
     try {
-      // 非草稿仅允许改名；草稿连同公司、网格与最少行数一起保存（绑定由服务端按令牌推导）
+      // 非草稿仅允许改名；草稿连同公司与网格一起保存（绑定由服务端按令牌推导）
       const body =
         detail.status === "draft" && grid
-          ? { name: trimmed, company_id: companyId, grid_config: grid, line_item_min_rows: minRows }
+          ? { name: trimmed, company_id: companyId, grid_config: grid }
           : { name: trimmed };
       const saved = await fetchJson<TemplateSaveResult>(`/api/admin/invoice-templates/${detail.id}`, {
         method: "PATCH",
@@ -596,7 +589,8 @@ export function TemplateEditorClient({ id }: { id: string }) {
             <div className="rounded-md border border-sky-200 bg-sky-50/30 p-3">
               <p className="text-sm font-medium">明细行令牌</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                在同一行写入以下令牌即定义明细模板行（描述、金额必填），打印时按数据行数自动扩展。
+                在同一行写入以下令牌即定义明细模板行（描述、金额必填）。明细区域 =
+                令牌行 + 下方连续空行：明细数不超容量时逐行填值，超出才自动加行。
               </p>
               <div className="mt-3 grid grid-cols-2 gap-1.5">
                 {(Object.keys(DETAIL_TOKENS) as (keyof typeof DETAIL_TOKENS)[]).map((role) => (
@@ -614,20 +608,6 @@ export function TemplateEditorClient({ id }: { id: string }) {
                   </button>
                 ))}
               </div>
-              <div className="mt-3">
-                <Label className="text-xs" htmlFor="line-min-rows">最少行数（不足补空行）</Label>
-                <Input
-                  id="line-min-rows"
-                  type="number"
-                  min={1}
-                  max={80}
-                  value={minRows}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v) && v >= 1) setMinRows(Math.floor(v));
-                  }}
-                />
-              </div>
             </div>
 
             <div className="rounded-md border p-3 text-xs">
@@ -644,7 +624,7 @@ export function TemplateEditorClient({ id }: { id: string }) {
               ) : null}
               {binding.lineItems ? (
                 <p className="mt-2 text-emerald-700">
-                  明细模板行：第 {binding.lineItems.startRow + 1} 行 · 最少 {binding.lineItems.minRows} 行
+                  明细模板行：第 {binding.lineItems.startRow + 1} 行 · 容量 {binding.lineItems.minRows} 行（令牌行 + 下方空行）
                 </p>
               ) : (
                 <p className="mt-2 text-muted-foreground">尚未定义明细模板行</p>

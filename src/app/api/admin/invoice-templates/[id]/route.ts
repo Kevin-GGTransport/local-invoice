@@ -33,7 +33,6 @@ export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: st
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   company_id: z.string().regex(/^\d+$/, "请选择有效公司").optional(),
-  line_item_min_rows: z.number().int().min(1).max(80).optional(),
   grid_config: z
     .object({
       colWidths: z.array(z.number()),
@@ -122,13 +121,11 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
         if (!company.is_active) return jsonError("不能将模版转移到已停用的公司", 400)
       }
 
-      // 网格保存时由令牌推导绑定（binding_config 唯一生成来源）
+      // 网格保存时由令牌推导绑定（binding_config 唯一生成来源；
+      // 明细容量 = 令牌行 + 下方连续空行，由网格自然决定，无人工配置）
       let bindingToSave: TemplateBinding | undefined
       if (grid) {
-        const minRows =
-          parsed.data.line_item_min_rows ??
-          ((existing.binding_config as unknown as TemplateBinding).lineItems?.minRows ?? 10)
-        const derived = deriveBindingFromGrid(grid, { minRows })
+        const derived = deriveBindingFromGrid(grid)
         if (derived.errors.length > 0) return jsonError(derived.errors.join("；"), 400)
         bindingToSave = derived.binding
         const gridErrors = validateTemplateGrid(grid, derived.binding)

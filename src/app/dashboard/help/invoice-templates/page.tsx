@@ -215,12 +215,12 @@ export default async function InvoiceTemplateHelpPage() {
           </Section>
 
           <Section id="lines" number="05" title="定义明细模板行">
-            <p>在同一行写入明细令牌，系统就会把该行识别为「明细模板行」。打印时按实际明细数自动扩展，不足右侧设定的「最少行数」时自动补空行，后续总计和底部内容会同步下移。</p>
+            <p>在同一行写入明细令牌，系统就会把该行识别为「明细模板行」，并把令牌行到下方总计行之间的连续空行识别为明细区域（容量 = 令牌行 + 这些空行）。打印时：明细数不超过容量就逐行填入既有空行，版式与样张完全一致；超过容量才自动加行，后续总计和底部内容同步下移。</p>
             <ol className="list-decimal space-y-2 pl-5">
               <li>在明细表的一个数据行中，分别把令牌写入对应列。可在右侧「明细行令牌」面板点击一键插入。</li>
               <li><code>{DETAIL_TOKENS.description}</code>（Description）和 <code>{DETAIL_TOKENS.amount}</code>（Amount / Total）必填；<code>{DETAIL_TOKENS.quantity}</code>（Qty）和 <code>{DETAIL_TOKENS.unitPrice}</code>（Rate）按样张需要选填。</li>
-              <li>确保所有明细令牌在同一行且位于不同列，再在右侧设置「最少行数」（1–80）。</li>
-              <li>检查校验面板显示的「明细模板行：第 N 行」是否与样张一致。</li>
+              <li>确保所有明细令牌在同一行且位于不同列；需要更多明细空行时，直接在编辑器里于总计行上方插入空行即可扩大容量。</li>
+              <li>检查校验面板显示的「明细模板行：第 N 行 · 容量 M 行」是否与样张一致。</li>
             </ol>
             <Callout tone="warning">明细令牌分散在多行、同一令牌在同行重复，或 Description / Amount 缺失时无法发布。请不要把明细令牌放在合并格的覆盖位置。</Callout>
             <Callout>基础字段和明细的绑定值永不缩小字号；内容过长时会自动折行并撑高行高。</Callout>
@@ -247,7 +247,7 @@ export default async function InvoiceTemplateHelpPage() {
             <Checklist items={[
               "所有基础字段都落在预期单元格内。",
               "PICKUPS / DROPS 日期、公司和地址没有越界或遮挡。",
-              "多条明细能正确生成，总金额和底部内容随生成行数自动调整位置。",
+              "多条明细一条占一行；明细数不超容量时版式与样张一致，超出时总金额和底部内容自动下移。",
               "发票号、日期、Load No. 和金额格式正确。",
             ]} />
           </Section>

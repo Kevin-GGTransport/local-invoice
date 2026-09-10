@@ -8,12 +8,12 @@ import React from 'react'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/prisma'
 import type {
-  TemplateBinding,
   TemplateGrid,
   TemplatePageConfig,
   TemplateRenderData,
 } from '@/lib/templates/types'
 import { renderTemplateData } from '@/lib/templates/render-template-data'
+import { deriveBindingFromGrid } from '@/lib/templates/token-binding'
 import { GenericTemplateDocument } from './generic-template-pdf'
 
 export type AccountingInvoicePdfResult =
@@ -94,11 +94,10 @@ export async function generateAccountingInvoicePdf(id: bigint): Promise<Accounti
     lines,
   }
 
-  const rendered = renderTemplateData(
-    template.grid_config as unknown as TemplateGrid,
-    template.binding_config as unknown as TemplateBinding,
-    data
-  )
+  // 绑定由网格现场推导（与保存/发布同源），存量模版无需迁移即享受最新推导规则
+  const grid = template.grid_config as unknown as TemplateGrid
+  const binding = deriveBindingFromGrid(grid).binding
+  const rendered = renderTemplateData(grid, binding, data)
 
   const buf = await renderToBuffer(
     <GenericTemplateDocument

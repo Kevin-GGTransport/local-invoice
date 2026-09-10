@@ -58,6 +58,11 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** 行内无任何非空文本（含仅空白）即视为设计空行，可并入明细区域 */
+function isBlankRow(grid: TemplateGrid, row: number): boolean {
+  return !grid.cells.some((cell) => cell.row === row && cell.text.trim() !== "");
+}
+
 /** 提取文本中全部令牌（已去首尾空白） */
 export function extractTokens(text: string): string[] {
   return [...text.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].map((m) => m[1].trim());
@@ -78,10 +83,7 @@ export function replaceFieldToken(text: string, key: TemplateFieldKey, value: st
   return text.replace(tokenRegex(key), () => value);
 }
 
-export function deriveBindingFromGrid(
-  grid: TemplateGrid,
-  opts?: { minRows?: number }
-): DerivedBinding {
+export function deriveBindingFromGrid(grid: TemplateGrid): DerivedBinding {
   const fields: TemplateBinding["fields"] = {};
   const detailRows = new Map<number, { role: DetailRole; col: number }[]>();
   const unknownTokens = new Set<string>();
@@ -130,7 +132,11 @@ export function deriveBindingFromGrid(
         columns[role] = col;
       }
     }
-    lineItems = { startRow: row, endRow: row, columns, minRows: opts?.minRows ?? 10 };
+    // 令牌行下方连续的整行空白（明细表的设计空行）并入区域，
+    // 渲染时整块作为明细容量被数据替换，避免与生成行堆叠把模板撑高
+    let endRow = row;
+    while (endRow + 1 < grid.rowHeights.length && isBlankRow(grid, endRow + 1)) endRow += 1;
+    lineItems = { startRow: row, endRow, columns, minRows: endRow - row + 1 };
   }
 
   return { binding: { fields, lineItems }, unknownTokens: [...unknownTokens], errors };

@@ -94,7 +94,7 @@ async function main() {
     const binding = template.binding_config as unknown as TemplateBinding
     const idAndName = `#${template.id} ${template.name} [${template.status}]`
 
-    const already = deriveBindingFromGrid(grid, { minRows: binding.lineItems?.minRows ?? 10 })
+    const already = deriveBindingFromGrid(grid)
     const knownTokens = [...Object.values(FIELD_TOKENS), ...Object.values(DETAIL_TOKENS)]
     const hasKnownToken = grid.cells.some((cell) =>
       knownTokens.some((token) => cell.text.includes(token)),
@@ -138,7 +138,7 @@ async function main() {
       }
     }
 
-    const derived = deriveBindingFromGrid(grid, { minRows: lineItems?.minRows ?? 10 })
+    const derived = deriveBindingFromGrid(grid)
     const errors = [...derived.errors, ...validateTemplateGrid(grid, derived.binding)]
     if (errors.length > 0) {
       console.error(`中止（未写库） ${idAndName}：${errors.join('；')}`)
