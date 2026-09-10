@@ -78,7 +78,7 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "h-10 px-3 py-2 text-left align-middle text-xs font-semibold whitespace-nowrap text-[var(--table-heading)] bg-[var(--table-header)] border-b border-primary-foreground/20 [&:has([role=checkbox])]:w-10 [&:has([role=checkbox])]:text-center",
+      "relative h-10 px-3 py-2 text-left align-middle text-xs font-semibold whitespace-nowrap text-[var(--table-heading)] bg-[var(--table-header)] border-b border-primary-foreground/20 [&:has([role=checkbox])]:w-10 [&:has([role=checkbox])]:text-center",
       className
     )}
     {...props}
@@ -123,5 +123,4 @@ export {
   TableCell,
   TableCaption,
 }
-
 

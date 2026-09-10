@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { buildAccountingInvoiceWhere } from '../accounting-invoice-query'
+import { buildAccountingInvoiceOrderBy, buildAccountingInvoiceWhere } from '../accounting-invoice-query'
 import {
   billingCategoryPayloadValue,
   fromBillingCategorySelectValue,
@@ -31,6 +31,24 @@ describe('buildAccountingInvoiceWhere billing category', () => {
     )
 
     assert.deepEqual(where, {})
+  })
+})
+
+describe('buildAccountingInvoiceOrderBy', () => {
+  it('默认按总货号倒序', () => {
+    assert.deepEqual(buildAccountingInvoiceOrderBy(new URLSearchParams()), [
+      { master_order_number: 'desc' },
+      { id: 'desc' },
+    ])
+  })
+
+  it('允许显式按总货号正序', () => {
+    assert.deepEqual(buildAccountingInvoiceOrderBy(new URLSearchParams({
+      sort: 'master_order_number', order: 'asc',
+    })), [
+      { master_order_number: 'asc' },
+      { id: 'asc' },
+    ])
   })
 })
 

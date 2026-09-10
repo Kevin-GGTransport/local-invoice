@@ -17,6 +17,7 @@ export const ACCOUNTING_INVOICE_SEARCH_FIELDS = [
 export const ACCOUNTING_INVOICE_SORTABLE_FIELDS = [
   "id",
   "company",
+  "master_order_number",
   "contract_date",
   "contract_price",
   "invoice_number",
@@ -103,17 +104,17 @@ export function buildAccountingInvoiceWhere(
   return where
 }
 
-/** 排序参数 → orderBy（白名单 + 次级 id 排序，默认 invoice_date desc，与源一致） */
+/** 排序参数 → orderBy（白名单 + 次级 id 排序，默认总货号倒序） */
 export function buildAccountingInvoiceOrderBy(
   params: URLSearchParams
 ): Prisma.accounting_invoicesOrderByWithRelationInput[] {
-  const sort = params.get("sort") ?? "invoice_date"
+  const sort = params.get("sort") ?? "master_order_number"
   const order = params.get("order") === "asc" ? "asc" : "desc"
   const key: AccountingInvoiceSortKey = (
     ACCOUNTING_INVOICE_SORTABLE_FIELDS as readonly string[]
   ).includes(sort)
     ? (sort as AccountingInvoiceSortKey)
-    : "invoice_date"
+    : "master_order_number"
   // 合同日期即创建日期：排序键 contract_date 实际按 created_at 排（与 SQL 版一致）
   const sortKey = key === "contract_date" ? "created_at" : key
   return [{ [sortKey]: order }, { id: order }]

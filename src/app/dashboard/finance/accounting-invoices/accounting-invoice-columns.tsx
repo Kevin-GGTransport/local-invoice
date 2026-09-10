@@ -109,6 +109,7 @@ export function useInvoiceColumns({
         columnHelper.display({
           id: "select",
           size: 36,
+          enableResizing: false,
           header: () => (
             <Checkbox
               checked={allSelected}
@@ -133,7 +134,15 @@ export function useInvoiceColumns({
           ),
           cell: (info) => info.getValue(),
         }),
-        columnHelper.accessor("master_order_number", { header: "总货号", cell: (info) => info.getValue() ?? "" }),
+        columnHelper.accessor("master_order_number", {
+          header: ({ column }) => (
+            <button type="button" className="inline-flex items-center rounded-sm" onClick={() => toggleSort(column.id)}>
+              总货号
+              <SortIcon id={column.id} sorting={sorting} />
+            </button>
+          ),
+          cell: (info) => info.getValue() ?? "",
+        }),
         columnHelper.accessor("order_number", { header: "货号", cell: (info) => info.getValue() ?? "" }),
       ] }),
       columnHelper.group({ id: "contract", header: "合同", columns: [
@@ -163,6 +172,7 @@ export function useInvoiceColumns({
         columnHelper.accessor("tonu", {
           header: "TONU",
           size: 56,
+          minSize: 56,
           cell: (info) => <TonuIcon value={info.getValue()} />,
         }),
       ] }),
@@ -223,6 +233,7 @@ export function useInvoiceColumns({
         columnHelper.display({
           id: "actions",
           size: 176,
+          enableResizing: false,
           header: "操作",
           cell: ({ row }) => {
             const r = row.original

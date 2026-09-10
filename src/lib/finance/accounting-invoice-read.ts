@@ -33,12 +33,16 @@ export async function readAccountingInvoices(
   // 合同日期即账单创建日期，排序键 contract_date 实际按 created_at 排
   const sortField = key === "check_amount" ? Prisma.sql`COALESCE(p.paid_amount, 0)`
     : key === "check_date" ? Prisma.sql`p.check_date`
+    : key === "master_order_number" ? Prisma.sql`CASE WHEN i.master_order_number ~ '^[0-9]+$' THEN i.master_order_number::numeric END`
     : key === "contract_date" ? Prisma.raw('i."created_at"')
     : Prisma.raw(`i."${key}"`)
   const sortDirection = Prisma.raw(direction === "asc" ? "ASC" : "DESC")
+  const orderClause = key === "master_order_number"
+    ? Prisma.sql`${sortField} ${sortDirection} NULLS LAST, i.master_order_number ${sortDirection} NULLS LAST, i.id ${sortDirection}`
+    : Prisma.sql`${sortField} ${sortDirection}, i.id ${sortDirection}`
   const ids = await tx.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
     SELECT i.id ${from}
-    ORDER BY ${sortField} ${sortDirection}, i.id ${sortDirection}
+    ORDER BY ${orderClause}
     LIMIT ${options.take} OFFSET ${options.skip ?? 0}
   `)
   const counts = options.count ? await tx.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`

@@ -261,7 +261,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
   } = useServerTable<AccountingInvoiceRow>({
     endpoint: "/api/finance/accounting-invoices",
     buildParams,
-    initialSorting: [{ id: "invoice_date", desc: true }],
+    initialSorting: [{ id: "master_order_number", desc: true }],
     initialPageSize: 100,
     onError: handleLoadError,
   })
@@ -363,7 +363,7 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
             : initialYear
       setFilterYear(Number.isInteger(year) && year > 1900 ? year : initialYear)
       setSorting(
-        config.sorting.length > 0 ? config.sorting : [{ id: "invoice_date", desc: true }]
+        config.sorting.length > 0 ? config.sorting : [{ id: "master_order_number", desc: true }]
       )
       setColumnOverrides(config.columnVisibility)
       setGroupOrder(config.groupOrder)
@@ -1035,6 +1035,9 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     manualPagination: true,
     manualSorting: true,
     enableSortingRemoval: false,
+    enableColumnResizing: true,
+    columnResizeMode: "onChange",
+    defaultColumn: { minSize: 72 },
   })
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
