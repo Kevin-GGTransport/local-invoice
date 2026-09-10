@@ -106,7 +106,7 @@ export function DataTable<TData>({
 
   return (
     <OverlayScroll
-      className={cn("rounded-xl border bg-card shadow-sm", className)}
+      className={cn("w-full min-w-0 max-w-full rounded-xl border bg-card shadow-sm", className)}
       maxHeight={maxHeight}
       refreshKey={`${loading}-${table.getRowModel().rows.length}`}
     >

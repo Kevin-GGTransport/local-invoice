@@ -32,8 +32,8 @@ export function Workspace({
       className={
         fullscreen
           ? // 块布局 + space-y-4：flex-col 下内容超出固定高度时子项会被压缩
-            "fixed inset-0 z-50 space-y-4 overflow-auto bg-background p-3 sm:p-4"
-          : "space-y-4"
+            "fixed inset-0 z-50 min-w-0 max-w-full space-y-4 overflow-auto bg-background p-3 sm:p-4"
+          : "min-w-0 max-w-full space-y-4"
       }
     >
       {children}

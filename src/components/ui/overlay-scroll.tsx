@@ -114,10 +114,10 @@ export function OverlayScroll({ className, maxHeight, refreshKey, children }: Ov
   const { showV, showH, vTop, vHtPct, hLeft, hWPct } = thumb
 
   return (
-    <div className={cn("relative", className)}>
+    <div className={cn("relative min-w-0 max-w-full overflow-hidden", className)}>
       <div
         ref={scrollRef}
-        className="overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="w-full min-w-0 max-w-full overflow-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         style={{ maxHeight }}
       >
         {children}
