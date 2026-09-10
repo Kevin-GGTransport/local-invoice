@@ -56,28 +56,36 @@ function IdentityField({ label, value }: { label: string; value: string | null }
 
 export function ReconciliationFormDialog({
   invoice,
+  invoices,
   open,
   onOpenChange,
   onSuccess,
 }: {
-  invoice: ReconciliationInvoice | null
+  invoice?: ReconciliationInvoice | null
+  invoices?: ReconciliationInvoice[]
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess?: () => void
 }) {
   const [values, setValues] = React.useState<FormValues>(emptyValues)
-  const [requestId, setRequestId] = React.useState("")
+  const [requestIds, setRequestIds] = React.useState<string[]>([])
   const [saving, setSaving] = React.useState(false)
   const [errors, setErrors] = React.useState<Partial<Record<keyof FormValues, string>>>({})
+  const selectedInvoices = React.useMemo(
+    () => invoices ?? (invoice ? [invoice] : []),
+    [invoice, invoices],
+  )
+  const primaryInvoice = selectedInvoices[0] ?? null
+  const isBatch = selectedInvoices.length > 1
 
   React.useEffect(() => {
     if (!open) return
     void Promise.resolve().then(() => {
       setValues(emptyValues())
-      setRequestId(crypto.randomUUID())
+      setRequestIds(selectedInvoices.map(() => crypto.randomUUID()))
       setErrors({})
     })
-  }, [open, invoice])
+  }, [open, selectedInvoices])
 
   const validate = () => {
     const next: typeof errors = {}
@@ -92,22 +100,24 @@ export function ReconciliationFormDialog({
   }
 
   const submit = async () => {
-    if (!invoice || !validate()) return
+    if (!selectedInvoices.length || requestIds.length !== selectedInvoices.length || !validate()) return
     setSaving(true)
     try {
       await fetchJson("/api/finance/reconciliation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: [{
-          invoice_id: invoice.id,
-          request_id: requestId,
+        body: JSON.stringify({ items: selectedInvoices.map((selectedInvoice, index) => ({
+          invoice_id: selectedInvoice.id,
+          request_id: requestIds[index],
           check_date: values.checkDate,
           check_amount: values.checkAmount,
           check_number: values.checkNumber,
           notes: values.notes || null,
-        }] }),
+        })) }),
       })
-      toast.success(`账单 ${invoice.invoice_number} 已新增一条核销记录`)
+      toast.success(isBatch
+        ? `已用该支票核销 ${selectedInvoices.length} 张账单`
+        : `账单 ${primaryInvoice?.invoice_number} 已新增一条核销记录`)
       onOpenChange(false)
       onSuccess?.()
     } catch (error) {
@@ -122,20 +132,40 @@ export function ReconciliationFormDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>登记收款</DialogTitle>
-          <DialogDescription>为当前账单登记一次支票收款，同一账单可多次登记。</DialogDescription>
+          <DialogDescription>{isBatch
+            ? `为 ${selectedInvoices.length} 张同公司账单登记同一张支票，完整支票金额将分别计入每张账单。`
+            : "为当前账单登记一次支票收款，同一账单可多次登记。"}</DialogDescription>
         </DialogHeader>
 
-        {invoice ? (
+        {primaryInvoice ? (
           <div className="space-y-5">
-            <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              <IdentityField label="总货号" value={invoice.master_order_number} />
-              <IdentityField label="公司" value={invoice.company} />
-              <IdentityField label="货号" value={invoice.order_number} />
-              <IdentityField label="Broker 公司" value={invoice.bill_to} />
-              <IdentityField label="Load #" value={invoice.broker_load_number} />
-              <IdentityField label="From-To" value={invoice.billing_category} />
-              <div className="sm:col-span-2 lg:col-span-3"><IdentityField label="Invoice Number" value={invoice.invoice_number} /></div>
-            </dl>
+            {isBatch ? (
+              <div className="space-y-3">
+                <dl className="grid gap-2 sm:grid-cols-2">
+                  <IdentityField label="账单所属公司" value={primaryInvoice.company} />
+                  <IdentityField label="选中账单" value={`${selectedInvoices.length} 张`} />
+                </dl>
+                <div className="max-h-40 overflow-y-auto rounded-md border bg-slate-50 p-3">
+                  <ul className="grid gap-1 text-sm sm:grid-cols-2">
+                    {selectedInvoices.map((selectedInvoice) => (
+                      <li key={selectedInvoice.id} className="truncate" title={selectedInvoice.invoice_number}>
+                        {selectedInvoice.invoice_number}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : (
+              <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <IdentityField label="总货号" value={primaryInvoice.master_order_number} />
+                <IdentityField label="公司" value={primaryInvoice.company} />
+                <IdentityField label="货号" value={primaryInvoice.order_number} />
+                <IdentityField label="Broker 公司" value={primaryInvoice.bill_to} />
+                <IdentityField label="Load #" value={primaryInvoice.broker_load_number} />
+                <IdentityField label="From-To" value={primaryInvoice.billing_category} />
+                <div className="sm:col-span-2 lg:col-span-3"><IdentityField label="Invoice Number" value={primaryInvoice.invoice_number} /></div>
+              </dl>
+            )}
 
             <fieldset className="space-y-4">
               <legend className="text-sm font-semibold">本次核销</legend>
@@ -151,7 +181,7 @@ export function ReconciliationFormDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>取消</Button>
-          <Button onClick={() => void submit()} disabled={saving || !invoice}>
+          <Button onClick={() => void submit()} disabled={saving || !selectedInvoices.length || requestIds.length !== selectedInvoices.length}>
             {saving ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : <ReceiptText className="mr-2 size-4" aria-hidden="true" />}
             {saving ? "正在保存..." : "确认核销"}
           </Button>

@@ -3,6 +3,8 @@ import test from "node:test"
 import { reconciliationSummary } from "../accounting-invoice-reconciliation"
 import {
   createReconciliationsSchema,
+  MAX_RECONCILIATION_BATCH,
+  reconciliationsHaveSameCompany,
   reconciliationDateToUtc,
 } from "../../validations/accounting-invoice-reconciliation"
 
@@ -63,6 +65,57 @@ test("reconciliation validation rejects sub-cent amounts that the database would
 
 test("reconciliation dates are stored at UTC midnight", () => {
   assert.equal(reconciliationDateToUtc("2026-09-04").toISOString(), "2026-09-04T00:00:00.000Z")
+})
+
+test("batch reconciliation accepts one company and rejects mixed companies", () => {
+  assert.equal(reconciliationsHaveSameCompany(["G&G"]), true)
+  assert.equal(reconciliationsHaveSameCompany(["G&G", "G&G", "G&G"]), true)
+  assert.equal(reconciliationsHaveSameCompany(["G&G", "SFT"]), false)
+  assert.equal(reconciliationsHaveSameCompany([]), false)
+})
+
+test("batch reconciliation remains capped at the published maximum", () => {
+  const item = {
+    invoice_id: "12",
+    request_id: "batch-request",
+    check_date: "2026-09-10",
+    check_amount: "1000",
+    check_number: "CHECK1000",
+  }
+  const valid = createReconciliationsSchema.safeParse({
+    items: Array.from({ length: MAX_RECONCILIATION_BATCH }, (_, index) => ({
+      ...item,
+      invoice_id: String(index + 1),
+      request_id: `${item.request_id}-${index}`,
+    })),
+  })
+  const invalid = createReconciliationsSchema.safeParse({
+    items: Array.from({ length: MAX_RECONCILIATION_BATCH + 1 }, (_, index) => ({
+      ...item,
+      invoice_id: String(index + 1),
+      request_id: `${item.request_id}-${index}`,
+    })),
+  })
+  assert.equal(valid.success, true)
+  assert.equal(invalid.success, false)
+})
+
+test("batch reconciliation requires unique invoices and identical check details", () => {
+  const base = {
+    invoice_id: "12",
+    request_id: "batch-detail-1",
+    check_date: "2026-09-10",
+    check_amount: "1000",
+    check_number: "CHECK1000",
+  }
+  assert.equal(createReconciliationsSchema.safeParse({ items: [
+    base,
+    { ...base, request_id: "batch-detail-2" },
+  ] }).success, false)
+  assert.equal(createReconciliationsSchema.safeParse({ items: [
+    base,
+    { ...base, invoice_id: "13", request_id: "batch-detail-2", check_amount: "999" },
+  ] }).success, false)
 })
 
 

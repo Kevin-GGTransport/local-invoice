@@ -47,7 +47,14 @@ export const createReconciliationsSchema = z.object({
   items: z.array(reconciliationItemSchema)
     .min(1, "请选择要销账的账单")
     .max(MAX_RECONCILIATION_BATCH, `一次最多销账 ${MAX_RECONCILIATION_BATCH} 条`)
-    .refine((items) => new Set(items.map((item) => item.request_id)).size === items.length, "请求标识不能重复"),
+    .refine((items) => new Set(items.map((item) => item.request_id)).size === items.length, "请求标识不能重复")
+    .refine((items) => new Set(items.map((item) => item.invoice_id)).size === items.length, "同一账单不能重复选择")
+    .refine((items) => new Set(items.map((item) => JSON.stringify([
+      item.check_date,
+      item.check_amount,
+      item.check_number,
+      item.notes || null,
+    ]))).size <= 1, "批量核销的支票信息必须完全一致"),
 })
 
 export const updateReconciliationSchema = z.object({
@@ -64,4 +71,8 @@ export const voidReconciliationSchema = z.object({
 
 export function reconciliationDateToUtc(value: string): Date {
   return new Date(`${value}T00:00:00.000Z`)
+}
+
+export function reconciliationsHaveSameCompany(companies: string[]): boolean {
+  return companies.length > 0 && new Set(companies).size === 1
 }
