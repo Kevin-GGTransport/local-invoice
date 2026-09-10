@@ -57,6 +57,7 @@ interface FormLine {
 
 interface FormValues {
   company: string
+  invoice_template_id: string
   billing_category: string
   contract_price: string
   invoice_number: string
@@ -85,6 +86,7 @@ interface CompanyOption {
 interface ActiveTemplate {
   id: string
   name: string
+  is_default: boolean
   page_config: TemplatePageConfig
   grid_config: TemplateGrid
   binding_config: TemplateBinding
@@ -158,11 +160,12 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
   const [savedId, setSavedId] = React.useState<string | null>(null)
   const [savedInfo, setSavedInfo] = React.useState<{ id: string; invoiceNumber: string } | null>(null)
   const [companies, setCompanies] = React.useState<CompanyOption[]>([])
-  const [activeTemplate, setActiveTemplate] = React.useState<ActiveTemplate | null>(null)
+  const [templates, setTemplates] = React.useState<ActiveTemplate[]>([])
   const [templateLoading, setTemplateLoading] = React.useState(false)
 
   const [values, setValues] = React.useState<FormValues>(() => ({
     company: str(data?.company),
+    invoice_template_id: str(data?.invoice_template_id),
     billing_category: str(data?.billing_category),
     contract_price: str(data?.contract_price),
     invoice_number: str(data?.invoice_number),
@@ -204,18 +207,22 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
       .catch(() => toast.error("加载公司列表失败"))
   }, [])
 
-  // 选中公司 → 拉取当前启用模版用于右侧预览
+  // 选中公司 → 拉取全部已发布模版，未指定时选默认版
   React.useEffect(() => {
     let cancelled = false
     const company = values.company
     void (async () => {
-      const t = company
-        ? await fetchJson<ActiveTemplate | null>(
+      setTemplateLoading(true)
+      const list = company
+        ? await fetchJson<ActiveTemplate[]>(
             `/api/invoice-templates/active?company=${encodeURIComponent(company)}`
-          ).catch(() => null)
-        : null
+          ).catch(() => [])
+        : []
       if (!cancelled) {
-        setActiveTemplate(t)
+        setTemplates(list)
+        setValues((prev) => list.some((item) => item.id === prev.invoice_template_id)
+          ? prev
+          : { ...prev, invoice_template_id: list.find((item) => item.is_default)?.id ?? list[0]?.id ?? "" })
         setTemplateLoading(false)
       }
     })()
@@ -223,6 +230,8 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
       cancelled = true
     }
   }, [values.company])
+
+  const activeTemplate = templates.find((item) => item.id === values.invoice_template_id) ?? null
 
   const companyHasTemplate =
     companies.find((c) => c.code === values.company)?.has_active_template ?? false
@@ -265,6 +274,7 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
 
       const payload = {
         company: values.company,
+        invoice_template_id: values.invoice_template_id || null,
         billing_category: billingCategoryPayloadValue(values.billing_category),
         ...(!isEditing ? { contract_price: toNumber(values.contract_price) } : {}),
         invoice_number: values.invoice_number.trim(),
@@ -355,13 +365,14 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {/* 公司选择（决定模版与发票号前缀） */}
-      <div className="flex items-center gap-3">
-        <Label className="shrink-0 text-sm">
+      {/* 公司与模版是一组联动选择 */}
+      <div className="grid gap-3 rounded-xl border bg-muted/30 p-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+        <Label className="text-sm">
           公司 <span className="text-destructive">*</span>
         </Label>
         <Select value={values.company} onValueChange={(v) => setField("company", v)}>
-          <SelectTrigger className="w-64">
+          <SelectTrigger className="bg-background">
             <SelectValue placeholder="选择公司（决定 PDF 模版与发票号前缀）" />
           </SelectTrigger>
           <SelectContent>
@@ -374,6 +385,21 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
               ))}
           </SelectContent>
         </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm">账单模版</Label>
+          <Select value={values.invoice_template_id} onValueChange={(v) => setField("invoice_template_id", v)} disabled={!values.company || templates.length === 0}>
+            <SelectTrigger className="bg-background">
+              <SelectValue placeholder={values.company ? "该公司暂无已发布模版" : "请先选择公司"} />
+            </SelectTrigger>
+            <SelectContent>
+              {templates.map((template) => (
+                <SelectItem key={template.id} value={template.id}>{template.name}{template.is_default ? " · 默认" : ""}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">保存后记住该模版，重打不受默认模版变更影响。</p>
+        </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

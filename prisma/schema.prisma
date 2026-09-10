@@ -57,10 +57,13 @@ model accounting_invoices {
   updated_by               BigInt?
   accounting_invoice_lines accounting_invoice_lines[]
   accounting_invoice_reconciliations accounting_invoice_reconciliations[]
+  invoice_template_id      BigInt?
+  invoice_template         invoice_templates? @relation(fields: [invoice_template_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
 
   @@index([check_date], map: "idx_accounting_invoices_check_date")
   @@index([company], map: "idx_accounting_invoices_company")
   @@index([invoice_date], map: "idx_accounting_invoices_invoice_date")
+  @@index([invoice_template_id], map: "idx_accounting_invoices_template")
 }
 
 model accounting_invoice_reconciliations {
@@ -128,6 +131,7 @@ model invoice_templates {
   company_id     BigInt
   name           String    @db.VarChar(100)
   status         String    @default("draft") @db.VarChar(20)
+  is_default     Boolean   @default(false)
   page_config    Json
   grid_config    Json
   binding_config Json
@@ -136,6 +140,8 @@ model invoice_templates {
   created_at     DateTime  @default(now()) @db.Timestamptz(6)
   updated_at     DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
   company        companies @relation(fields: [company_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  accounting_invoices accounting_invoices[]
 
   @@index([company_id, status], map: "idx_invoice_templates_company_status")
+  @@index([company_id, is_default], map: "idx_invoice_templates_company_default")
 }

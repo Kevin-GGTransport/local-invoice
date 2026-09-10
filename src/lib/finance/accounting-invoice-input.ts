@@ -29,10 +29,14 @@ function mapDates(input: Record<string, unknown>): Record<string, unknown> {
 
 /** zod 校验通过的对象（未知键已被剥离）→ create data */
 export function toInvoiceCreateData(input: Record<string, unknown>): Prisma.accounting_invoicesCreateInput {
-  return mapDates(input) as Prisma.accounting_invoicesCreateInput
+  const mapped = mapDates(input)
+  if (typeof mapped.invoice_template_id === "string") mapped.invoice_template_id = BigInt(mapped.invoice_template_id)
+  return mapped as Prisma.accounting_invoicesCreateInput
 }
 
 /** zod 校验通过的对象 → update data（undefined 键 Prisma 会忽略） */
 export function toInvoiceUpdateData(input: Record<string, unknown>): Prisma.accounting_invoicesUpdateInput {
-  return mapDates(input) as Prisma.accounting_invoicesUpdateInput
+  const mapped = mapDates(input)
+  if (typeof mapped.invoice_template_id === "string") mapped.invoice_template_id = BigInt(mapped.invoice_template_id)
+  return mapped as Prisma.accounting_invoicesUpdateInput
 }

@@ -69,6 +69,30 @@ export async function PUT(
       return jsonError(parsed.error.issues[0]?.message ?? "参数校验失败", 400)
     }
 
+    const current = await prisma.accounting_invoices.findUnique({
+      where: { id },
+      select: { company: true, invoice_template_id: true },
+    })
+    if (!current) return jsonError("记录不存在", 404)
+
+    // 更换公司但未显式传模版时，自动改绑新公司默认版，绝不保留跨公司旧引用。
+    if (parsed.data.company && parsed.data.company !== current.company && parsed.data.invoice_template_id === undefined) {
+      const fallback = await prisma.invoice_templates.findFirst({
+        where: { status: "active", is_default: true, company: { code: parsed.data.company } },
+        select: { id: true },
+      })
+      parsed.data.invoice_template_id = fallback?.id.toString() ?? null
+    }
+
+    if (parsed.data.invoice_template_id) {
+      const company = parsed.data.company ?? current.company
+      const selectedTemplate = company ? await prisma.invoice_templates.findFirst({
+        where: { id: BigInt(parsed.data.invoice_template_id), status: "active", company: { code: company } },
+        select: { id: true },
+      }) : null
+      if (!selectedTemplate) return jsonError("所选模版不属于该公司或尚未发布", 400)
+    }
+
     const data = toInvoiceUpdateData(parsed.data)
     const updatedBy = userIdBigint(session)
     if (updatedBy != null) data.updated_by = updatedBy

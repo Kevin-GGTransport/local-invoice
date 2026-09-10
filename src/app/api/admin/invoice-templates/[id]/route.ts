@@ -169,14 +169,28 @@ export async function DELETE(_request: NextRequest, ctx: { params: Promise<{ id:
   if (!/^\d+$/.test(id)) return jsonError("无效的模版 ID", 400)
 
   try {
-    const existing = await prisma.invoice_templates.findUnique({
-      where: { id: BigInt(id) },
-      select: { id: true, name: true, status: true },
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.invoice_templates.findUnique({
+        where: { id: BigInt(id) },
+        select: { id: true, company_id: true, name: true, status: true, is_default: true },
+      })
+      if (!existing) return jsonError("模版不存在", 404)
+      const usedByInvoices = await tx.accounting_invoices.count({ where: { invoice_template_id: existing.id } })
+      if (usedByInvoices > 0) {
+        return jsonError(`该模版已被 ${usedByInvoices} 张账单使用，为保留历史打印版式不能删除`, 409)
+      }
+      await tx.$queryRaw`SELECT id FROM companies WHERE id = ${existing.company_id} FOR UPDATE`
+      await tx.invoice_templates.delete({ where: { id: existing.id } })
+      if (existing.is_default) {
+        const replacement = await tx.invoice_templates.findFirst({
+          where: { company_id: existing.company_id, status: "active" },
+          orderBy: { updated_at: "desc" },
+          select: { id: true },
+        })
+        if (replacement) await tx.invoice_templates.update({ where: { id: replacement.id }, data: { is_default: true } })
+      }
+      return jsonOk({ id: existing.id, name: existing.name, status: existing.status })
     })
-    if (!existing) return jsonError("模版不存在", 404)
-
-    await prisma.invoice_templates.delete({ where: { id: existing.id } })
-    return jsonOk({ id: existing.id, name: existing.name, status: existing.status })
   } catch (err) {
     return handleDbError(err, "删除模版失败")
   }

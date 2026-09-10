@@ -1,6 +1,6 @@
 /**
  * 账单模版 - 发布（仅 admin）
- * 事务内：校验绑定完整性 → 该公司旧 active 归档 → 本模版置为 active（每公司唯一启用版）
+ * 事务内：校验绑定完整性 → 发布为可用模版；公司首个发布模版自动成为默认。
  */
 
 import { NextRequest } from "next/server"
@@ -25,7 +25,7 @@ export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: s
       if (template.status !== "draft") {
         return jsonError("模版状态已变化，仅草稿模版可发布", 409)
       }
-      // 同一公司的发布串行化，防止两个草稿同时成为 active。
+      // 同一公司的发布串行化，保证首个默认模版的唯一性。
       await tx.$queryRaw`SELECT id FROM companies WHERE id = ${template.company_id} FOR UPDATE`
 
       // 绑定由网格现场推导后校验（与打印同源），存储值仅供编辑器展示
@@ -34,16 +34,16 @@ export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: s
       const errors = [...validateTemplateGrid(grid, binding), ...validateBindingForPublish(binding)]
       if (errors.length > 0) return jsonError(errors.join("；"), 400)
 
-      await tx.invoice_templates.updateMany({
-        where: { company_id: template.company_id, status: "active" },
-        data: { status: "archived" },
+      const hasDefault = await tx.invoice_templates.findFirst({
+        where: { company_id: template.company_id, status: "active", is_default: true },
+        select: { id: true },
       })
       await tx.invoice_templates.update({
         where: { id: template.id },
-        data: { status: "active", updated_by: userIdBigint(session) },
+        data: { status: "active", is_default: !hasDefault, updated_by: userIdBigint(session) },
       })
 
-      return jsonOk({ id: template.id, status: "active" })
+      return jsonOk({ id: template.id, status: "active", is_default: !hasDefault })
     })
   } catch (err) {
     return handleDbError(err, "发布模版失败")

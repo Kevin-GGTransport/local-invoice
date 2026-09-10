@@ -7,7 +7,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Eye, FileUp, Loader2, Trash2 } from "lucide-react";
+import { Copy, Eye, FileUp, Loader2, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -43,13 +43,14 @@ interface TemplateListRow {
   id: string;
   name: string;
   status: "draft" | "active" | "archived";
+  is_default: boolean;
   updated_at: string;
   company: { id: string; code: string; name: string };
 }
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "草稿",
-  active: "启用中",
+  active: "已发布",
   archived: "已归档",
 };
 
@@ -69,6 +70,7 @@ export function TemplatesClient() {
   const [previewingId, setPreviewingId] = React.useState<string | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = React.useState<string | null>(null);
+  const [defaultingId, setDefaultingId] = React.useState<string | null>(null);
 
   const loadCompanies = React.useCallback(async () => {
     const list = await fetchJson<CompanyRow[]>("/api/companies");
@@ -209,13 +211,27 @@ export function TemplatesClient() {
     }
   };
 
+  const handleSetDefault = async (row: TemplateListRow) => {
+    setDefaultingId(row.id);
+    try {
+      await fetchJson(`/api/admin/invoice-templates/${row.id}/default`, { method: "POST" });
+      toast.success(`已将「${row.name}」设为 ${row.company.name} 的默认模版`);
+      await loadTemplates();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "设置默认模版失败");
+    } finally {
+      setDefaultingId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">账单模版管理</h1>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary">公司模版库</p>
+          <h1 className="text-2xl font-semibold tracking-tight">账单模版</h1>
           <p className="text-sm text-muted-foreground">
-            上传公司 Excel 账单样张 → 绑定业务字段 → 试打预览 → 发布启用
+            每家公司可发布多份模版；默认模版用于未指定版式的账单
           </p>
         </div>
         <Select value={companyCode} onValueChange={setCompanyCode}>
@@ -323,6 +339,11 @@ export function TemplatesClient() {
                     >
                       {STATUS_LABEL[row.status]}
                     </span>
+                    {row.is_default ? (
+                      <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-200">
+                        <Star className="size-3 fill-current" />默认
+                      </span>
+                    ) : null}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(row.updated_at).toLocaleString("zh-CN")}
@@ -346,6 +367,12 @@ export function TemplatesClient() {
                             <Copy className="mr-1 size-3.5" />
                           )}
                           复制为草稿
+                        </Button>
+                      ) : null}
+                      {row.status === "active" && !row.is_default ? (
+                        <Button variant="outline" size="sm" onClick={() => void handleSetDefault(row)} disabled={defaultingId === row.id}>
+                          {defaultingId === row.id ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Star className="mr-1 size-3.5" />}
+                          设为默认
                         </Button>
                       ) : null}
                       <Button

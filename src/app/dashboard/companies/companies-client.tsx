@@ -205,7 +205,7 @@ export function CompaniesClient() {
                   <TableCell className="font-mono">{row.invoice_prefix ?? "—"}</TableCell>
                   <TableCell>
                     <span className={row.has_active_template ? "text-emerald-600" : "text-muted-foreground"}>
-                      {row.has_active_template ? `启用中 × ${row.active_template_count}` : "无启用模版"}
+                      {row.has_active_template ? `已发布 × ${row.active_template_count}` : "无已发布模版"}
                     </span>
                     {row.template_count > row.active_template_count && (
                       <span className="ml-1 text-xs text-amber-600">

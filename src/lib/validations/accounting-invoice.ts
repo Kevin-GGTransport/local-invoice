@@ -24,6 +24,7 @@ const moneyField = z.preprocess(
 
 export const accountingInvoiceCreateSchema = z.object({
   company: z.string().min(1, '请选择公司').max(20),
+  invoice_template_id: z.string().regex(/^\d+$/, '请选择有效模版').optional().nullable(),
   invoice_number: z.string().min(1, '发票号不能为空').max(50),
   contract_price: moneyField,
   broker_load_number: z.string().max(100).optional().nullable(),

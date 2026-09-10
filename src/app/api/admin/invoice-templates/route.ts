@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
         id: true,
         name: true,
         status: true,
+        is_default: true,
         created_at: true,
         updated_at: true,
         company: { select: { id: true, code: true, name: true } },

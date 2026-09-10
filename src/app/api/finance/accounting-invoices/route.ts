@@ -69,6 +69,18 @@ export async function POST(request: NextRequest) {
       return jsonError(parsed.error.issues[0]?.message ?? "参数校验失败", 400)
     }
 
+    if (parsed.data.invoice_template_id) {
+      const selectedTemplate = await prisma.invoice_templates.findFirst({
+        where: {
+          id: BigInt(parsed.data.invoice_template_id),
+          status: "active",
+          company: { code: parsed.data.company },
+        },
+        select: { id: true },
+      })
+      if (!selectedTemplate) return jsonError("所选模版不属于该公司或尚未发布", 400)
+    }
+
     const normalized = Array.isArray(lines)
       ? normalizeAccountingInvoiceLines(lines as AccountingInvoiceLineInput[])
       : []

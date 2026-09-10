@@ -49,10 +49,14 @@ export async function generateAccountingInvoicePdf(id: bigint): Promise<Accounti
   })
   if (!row) return { status: 'not_found' }
 
-  const template = await prisma.invoice_templates.findFirst({
-    where: { status: 'active', company: { code: row.company } },
-    orderBy: { updated_at: 'desc' },
-  })
+  const template = row.invoice_template_id
+    ? await prisma.invoice_templates.findFirst({
+        where: { id: row.invoice_template_id, status: 'active', company: { code: row.company } },
+      })
+    : await prisma.invoice_templates.findFirst({
+        where: { status: 'active', is_default: true, company: { code: row.company } },
+        orderBy: { updated_at: 'desc' },
+      })
   if (!template) return { status: 'unsupported', company: row.company }
 
   const dbLines = row.accounting_invoice_lines ?? []
