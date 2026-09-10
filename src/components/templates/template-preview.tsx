@@ -2,6 +2,7 @@ import React from "react";
 
 import { layoutCellText } from "@/lib/templates/cell-layout";
 import { widthToLineStyle, CSS_BORDER_STYLE } from "@/lib/templates/border-style";
+import { templateRenderColor } from "@/lib/templates/color";
 import type { GridRange } from "@/lib/templates/template-grid";
 import type { TemplateCellStyle, TemplateGrid } from "@/lib/templates/types";
 import { cn } from "@/lib/utils";
@@ -51,7 +52,7 @@ function cellBackgroundStyle(
   height: number
 ): React.CSSProperties {
   const b = style.borders;
-  const borderColor = b?.color ?? "#000000";
+  const borderColor = templateRenderColor(b?.color) ?? "#000000";
   return {
     position: "absolute",
     left: left * PT_TO_PX,
@@ -59,7 +60,7 @@ function cellBackgroundStyle(
     width: width * PT_TO_PX,
     height: height * PT_TO_PX,
     boxSizing: "border-box",
-    backgroundColor: style.fill,
+    backgroundColor: templateRenderColor(style.fill) ?? undefined,
     borderTop:
       b?.top != null
         ? `${borderPx(b.top)}px ${borderSideStyle(style, "top")} ${borderColor}`
@@ -84,7 +85,7 @@ function cellTextStyle(style: TemplateCellStyle, fontSize: number): React.CSSPro
   return {
     position: "absolute",
     boxSizing: "border-box",
-    color: style.color,
+    color: templateRenderColor(style.color) ?? undefined,
     fontWeight: style.bold ? 700 : undefined,
     fontStyle: style.italic ? "italic" : undefined,
     fontSize: fontSize * PT_TO_PX,

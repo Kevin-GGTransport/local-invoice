@@ -11,6 +11,7 @@ import {
   UNIVER_ENUM_TO_LINE,
   widthToLineStyle,
 } from "./border-style";
+import { templateRenderColor } from "./color";
 import type {
   TemplateBorderLineStyle,
   TemplateCell,
@@ -145,8 +146,10 @@ function templateStyleToUniver(style: TemplateCellStyle, baseFontSize: number): 
   if (style.italic) u.it = 1;
   if (style.underline) u.ul = { s: 1 };
   if (style.strike) u.st = { s: 1 };
-  if (style.color) u.cl = { rgb: style.color };
-  if (style.fill) u.bg = { rgb: style.fill };
+  const textColor = templateRenderColor(style.color);
+  const fillColor = templateRenderColor(style.fill);
+  if (textColor) u.cl = { rgb: textColor };
+  if (fillColor) u.bg = { rgb: fillColor };
   if (style.halign) u.ht = UNIVER_HT_ENUM[style.halign];
   if (style.valign) u.vt = UNIVER_VT_ENUM[style.valign];
   if (style.wrap) u.tb = UNIVER_WRAP;
@@ -156,9 +159,10 @@ function templateStyleToUniver(style: TemplateCellStyle, baseFontSize: number): 
     for (const side of ["top", "right", "bottom", "left"] as const) {
       if (b[side] == null) continue;
       const line = b.styles?.[side] ?? widthToLineStyle(b[side]!);
+      const borderColor = templateRenderColor(b.color);
       bd[SIDE_TO_UNIVER_KEY[side]] = {
         s: TEMPLATE_LINE_TO_UNIVER_ENUM[line],
-        cl: b.color ? { rgb: b.color } : {},
+        cl: borderColor ? { rgb: borderColor } : {},
       };
     }
     if (Object.keys(bd).length > 0) u.bd = bd;
@@ -246,8 +250,10 @@ function univerStyleToTemplate(
   if (u.ul?.s) style.underline = true;
   if (u.st?.s) style.strike = true;
   if (u.fs != null && u.fs !== baseFontSize) style.fontSize = u.fs;
-  if (u.cl?.rgb) style.color = u.cl.rgb;
-  if (u.bg?.rgb) style.fill = u.bg.rgb;
+  const textColor = templateRenderColor(u.cl?.rgb);
+  const fillColor = templateRenderColor(u.bg?.rgb);
+  if (textColor) style.color = textColor;
+  if (fillColor) style.fill = fillColor;
   if (u.ht != null && UNIVER_HT_BACK[u.ht]) style.halign = UNIVER_HT_BACK[u.ht];
   if (u.vt != null && UNIVER_VT_BACK[u.vt]) style.valign = UNIVER_VT_BACK[u.vt];
   if (u.tb === UNIVER_WRAP) style.wrap = true;
@@ -264,7 +270,8 @@ function univerStyleToTemplate(
       borders[side] = BORDER_WIDTH_PT[line];
       // 仅当宽度反推不出线型时才回写 styles：thin/medium/thick 宽度与线型互推一致不写，dashed/dotted/double 必须写
       if (widthToLineStyle(BORDER_WIDTH_PT[line]) !== line) borderStyles[side] = line;
-      if (edge.cl?.rgb) (borders as Record<string, unknown>).color = edge.cl.rgb;
+      const borderColor = templateRenderColor(edge.cl?.rgb);
+      if (borderColor) (borders as Record<string, unknown>).color = borderColor;
     }
     if (Object.keys(borders).length > 0) {
       style.borders = {

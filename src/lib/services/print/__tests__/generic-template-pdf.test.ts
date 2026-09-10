@@ -70,6 +70,24 @@ describe('GenericTemplateDocument', () => {
     const pdf = Buffer.from(await renderToBuffer(element))
     assert.ok(pdf.length > 1_000, '中文 PDF 应成功生成并嵌入字体')
     assert.ok(pdf.toString('latin1').includes('/FontFile2'), 'PDF 应包含嵌入的 TrueType 字体')
+    assert.ok(pdf.toString('latin1').includes('/OutputIntents'), 'PDF 应包含 sRGB OutputIntent')
+    assert.ok(pdf.toString('latin1').includes('sRGB IEC61966-2.1'), 'PDF 应声明标准 sRGB 输出条件')
+  })
+
+  it('AA / G&G / YG 品牌色以精确 sRGB 分量写入 PDF 内容流', async () => {
+    const grid: TemplateGrid = {
+      colWidths: [100],
+      rowHeights: [20, 20, 20],
+      cells: [
+        { row: 0, col: 0, rowSpan: 1, colSpan: 1, text: '', style: { fill: '#F49B33' } },
+        { row: 1, col: 0, rowSpan: 1, colSpan: 1, text: '', style: { fill: '#CECDE9' } },
+        { row: 2, col: 0, rowSpan: 1, colSpan: 1, text: '', style: { fill: '#F9CBD3' } },
+      ],
+    }
+    const stream = await renderPdfStream(grid)
+    assert.match(stream, /0\.9568627450980393 0\.6078431372549019 0\.2 scn/, 'AA 橙色应保持精确 sRGB')
+    assert.match(stream, /0\.807843137254902 0\.803921568627451 0\.9137254901960784 scn/, 'G&G 浅紫色应保持精确 sRGB')
+    assert.match(stream, /0\.9764705882352941 0\.796078431372549 0\.8274509803921568 scn/, 'YG 粉色应保持精确 sRGB')
   })
 
   it('单元格内换行（非 wrap）的多行头部文本在 PDF 中完整保留', async () => {

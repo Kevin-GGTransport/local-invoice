@@ -12,6 +12,7 @@ import path from 'node:path'
 import { Document, Font, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
 import { layoutCellText } from '@/lib/templates/cell-layout'
 import { widthToLineStyle } from '@/lib/templates/border-style'
+import { templateRenderColor } from '@/lib/templates/color'
 import type { TemplateBorderLineStyle, TemplateGrid, TemplatePageConfig } from '@/lib/templates/types'
 
 export { fitSingleLineFontSize } from '@/lib/templates/cell-layout'
@@ -87,7 +88,7 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
       paddingLeft: margin.left,
       fontFamily: baseFontFamily,
       fontSize: pageConfig.baseFontSize,
-      color: pageConfig.textColor,
+      color: templateRenderColor(pageConfig.textColor) ?? '#000000',
     },
     canvas: {
       position: 'relative',
@@ -106,7 +107,7 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
   }
 
   return (
-    <Document>
+    <Document conformance="PDF/A-2b">
       <Page size={pageConfig.size} style={styles.page}>
         <View style={styles.canvas}>
           {/* 第一遍：背景 + 边框（原始格矩形） */}
@@ -127,13 +128,13 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
                     top,
                     width,
                     height,
-                    backgroundColor: cell.style.fill,
+                    backgroundColor: templateRenderColor(cell.style.fill) ?? undefined,
                     borderWidth: 0,
                     borderTopWidth: b?.top != null ? b.top * scale : 0,
                     borderRightWidth: b?.right != null ? b.right * scale : 0,
                     borderBottomWidth: b?.bottom != null ? b.bottom * scale : 0,
                     borderLeftWidth: b?.left != null ? b.left * scale : 0,
-                    borderColor: b?.color ?? '#000000',
+                    borderColor: templateRenderColor(b?.color) ?? '#000000',
                     borderTopStyle: pdfBorderStyle(lineOf('top')),
                     borderRightStyle: pdfBorderStyle(lineOf('right')),
                     borderBottomStyle: pdfBorderStyle(lineOf('bottom')),
@@ -154,7 +155,7 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
                       borderRightWidth: doubleSides.includes('right') ? 0.5 * scale : 0,
                       borderBottomWidth: doubleSides.includes('bottom') ? 0.5 * scale : 0,
                       borderLeftWidth: doubleSides.includes('left') ? 0.5 * scale : 0,
-                      borderColor: b?.color ?? '#000000',
+                      borderColor: templateRenderColor(b?.color) ?? '#000000',
                     }}
                   />
                 ) : null}
@@ -197,7 +198,7 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
                       fontWeight: baseFontFamily === PDF_FONT_FAMILY ? (s.bold ? 700 : 400) : undefined,
                       fontSize: fontSize * scale,
                       lineHeight: 1.1,
-                      color: s.color ?? pageConfig.textColor,
+                      color: templateRenderColor(s.color ?? pageConfig.textColor) ?? '#000000',
                       textAlign: s.halign ?? 'left',
                       width: '100%',
                       textDecoration:

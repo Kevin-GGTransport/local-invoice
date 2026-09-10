@@ -7,6 +7,7 @@
 
 import ExcelJS from 'exceljs'
 import { BORDER_WIDTH_PT, EXCEL_BORDER_TO_LINE } from './border-style'
+import { parseExcelThemeColors, resolveSpreadsheetColor, type SpreadsheetColor } from './color'
 import { trimGridToContent } from './template-grid'
 import type {
   TemplateBorderLineStyle,
@@ -29,14 +30,6 @@ function excelColWidthToPt(width: number | undefined): number {
 
 /** Excel 行高本身就是 pt；默认 15pt（20px） */
 const DEFAULT_ROW_HEIGHT = 15
-
-/** ARGB / RGB → #RRGGBB；主题色无法静态解析，返回 null 走默认色 */
-function colorToHex(color: { argb?: string; rgb?: string; theme?: number } | undefined): string | null {
-  const v = color?.argb ?? color?.rgb
-  if (typeof v !== 'string' || !/^[0-9A-Fa-f]{6}$|^[0-9A-Fa-f]{8}$/.test(v)) return null
-  const hex = v.length === 8 ? v.slice(2) : v
-  return `#${hex.toUpperCase()}`
-}
 
 /** Excel 边框样式 → 近似 pt 宽度 */
 function borderWidthPt(style: string | undefined): number | undefined {
@@ -72,6 +65,8 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
   }
   const ws = wb.worksheets[0]
   if (!ws) throw new Error('文件中不包含工作表')
+  const themes = (wb.model as unknown as { themes?: Record<string, string> }).themes
+  const themeColors = parseExcelThemeColors(themes?.theme1 ?? Object.values(themes ?? {})[0])
 
   // 合并区域：锚点 → span；非锚点被覆盖格跳过
   const covered = new Set<string>()
@@ -106,10 +101,10 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
 
       const font = cell.style?.font as ExcelJS.Font | undefined
       const fill = cell.style?.fill as
-        | { pattern?: string; patternType?: string; fgColor?: { argb?: string; rgb?: string; theme?: number } }
+        | { pattern?: string; patternType?: string; fgColor?: SpreadsheetColor }
         | undefined
       const border = cell.style?.border as
-        | Record<string, { style?: string; color?: { argb?: string; rgb?: string } }>
+        | Record<string, { style?: string; color?: SpreadsheetColor }>
         | undefined
       const alignment = cell.style?.alignment as
         | { horizontal?: string; vertical?: string; wrapText?: boolean }
@@ -117,10 +112,10 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
 
       const rawText = typeof cell.text === 'string' ? cell.text : cell.value == null ? '' : String(cell.text)
       const fillPattern = fill?.pattern ?? fill?.patternType
-      const fillColor = fillPattern === 'solid' && fill ? colorToHex(fill.fgColor) : null
+      const fillColor = fillPattern === 'solid' && fill ? resolveSpreadsheetColor(fill.fgColor, themeColors) : null
       const hasBorder =
         border && [border.top, border.right, border.bottom, border.left].some((e) => e?.style)
-      const fontColor = font ? colorToHex(font.color) : null
+      const fontColor = font ? resolveSpreadsheetColor(font.color as SpreadsheetColor | undefined, themeColors) : null
       const hasFont = font && (font.bold || font.italic || font.underline || font.strike || font.size || fontColor)
       const hasAlign = alignment && (alignment.horizontal || alignment.vertical || alignment.wrapText)
 
@@ -147,7 +142,9 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
           if (line) borderStyles[side] = line
         }
         if (Object.keys(borders).length > 0) {
-          const bc = colorToHex(border?.top?.color) ?? colorToHex(border?.bottom?.color)
+          const bc = sides
+            .map((side) => resolveSpreadsheetColor(border?.[side]?.color, themeColors))
+            .find((color) => color != null)
           style.borders = {
             ...borders,
             ...(bc ? { color: bc } : {}),

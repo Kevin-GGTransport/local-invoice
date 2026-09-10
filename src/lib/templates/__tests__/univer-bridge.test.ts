@@ -38,6 +38,19 @@ describe('univer-bridge round-trip', () => {
     assert.deepEqual(back, grid)
   })
 
+  it('编辑器颜色往返时统一格式并保留透明度', () => {
+    const workbook = templateGridToWorkbookData(
+      { colWidths: [48], rowHeights: [15], cells: [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: 'x', style: {} }] },
+      pageConfig
+    )
+    const sheet = workbook.sheets[workbook.sheetOrder[0]]
+    sheet.cellData[0] = { 0: { v: 'x', s: { cl: { rgb: 'rgb(244, 155, 51)' }, bg: { rgb: 'rgba(0, 0, 255, 0.25)' }, bd: { t: { s: 1, cl: { rgb: '#abc' } } } } } }
+    const back = workbookDataToTemplateGrid(workbook, pageConfig)
+    assert.equal(back.cells[0].style.color, '#F49B33')
+    assert.equal(back.cells[0].style.fill, 'rgba(0, 0, 255, 0.25)')
+    assert.equal(back.cells[0].style.borders?.color, '#AABBCC')
+  })
+
   it('公式格取显示值（v），不保留公式', () => {
     const workbook = templateGridToWorkbookData(
       { colWidths: [48], rowHeights: [15], cells: [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: '', style: {} }] },

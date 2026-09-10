@@ -73,6 +73,30 @@ describe('parseTemplateXlsx', () => {
     assert.equal(cell.style.borders?.styles?.bottom, 'dashed')
     assert.equal(cell.style.borders?.top, 2.5)
   })
+
+  it('将 Excel 主题色、tint 和半透明 ARGB 固化为不透明 sRGB', async () => {
+    const buf = await workbookBuffer((ws) => {
+      ws.getCell('A1').value = 'theme'
+      ws.getCell('A1').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { theme: 4, tint: 0.5 } as unknown as ExcelJS.Color,
+      }
+      ws.getCell('A1').font = { color: { argb: '80000000' } }
+    })
+    const { grid } = await parseTemplateXlsx(buf)
+    assert.equal(grid.cells[0].style.fill, '#A7C0DE')
+    assert.equal(grid.cells[0].style.color, '#000000')
+  })
+
+  it('保留仅出现在左右边的彩色边框', async () => {
+    const buf = await workbookBuffer((ws) => {
+      ws.getCell('A1').value = 'border'
+      ws.getCell('A1').border = { right: { style: 'thin', color: { argb: 'FFF49B33' } } }
+    })
+    const { grid } = await parseTemplateXlsx(buf)
+    assert.equal(grid.cells[0].style.borders?.color, '#F49B33')
+  })
 })
 
 describe('validateBindingForPublish', () => {
