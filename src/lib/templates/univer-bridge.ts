@@ -196,7 +196,8 @@ export function templateGridToWorkbookData(
   const cellData: UniverWorksheetData["cellData"] = {};
   const merges: UniverMergeData[] = [];
   for (const cell of grid.cells) {
-    if (cell.rowSpan > 1 || cell.colSpan > 1) {
+    const isMerged = cell.rowSpan > 1 || cell.colSpan > 1;
+    if (isMerged) {
       merges.push({
         startRow: cell.row,
         endRow: cell.row + cell.rowSpan - 1,
@@ -208,6 +209,38 @@ export function templateGridToWorkbookData(
     const entry: UniverCell = { v: cell.text };
     if (s != null) entry.s = s;
     (cellData[cell.row] ??= {})[cell.col] = entry;
+
+    // Univer 绘制合并格边框时，外沿线需要落在实际的边界单元格上。
+    // 只把四边样式放在左上锚点会导致 Email 这类横向合并格的右边框消失，
+    // 二维合并区域的底边也会画在错误位置。这里把边框分发到合并区外沿，
+    // 文字、填充和对齐仍只保留在锚点。
+    if (isMerged && cell.style.borders) {
+      const endRow = cell.row + cell.rowSpan - 1;
+      const endCol = cell.col + cell.colSpan - 1;
+      for (let row = cell.row; row <= endRow; row += 1) {
+        for (let col = cell.col; col <= endCol; col += 1) {
+          if (row === cell.row && col === cell.col) continue;
+          const source = cell.style.borders;
+          const borders: NonNullable<TemplateCellStyle["borders"]> = {};
+          const styles: NonNullable<NonNullable<TemplateCellStyle["borders"]>["styles"]> = {};
+          for (const side of ["top", "right", "bottom", "left"] as const) {
+            const isEdge =
+              (side === "top" && row === cell.row) ||
+              (side === "right" && col === endCol) ||
+              (side === "bottom" && row === endRow) ||
+              (side === "left" && col === cell.col);
+            if (!isEdge || source[side] == null) continue;
+            borders[side] = source[side];
+            if (source.styles?.[side]) styles[side] = source.styles[side];
+          }
+          if (Object.keys(borders).length === 0) continue;
+          if (source.color) borders.color = source.color;
+          if (Object.keys(styles).length > 0) borders.styles = styles;
+          const edgeStyleId = internStyle({ borders });
+          if (edgeStyleId != null) (cellData[row] ??= {})[col] = { s: edgeStyleId };
+        }
+      }
+    }
   }
 
   const rowData: UniverWorksheetData["rowData"] = {};

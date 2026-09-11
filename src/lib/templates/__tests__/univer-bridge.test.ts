@@ -38,6 +38,43 @@ describe('univer-bridge round-trip', () => {
     assert.deepEqual(back, grid)
   })
 
+  it('合并格四周边框写到 Univer 实际外沿单元格', () => {
+    const grid: TemplateGrid = {
+      colWidths: [48, 48, 48],
+      rowHeights: [15, 15],
+      cells: [{
+        row: 0,
+        col: 0,
+        rowSpan: 2,
+        colSpan: 3,
+        text: 'Email',
+        style: {
+          borders: {
+            top: 1,
+            right: 2,
+            bottom: 0.5,
+            left: 2.5,
+            color: '#000000',
+            styles: { bottom: 'dashed', left: 'double' },
+          },
+        },
+      }],
+    }
+    const workbook = templateGridToWorkbookData(grid, pageConfig)
+    const sheet = workbook.sheets[workbook.sheetOrder[0]]
+    const styleAt = (row: number, col: number) => workbook.styles[sheet.cellData[row]?.[col]?.s as string]
+
+    assert.equal(styleAt(0, 1).bd?.t?.s, 1)
+    assert.equal(styleAt(0, 2).bd?.r?.s, 8)
+    assert.equal(styleAt(1, 0).bd?.l?.s, 7)
+    assert.equal(styleAt(1, 1).bd?.b?.s, 4)
+    assert.equal(styleAt(1, 2).bd?.r?.cl.rgb, '#000000')
+    assert.equal(styleAt(1, 2).bd?.b?.s, 4)
+
+    // 反向保存时覆盖格仅用于显示外沿，不应在 TemplateGrid 中变成额外单元格。
+    assert.deepEqual(workbookDataToTemplateGrid(workbook, pageConfig), grid)
+  })
+
   it('编辑器颜色往返时统一格式并保留透明度', () => {
     const workbook = templateGridToWorkbookData(
       { colWidths: [48], rowHeights: [15], cells: [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: 'x', style: {} }] },
