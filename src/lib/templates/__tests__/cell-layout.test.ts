@@ -54,7 +54,7 @@ describe("overflowTextWidth", () => {
       [85.5, 141.8, 200],
       [
         cell(0, 0, "MAKE ALL CHECKS PAYABLE TO:", { fontSize: 11 }),
-        cell(0, 1, "", { fill: "#CECDE9" }),
+        cell(0, 1, "", { fill: "#A5A0D2" }),
         cell(0, 2, "X"),
       ]
     );
@@ -136,7 +136,7 @@ describe("layoutCellText", () => {
       [85.5, 141.8],
       [
         cell(0, 0, "MAKE ALL CHECKS PAYABLE TO:", { fontSize: 11 }),
-        cell(0, 1, "", { fill: "#CECDE9" }),
+        cell(0, 1, "", { fill: "#A5A0D2" }),
       ]
     );
     const layout = layoutCellText(g, g.cells[0], 11);
