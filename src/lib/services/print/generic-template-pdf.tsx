@@ -62,15 +62,6 @@ function fontFamily(style: { bold?: boolean; italic?: boolean }, base: string): 
   return prefix
 }
 
-function pdfFontFamily(style: { bold?: boolean; italic?: boolean; fontFamily?: string }, base: string): string {
-  // 只能使用已注册或 PDF 内置字体；Excel 字体名作为元数据保留，未安装时安全回退。
-  const requested = style.fontFamily
-  const safeBase = requested === 'Helvetica' || requested === 'Times-Roman' || requested === 'Courier'
-    ? requested
-    : base
-  return fontFamily(style, safeBase)
-}
-
 export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDocumentProps) {
   const containsCjk = grid.cells.some((cell) => /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(cell.text))
   const baseFontFamily =
@@ -206,12 +197,12 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
                 >
                   <Text
                     style={{
-                      // PDF 只使用已嵌入字体，但保留模板的字重、斜体和颜色。
-                      fontFamily: pdfFontFamily(s, baseFontFamily),
-                      fontWeight: baseFontFamily === PDF_FONT_FAMILY && s.bold ? 700 : undefined,
+                      // 打印文字统一使用已嵌入的静态粗体和纯黑色，避免模版浅色/细字重导致纸张上难以辨认。
+                      fontFamily: fontFamily({ ...s, bold: true }, baseFontFamily),
+                      fontWeight: baseFontFamily === PDF_FONT_FAMILY ? 700 : undefined,
                       fontSize: fontSize * scale,
                       lineHeight: 1.1,
-                      color: templateRenderColor(s.color) ?? templateRenderColor(pageConfig.textColor) ?? '#000000',
+                      color: '#000000',
                       textAlign: s.halign ?? 'left',
                       width: '100%',
                       textDecoration:
