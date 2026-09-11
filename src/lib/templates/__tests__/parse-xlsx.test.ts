@@ -21,7 +21,7 @@ describe('parseTemplateXlsx', () => {
       ws.mergeCells('A1:B1')
       const a1 = ws.getCell('A1')
       a1.value = 'TITLE'
-      a1.font = { bold: true, size: 14, color: { argb: 'FF1C4587' } }
+      a1.font = { name: 'Arial', bold: true, size: 14, color: { argb: 'FF1C4587' } }
       a1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF49B33' } }
       a1.alignment = { horizontal: 'center', vertical: 'middle' }
       ws.getCell('A2').value = 'cell'
@@ -36,6 +36,7 @@ describe('parseTemplateXlsx', () => {
     assert.equal(title.colSpan, 2)
     assert.equal(title.style.bold, true)
     assert.equal(title.style.fontSize, 14)
+    assert.equal(title.style.fontFamily, 'Arial')
     assert.equal(title.style.color, '#1C4587')
     assert.equal(title.style.fill, '#F49B33')
     assert.equal(title.style.halign, 'center')
@@ -45,6 +46,36 @@ describe('parseTemplateXlsx', () => {
     assert.equal(bordered.style.borders?.bottom, 1)
     assert.equal(grid.rowHeights[0], 30)
     assert.ok(grid.colWidths[1] > grid.colWidths[0])
+  })
+
+  it('保留 Excel 纸张方向和页边距', async () => {
+    const buf = await workbookBuffer((ws) => {
+      ws.getCell('A1').value = 'Landscape invoice'
+      ws.pageSetup.paperSize = 1 as ExcelJS.PaperSize
+      ws.pageSetup.orientation = 'landscape'
+      ws.pageSetup.margins = {
+        left: 0.25,
+        right: 0.5,
+        top: 0.75,
+        bottom: 1,
+        header: 0.2,
+        footer: 0.2,
+      }
+    })
+    const { pageConfig } = await parseTemplateXlsx(buf)
+    assert.equal(pageConfig.size, 'LETTER')
+    assert.equal(pageConfig.orientation, 'landscape')
+    assert.deepEqual(pageConfig.margin, { left: 18, right: 36, top: 54, bottom: 72 })
+  })
+
+  it('按 Excel 打印区域保留尾部空白版式', async () => {
+    const buf = await workbookBuffer((ws) => {
+      ws.getCell('A1').value = 'Invoice'
+      ws.pageSetup.printArea = 'A1:D8'
+    })
+    const { grid } = await parseTemplateXlsx(buf)
+    assert.equal(grid.colWidths.length, 4)
+    assert.equal(grid.rowHeights.length, 8)
   })
 
   it('空文件被拒绝，中文样张可正常解析', async () => {

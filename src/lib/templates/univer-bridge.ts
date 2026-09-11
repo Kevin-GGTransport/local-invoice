@@ -142,6 +142,7 @@ const UNIVER_KEY_TO_SIDE = { t: "top", r: "right", b: "bottom", l: "left" } as c
 
 function templateStyleToUniver(style: TemplateCellStyle, baseFontSize: number): UniverStyle {
   const u: UniverStyle = { fs: style.fontSize ?? baseFontSize };
+  if (style.fontFamily) u.ff = style.fontFamily;
   if (style.bold) u.bl = 1;
   if (style.italic) u.it = 1;
   if (style.underline) u.ul = { s: 1 };
@@ -250,6 +251,7 @@ function univerStyleToTemplate(
   if (u.ul?.s) style.underline = true;
   if (u.st?.s) style.strike = true;
   if (u.fs != null && u.fs !== baseFontSize) style.fontSize = u.fs;
+  if (u.ff) style.fontFamily = u.ff;
   const textColor = templateRenderColor(u.cl?.rgb);
   const fillColor = templateRenderColor(u.bg?.rgb);
   if (textColor) style.color = textColor;

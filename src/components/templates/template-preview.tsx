@@ -88,6 +88,7 @@ function cellTextStyle(style: TemplateCellStyle, fontSize: number): React.CSSPro
     color: templateRenderColor(style.color) ?? undefined,
     fontWeight: style.bold ? 700 : undefined,
     fontStyle: style.italic ? "italic" : undefined,
+    fontFamily: style.fontFamily,
     fontSize: fontSize * PT_TO_PX,
     lineHeight: 1.1,
     textAlign: style.halign ?? "left",

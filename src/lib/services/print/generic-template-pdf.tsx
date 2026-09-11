@@ -62,11 +62,23 @@ function fontFamily(style: { bold?: boolean; italic?: boolean }, base: string): 
   return prefix
 }
 
+function pdfFontFamily(style: { bold?: boolean; italic?: boolean; fontFamily?: string }, base: string): string {
+  // 只能使用已注册或 PDF 内置字体；Excel 字体名作为元数据保留，未安装时安全回退。
+  const requested = style.fontFamily
+  const safeBase = requested === 'Helvetica' || requested === 'Times-Roman' || requested === 'Courier'
+    ? requested
+    : base
+  return fontFamily(style, safeBase)
+}
+
 export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDocumentProps) {
   const containsCjk = grid.cells.some((cell) => /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(cell.text))
   const baseFontFamily =
     pageConfig.fontFamily === PDF_FONT_FAMILY || containsCjk ? PDF_FONT_FAMILY : pageConfig.fontFamily
-  const [pageW, pageH] = PAGE_SIZES[pageConfig.size] ?? PAGE_SIZES.A4
+  const [rawPageW, rawPageH] = PAGE_SIZES[pageConfig.size] ?? PAGE_SIZES.A4
+  const [pageW, pageH] = pageConfig.orientation === 'landscape'
+    ? [rawPageH, rawPageW]
+    : [rawPageW, rawPageH]
   const margin = pageConfig.margin
   const contentW = pageW - margin.left - margin.right
   const contentH = pageH - margin.top - margin.bottom
@@ -108,7 +120,7 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
 
   return (
     <Document conformance="PDF/A-2b">
-      <Page size={pageConfig.size} style={styles.page}>
+      <Page size={pageConfig.size} orientation={pageConfig.orientation ?? 'portrait'} style={styles.page}>
         <View style={styles.canvas}>
           {/* 第一遍：背景 + 边框（原始格矩形） */}
           {grid.cells.map((cell, i) => {
@@ -194,12 +206,12 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
                 >
                   <Text
                     style={{
-                      // 打印文字统一使用黑色粗体，避免模版浅色字在纸张上难以辨认。
-                      fontFamily: fontFamily({ ...s, bold: true }, baseFontFamily),
-                      fontWeight: baseFontFamily === PDF_FONT_FAMILY ? 700 : undefined,
+                      // PDF 只使用已嵌入字体，但保留模板的字重、斜体和颜色。
+                      fontFamily: pdfFontFamily(s, baseFontFamily),
+                      fontWeight: baseFontFamily === PDF_FONT_FAMILY && s.bold ? 700 : undefined,
                       fontSize: fontSize * scale,
                       lineHeight: 1.1,
-                      color: '#000000',
+                      color: templateRenderColor(s.color) ?? templateRenderColor(pageConfig.textColor) ?? '#000000',
                       textAlign: s.halign ?? 'left',
                       width: '100%',
                       textDecoration:

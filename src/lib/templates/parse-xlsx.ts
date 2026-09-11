@@ -37,6 +37,17 @@ function borderWidthPt(style: string | undefined): number | undefined {
   return line == null ? undefined : BORDER_WIDTH_PT[line]
 }
 
+function inchesToPt(value: number | undefined, fallback: number): number {
+  return value != null && Number.isFinite(value) && value >= 0
+    ? Math.round(value * 72 * 10) / 10
+    : fallback
+}
+
+function pageSizeFromWorksheet(ws: ExcelJS.Worksheet): TemplatePageConfig['size'] {
+  // ExcelJS PaperSize: Letter=1, A4=9. Other sizes currently fall back to A4.
+  return Number(ws.pageSetup.paperSize) === 1 ? 'LETTER' : 'A4'
+}
+
 
 /** 解析 'A1:B2' 形式的合并区域为 0 起始索引 */
 function parseMergeRange(range: string): { r1: number; c1: number; r2: number; c2: number } | null {
@@ -86,6 +97,12 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
     }
   }
 
+  // 显式打印区域是 Excel 对版式边界的权威声明，即使尾部只有空白也必须保留。
+  const printArea = ws.pageSetup.printArea
+  const printRanges = typeof printArea === 'string'
+    ? printArea.split(/[;,]/).map((range) => range.replace(/^.*!/, '').replaceAll('$', ''))
+    : []
+
   // 先收集单元格，得到实际占用范围
   const collected: TemplateCell[] = []
   let maxRow = 0
@@ -127,6 +144,7 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
       if (font?.underline) style.underline = true
       if (font?.strike) style.strike = true
       if (font?.size) style.fontSize = font.size
+      if (font?.name) style.fontFamily = font.name
       if (fontColor) style.color = fontColor
       if (fillColor) style.fill = fillColor
       if (hasBorder) {
@@ -185,6 +203,13 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
       maxCol = Math.max(maxCol, Math.min(r.c2, TEMPLATE_MAX_COLS - 1))
     }
   }
+  for (const range of printRanges) {
+    const r = parseMergeRange(range)
+    if (r) {
+      maxRow = Math.max(maxRow, Math.min(r.r2, TEMPLATE_MAX_ROWS - 1))
+      maxCol = Math.max(maxCol, Math.min(r.c2, TEMPLATE_MAX_COLS - 1))
+    }
+  }
 
   // 列宽 / 行高（截断到实际占用范围）
   const colCount = Math.min(maxCol + 1, TEMPLATE_MAX_COLS)
@@ -199,16 +224,35 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
     rowHeights.push(h != null && Number.isFinite(h) && h > 0 ? h : DEFAULT_ROW_HEIGHT)
   }
 
+  const rawGrid: TemplateGrid = { colWidths, rowHeights, cells: collected }
+  const area = printRanges.length > 0 ? parseMergeRange(printRanges[0]) : null
+  const printGrid = area
+    ? {
+        colWidths: colWidths.slice(area.c1, area.c2 + 1),
+        rowHeights: rowHeights.slice(area.r1, area.r2 + 1),
+        cells: collected
+          .filter((cell) => cell.row >= area.r1 && cell.row <= area.r2 && cell.col >= area.c1 && cell.col <= area.c2)
+          .map((cell) => ({ ...cell, row: cell.row - area.r1, col: cell.col - area.c1 })),
+      }
+    : null
+
+  const margins = ws.pageSetup.margins
   return {
     pageConfig: {
-      size: 'A4',
-      margin: { top: 24, right: 24, bottom: 24, left: 24 },
+      size: pageSizeFromWorksheet(ws),
+      orientation: ws.pageSetup.orientation === 'landscape' ? 'landscape' : 'portrait',
+      margin: {
+        top: inchesToPt(margins?.top, 24),
+        right: inchesToPt(margins?.right, 24),
+        bottom: inchesToPt(margins?.bottom, 24),
+        left: inchesToPt(margins?.left, 24),
+      },
       fontFamily: 'Noto Sans SC',
       baseFontSize: 10,
       textColor: '#000000',
     },
     // 丢弃内容框外的"幽灵样式"空格（Excel 中对大片空白区域设过边框/填充），
     // 避免编辑器与打印 PDF 出现巨大的空网格
-    grid: trimGridToContent({ colWidths, rowHeights, cells: collected }),
+    grid: printGrid ?? trimGridToContent(rawGrid),
   }
 }

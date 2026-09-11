@@ -91,7 +91,7 @@ describe('GenericTemplateDocument', () => {
     assert.match(stream, /0\.9764705882352941 0\.796078431372549 0\.8274509803921568 scn/, 'YG 粉色应保持精确 sRGB')
   })
 
-  it('打印文字忽略模版浅色和常规字重，统一输出黑色粗体', async () => {
+  it('打印文字保留模版颜色和常规字重', async () => {
     const grid: TemplateGrid = {
       colWidths: [240],
       rowHeights: [24],
@@ -113,8 +113,13 @@ describe('GenericTemplateDocument', () => {
     })
     const pdf = Buffer.from(await renderToBuffer(element))
     const stream = await renderPdfStream(grid)
-    assert.ok(pdf.toString('latin1').includes('/BaseFont /Helvetica-Bold'), '应使用 Helvetica 粗体')
-    assert.match(stream, /0 0 0 (?:rg|scn)/, '文字应使用纯黑色')
+    assert.ok(pdf.toString('latin1').includes('/BaseFont /Helvetica'), '应使用 Helvetica 常规字重')
+    assert.ok(!pdf.toString('latin1').includes('/BaseFont /Helvetica-Bold'), '不应强制粗体')
+    assert.match(
+      stream,
+      /0\.8 0\.8 0\.8 (?:rg|scn)/,
+      '文字应保留 #CCCCCC 颜色'
+    )
   })
 
   it('单元格内换行（非 wrap）的多行头部文本在 PDF 中完整保留', async () => {

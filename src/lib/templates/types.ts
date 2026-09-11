@@ -7,6 +7,8 @@
 /** 页面配置（PDF 与预览共用，单位 pt） */
 export interface TemplatePageConfig {
   size: 'A4' | 'LETTER'
+  /** 缺省为 portrait，保持旧模板 JSON 兼容 */
+  orientation?: 'portrait' | 'landscape'
   margin: { top: number; right: number; bottom: number; left: number }
   fontFamily: string
   baseFontSize: number
@@ -45,6 +47,8 @@ export interface TemplateCellStyle {
   underline?: boolean
   strike?: boolean
   fontSize?: number
+  /** Excel 原字体名；编辑器/HTML 预览使用，PDF 回退到已嵌入字体 */
+  fontFamily?: string
   color?: string
   fill?: string
   borders?: TemplateCellBorders
