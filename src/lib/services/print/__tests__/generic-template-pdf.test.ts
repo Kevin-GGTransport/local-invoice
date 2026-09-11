@@ -90,6 +90,32 @@ describe('GenericTemplateDocument', () => {
     assert.match(stream, /0\.9764705882352941 0\.796078431372549 0\.8274509803921568 scn/, 'YG 粉色应保持精确 sRGB')
   })
 
+  it('打印文字忽略模版浅色和常规字重，统一输出黑色粗体', async () => {
+    const grid: TemplateGrid = {
+      colWidths: [240],
+      rowHeights: [24],
+      cells: [
+        {
+          row: 0,
+          col: 0,
+          rowSpan: 1,
+          colSpan: 1,
+          text: 'Invoice Number',
+          style: { color: '#CCCCCC', bold: false },
+        },
+      ],
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const element: React.ReactElement<any> = React.createElement(GenericTemplateDocument, {
+      pageConfig: { ...PAGE_CONFIG, textColor: '#AAAAAA' },
+      grid,
+    })
+    const pdf = Buffer.from(await renderToBuffer(element))
+    const stream = await renderPdfStream(grid)
+    assert.ok(pdf.toString('latin1').includes('/BaseFont /Helvetica-Bold'), '应使用 Helvetica 粗体')
+    assert.match(stream, /0 0 0 (?:rg|scn)/, '文字应使用纯黑色')
+  })
+
   it('单元格内换行（非 wrap）的多行头部文本在 PDF 中完整保留', async () => {
     const grid: TemplateGrid = {
       colWidths: [267.8, 227.3],

@@ -194,11 +194,12 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
                 >
                   <Text
                     style={{
-                      fontFamily: fontFamily(s, baseFontFamily),
-                      fontWeight: baseFontFamily === PDF_FONT_FAMILY ? (s.bold ? 700 : 400) : undefined,
+                      // 打印文字统一使用黑色粗体，避免模版浅色字在纸张上难以辨认。
+                      fontFamily: fontFamily({ ...s, bold: true }, baseFontFamily),
+                      fontWeight: baseFontFamily === PDF_FONT_FAMILY ? 700 : undefined,
                       fontSize: fontSize * scale,
                       lineHeight: 1.1,
-                      color: templateRenderColor(s.color ?? pageConfig.textColor) ?? '#000000',
+                      color: '#000000',
                       textAlign: s.halign ?? 'left',
                       width: '100%',
                       textDecoration:
