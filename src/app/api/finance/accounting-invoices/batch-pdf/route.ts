@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { generateAccountingInvoicePdf } from "@/lib/services/print/accounting-invoice-pdf.service"
 import { mergePdfBuffers } from "@/lib/services/print/merge-pdf"
 import { requireSession, jsonError } from "@/lib/api-helpers"
+import { NativeExcelError } from "@/lib/templates/native-excel"
 
 const MAX_BATCH = 40
 
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error: unknown) {
+    if (error instanceof NativeExcelError) return jsonError(error.message, 422)
     console.error("批量打印Invoice PDF失败:", error)
     return jsonError("批量打印Invoice PDF失败", 500)
   }

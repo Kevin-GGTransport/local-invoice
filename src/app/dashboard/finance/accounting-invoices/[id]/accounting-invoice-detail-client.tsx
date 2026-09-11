@@ -11,7 +11,7 @@ import { ArrowLeft, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
-import { fetchJson } from "@/lib/api/client"
+import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
 import { openPdf } from "@/lib/utils/open-pdf"
 import { AA_COLD_CHAIN_RENDERER_KEY } from "@/lib/finance/accounting-invoice-renderers"
 
@@ -21,6 +21,7 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
   const router = useRouter()
   const [record, setRecord] = React.useState<Record<string, unknown> | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const [downloadingExcel, setDownloadingExcel] = React.useState(false)
   const [companies, setCompanies] = React.useState<{ code: string; has_active_template: boolean }[]>([])
 
   React.useEffect(() => {
@@ -58,6 +59,17 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
     }
     openPdf(`/api/finance/accounting-invoices/${id}/pdf`)
   }
+  const downloadExcel = async () => {
+    setDownloadingExcel(true)
+    try {
+      const response = await fetch(`/api/finance/accounting-invoices/${id}/pdf?format=xlsx`)
+      if (!response.ok) throw new Error(await getApiErrorMessage(response, '下载失败'))
+      const url = URL.createObjectURL(await response.blob())
+      const a = document.createElement('a'); a.href = url; a.download = `${invoiceNumber}.xlsx`; a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 10000)
+    } catch (e) { toast.error(e instanceof Error ? e.message : '下载失败') }
+    finally { setDownloadingExcel(false) }
+  }
 
   if (error) {
     return (
@@ -93,6 +105,7 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
           </div>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" size="sm" disabled={!hasTemplate || downloadingExcel} onClick={() => void downloadExcel()} title="适用于使用原 Excel 模板的账单">下载 Excel（原件模板）</Button>
           <Button
             variant="outline"
             size="sm"

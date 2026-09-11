@@ -11,6 +11,7 @@ import {
   TEMPLATE_UPLOAD_MAX_BYTES,
 } from "@/lib/templates/parse-xlsx"
 import { deriveBindingFromGrid } from "@/lib/templates/token-binding"
+import { importNativeExcel } from "@/lib/templates/native-excel"
 
 export async function POST(request: NextRequest) {
   const { session, error } = await requireAdmin()
@@ -34,6 +35,20 @@ export async function POST(request: NextRequest) {
     if (!company) return jsonError("公司不存在", 404)
 
     const buffer = Buffer.from(await file.arrayBuffer())
+    // New uploads retain the source. Legacy records are never rewritten or switched.
+    if (form.get("mode") !== "legacy") {
+      let native
+      try { native = await importNativeExcel(buffer, file.name) }
+      catch (err) { return jsonError(err instanceof Error ? err.message : "无法读取 Excel 原件", 400) }
+      const template = await prisma.invoice_templates.create({ data: {
+        company_id: companyId, name, status: "draft",
+        page_config: { size: "A4", margin: { top: 18, right: 18, bottom: 18, left: 18 }, fontFamily: "Arial", baseFontSize: 10, textColor: "#000000" },
+        grid_config: native.grid as unknown as object,
+        binding_config: native.binding as unknown as object,
+        created_by: userIdBigint(session), updated_by: userIdBigint(session),
+      } })
+      return jsonOk({ id: template.id, name: template.name, status: template.status, warnings: native.warnings }, 201)
+    }
     let parsed
     try {
       parsed = await parseTemplateXlsx(buffer)

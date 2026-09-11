@@ -290,12 +290,13 @@ export function TemplatesClient() {
             ) : (
               <FileUp className="mr-2 size-4" />
             )}
-            上传解析
+            上传原 Excel
           </Button>
         </div>
       </div>
 
       {/* 模版列表 */}
+      <p className="text-sm text-muted-foreground">新上传模板保留 Excel 原文件，通过单元格地址绑定变量。已有模板和历史账单继续使用原有方式。</p>
       <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
         <Table>
           <TableHeader>

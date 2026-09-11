@@ -12,6 +12,10 @@ import type { TemplateGrid, TemplatePageConfig } from "@/lib/templates/types"
 import { renderTemplateData, sampleTemplateRenderData } from "@/lib/templates/render-template-data"
 import { deriveBindingFromGrid } from "@/lib/templates/token-binding"
 import { GenericTemplateDocument } from "@/lib/services/print/generic-template-pdf"
+import { isNativeExcelGrid } from "@/lib/templates/native-excel-types"
+import { fillNativeExcel, nativeSourceBytes, NativeExcelError, nativeSampleData } from "@/lib/templates/native-excel"
+import { nativeExcelToPdf } from "@/lib/services/print/native-excel-pdf"
+import type { TemplateBinding } from "@/lib/templates/types"
 
 export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { error } = await requireAdmin()
@@ -23,6 +27,13 @@ export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: s
   try {
     const template = await prisma.invoice_templates.findUnique({ where: { id: BigInt(id) } })
     if (!template) return jsonError("模版不存在", 404)
+    if (isNativeExcelGrid(template.grid_config)) {
+      const source = _request.nextUrl.searchParams.get("source") === "1"
+      const nativeBinding = template.binding_config as unknown as TemplateBinding
+      const xlsx = source ? nativeSourceBytes(template.grid_config) : await fillNativeExcel(template.grid_config, nativeBinding, nativeSampleData(nativeBinding, sampleTemplateRenderData()))
+      const buffer = await nativeExcelToPdf(xlsx)
+      return new NextResponse(new Uint8Array(buffer), { headers: { "Content-Type": "application/pdf", "Cache-Control": "no-store" } })
+    }
 
     const pageConfig = template.page_config as unknown as TemplatePageConfig
     const grid = template.grid_config as unknown as TemplateGrid
@@ -44,6 +55,7 @@ export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: s
       },
     })
   } catch (err) {
+    if (err instanceof NativeExcelError) return jsonError(err.message, 422)
     return handleDbError(err, "生成预览失败")
   }
 }

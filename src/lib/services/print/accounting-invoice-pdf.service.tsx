@@ -17,6 +17,10 @@ import { deriveBindingFromGrid } from '@/lib/templates/token-binding'
 import { GenericTemplateDocument } from './generic-template-pdf'
 import { AA_COLD_CHAIN_COMPANY, AA_COLD_CHAIN_RENDERER_KEY } from '@/lib/finance/accounting-invoice-renderers'
 import { AA_COLD_CHAIN_PAGE_CONFIG, buildAaColdChainGrid } from '@/lib/templates/aa-cold-chain-template'
+import { isNativeExcelGrid } from '@/lib/templates/native-excel-types'
+import { fillNativeExcel } from '@/lib/templates/native-excel'
+import { nativeExcelToPdf } from './native-excel-pdf'
+import type { TemplateBinding } from '@/lib/templates/types'
 
 export type AccountingInvoicePdfResult =
   | { status: 'ok'; buffer: Buffer; invoiceNumber: string; company: string }
@@ -42,7 +46,7 @@ function formatNumber(value: unknown): string {
   return String(num)
 }
 
-export async function generateAccountingInvoicePdf(id: bigint): Promise<AccountingInvoicePdfResult> {
+export async function generateAccountingInvoicePdf(id: bigint, format: 'pdf' | 'xlsx' = 'pdf'): Promise<AccountingInvoicePdfResult> {
   const row = await prisma.accounting_invoices.findUnique({
     where: { id },
     include: {
@@ -52,6 +56,7 @@ export async function generateAccountingInvoicePdf(id: bigint): Promise<Accounti
   if (!row) return { status: 'not_found' }
 
   if (row.company === AA_COLD_CHAIN_COMPANY && row.renderer_key === AA_COLD_CHAIN_RENDERER_KEY) {
+    if (format === 'xlsx') return { status: 'unsupported', company: row.company }
     const total = (row.accounting_invoice_lines ?? []).reduce(
       (sum, line) => sum + Number(line.amount ?? 0),
       0
@@ -132,6 +137,12 @@ export async function generateAccountingInvoicePdf(id: bigint): Promise<Accounti
   }
 
   // 绑定由网格现场推导（与保存/发布同源），存量模版无需迁移即享受最新推导规则
+  if (isNativeExcelGrid(template.grid_config)) {
+    const xlsx = await fillNativeExcel(template.grid_config, template.binding_config as unknown as TemplateBinding, data)
+    const buffer = format === 'xlsx' ? xlsx : await nativeExcelToPdf(xlsx)
+    return { status: 'ok', buffer, invoiceNumber: row.invoice_number, company: row.company }
+  }
+  if (format === 'xlsx') return { status: 'unsupported', company: row.company }
   const grid = template.grid_config as unknown as TemplateGrid
   const binding = deriveBindingFromGrid(grid).binding
   const rendered = renderTemplateData(grid, binding, data)

@@ -10,6 +10,8 @@ import { type TemplateBinding } from "@/lib/templates/types"
 import { validateTemplateGrid } from "@/lib/templates/template-grid"
 import { deriveBindingFromGrid } from "@/lib/templates/token-binding"
 import type { TemplateGrid } from "@/lib/templates/types"
+import { isNativeExcelGrid } from "@/lib/templates/native-excel-types"
+import { nativeBindingSchema, validateNativeBinding, NativeExcelError } from "@/lib/templates/native-excel"
 
 export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { error } = await requireAdmin()
@@ -24,6 +26,11 @@ export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: st
       include: { company: { select: { id: true, code: true, name: true } } },
     })
     if (!template) return jsonError("模版不存在", 404)
+    if (isNativeExcelGrid(template.grid_config)) {
+      const { version, filename, sha256, sheetName } = template.grid_config.nativeExcel
+      const source = { version, filename, sha256, sheetName }
+      return jsonOk({ ...template, grid_config: undefined, source })
+    }
     return jsonOk(template)
   } catch (err) {
     return handleDbError(err, "查询模版失败")
@@ -31,6 +38,7 @@ export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: st
 }
 
 const patchSchema = z.object({
+  native_binding: nativeBindingSchema.optional(),
   name: z.string().trim().min(1).max(100).optional(),
   company_id: z.string().regex(/^\d+$/, "请选择有效公司").optional(),
   grid_config: z
@@ -106,7 +114,11 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
 
       // 仅改名称时任何状态都允许；公司与网格只允许草稿修改
       const grid = parsed.data.grid_config as TemplateGrid | undefined
-      const editsDraftOnlyFields = Boolean(grid || changesCompany)
+      const nativeBinding = parsed.data.native_binding as TemplateBinding | undefined
+      const native = isNativeExcelGrid(existing.grid_config)
+      if (native && grid) return jsonError("原件模板只能修改变量绑定，不能覆盖原 Excel 样式", 400)
+      if (!native && nativeBinding) return jsonError("旧版模板不支持原件绑定", 400)
+      const editsDraftOnlyFields = Boolean(grid || changesCompany || nativeBinding)
       if (editsDraftOnlyFields && existing.status !== "draft") {
         return jsonError("模版状态已变化，仅草稿模版可修改公司或网格", 409)
       }
@@ -124,6 +136,10 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
       // 网格保存时由令牌推导绑定（binding_config 唯一生成来源；
       // 明细容量 = 令牌行 + 下方连续空行，由网格自然决定，无人工配置）
       let bindingToSave: TemplateBinding | undefined
+      if (nativeBinding && isNativeExcelGrid(existing.grid_config)) {
+        await validateNativeBinding(existing.grid_config, nativeBinding)
+        bindingToSave = nativeBinding
+      }
       if (grid) {
         const derived = deriveBindingFromGrid(grid)
         if (derived.errors.length > 0) return jsonError(derived.errors.join("；"), 400)
@@ -157,6 +173,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
       return jsonOk(updated)
     })
   } catch (err) {
+    if (err instanceof NativeExcelError) return jsonError(err.message, 400)
     return handleDbError(err, "保存模版失败")
   }
 }
