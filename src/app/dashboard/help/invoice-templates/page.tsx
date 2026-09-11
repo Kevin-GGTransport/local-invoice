@@ -179,7 +179,7 @@ export default async function InvoiceTemplateHelpPage() {
               <li>解析成功后会生成「草稿」，样张中的令牌会自动生成字段绑定，然后进入编辑页检查。</li>
             </ol>
             <Callout>已有相近的启用或归档模版且只想小改时，可跳过上传：在列表中点击该模版的「复制为草稿」，直接在复制出的草稿上编辑。</Callout>
-            <Callout>解析时会自动丢弃样张中空白区域的「幽灵样式」（Excel 里对大片空格设过的边框 / 填充），网格只保留发票实际内容范围。</Callout>
+            <Callout>系统会保留样张有效范围内的空白预留行、行高列宽、边框、填充、对齐和合并单元格；如 Excel 设置了打印区域，则以该区域作为模板边界。</Callout>
             <Callout tone="warning">同一公司可以有多个草稿，但同一时间只有一个启用模版。</Callout>
           </Section>
 

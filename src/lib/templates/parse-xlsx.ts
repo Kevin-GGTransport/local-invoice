@@ -8,7 +8,6 @@
 import ExcelJS from 'exceljs'
 import { BORDER_WIDTH_PT, EXCEL_BORDER_TO_LINE } from './border-style'
 import { parseExcelThemeColors, resolveSpreadsheetColor, type SpreadsheetColor } from './color'
-import { trimGridToContent } from './template-grid'
 import type {
   TemplateBorderLineStyle,
   TemplateCell,
@@ -195,6 +194,16 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
 
   if (collected.length === 0) throw new Error('样张内容为空，请上传包含版式的 Excel 账单样张')
 
+  // 空白合并格也是模板版式的一部分。上面的单元格收集会跳过“无内容且无样式”的锚点，
+  // 这里显式补回，否则上传后合并区域会悄然拆开。
+  const collectedAnchors = new Set(collected.map((cell) => `${cell.row}:${cell.col}`))
+  for (const [key, span] of anchorSpan) {
+    if (collectedAnchors.has(key)) continue
+    const [row, col] = key.split(':').map(Number)
+    if (row >= TEMPLATE_MAX_ROWS || col >= TEMPLATE_MAX_COLS) continue
+    collected.push({ row, col, rowSpan: span.rowSpan, colSpan: span.colSpan, text: '', style: {} })
+  }
+
   // 合并区域可能超出有样式单元格的范围
   for (const range of merges) {
     const r = parseMergeRange(range)
@@ -251,8 +260,8 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
       baseFontSize: 10,
       textColor: '#000000',
     },
-    // 丢弃内容框外的"幽灵样式"空格（Excel 中对大片空白区域设过边框/填充），
-    // 避免编辑器与打印 PDF 出现巨大的空网格
-    grid: printGrid ?? trimGridToContent(rawGrid),
+    // 不再根据文字/非白底色二次裁切。尾部空白行、白色填充、边框、对齐和合并格
+    // 都可能是用户刻意设计的模板版式，上传后必须保留。
+    grid: printGrid ?? rawGrid,
   }
 }

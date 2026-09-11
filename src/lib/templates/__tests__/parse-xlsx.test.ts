@@ -78,6 +78,37 @@ describe('parseTemplateXlsx', () => {
     assert.equal(grid.rowHeights.length, 8)
   })
 
+  it('未设打印区域时保留尾部的空白样式和行列尺寸', async () => {
+    const buf = await workbookBuffer((ws) => {
+      ws.getCell('A1').value = 'Invoice'
+      ws.getColumn(4).width = 22
+      ws.getRow(8).height = 30
+      ws.getCell('D8').border = { bottom: { style: 'thin' } }
+    })
+    const { grid } = await parseTemplateXlsx(buf)
+    assert.equal(grid.colWidths.length, 4)
+    assert.equal(grid.rowHeights.length, 8)
+    assert.equal(grid.rowHeights[7], 30)
+    assert.ok(grid.cells.some((cell) => cell.row === 7 && cell.col === 3 && cell.style.borders?.bottom))
+  })
+
+  it('保留无文字无样式的空白合并格', async () => {
+    const buf = await workbookBuffer((ws) => {
+      ws.getCell('A1').value = 'Invoice'
+      ws.mergeCells('B3:D5')
+    })
+    const { grid } = await parseTemplateXlsx(buf)
+    const merged = grid.cells.find((cell) => cell.row === 2 && cell.col === 1)
+    assert.deepEqual(merged, {
+      row: 2,
+      col: 1,
+      rowSpan: 3,
+      colSpan: 3,
+      text: '',
+      style: {},
+    })
+  })
+
   it('空文件被拒绝，中文样张可正常解析', async () => {
     const empty = await workbookBuffer(() => {})
     await assert.rejects(() => parseTemplateXlsx(empty), /内容为空/)
