@@ -81,13 +81,13 @@ describe('GenericTemplateDocument', () => {
       rowHeights: [20, 20, 20],
       cells: [
         { row: 0, col: 0, rowSpan: 1, colSpan: 1, text: '', style: { fill: '#F49B33' } },
-        { row: 1, col: 0, rowSpan: 1, colSpan: 1, text: '', style: { fill: '#A5A0D2' } },
+        { row: 1, col: 0, rowSpan: 1, colSpan: 1, text: '', style: { fill: '#CECDE9' } },
         { row: 2, col: 0, rowSpan: 1, colSpan: 1, text: '', style: { fill: '#F9CBD3' } },
       ],
     }
     const stream = await renderPdfStream(grid)
     assert.match(stream, /0\.9568627450980393 0\.6078431372549019 0\.2 scn/, 'AA 橙色应保持精确 sRGB')
-    assert.match(stream, /0\.6470588235294118 0\.6274509803921569 0\.8235294117647058 scn/, 'G&G 紫色应保持精确 sRGB')
+    assert.match(stream, /0\.807843137254902 0\.803921568627451 0\.9137254901960784 scn/, 'G&G 浅紫色应保持精确 sRGB')
     assert.match(stream, /0\.9764705882352941 0\.796078431372549 0\.8274509803921568 scn/, 'YG 粉色应保持精确 sRGB')
   })
 
@@ -151,9 +151,9 @@ describe('GenericTemplateDocument', () => {
           colSpan: 1,
           // G&G 模板页脚：长文本在窄列、右侧空列同填充色（Excel 溢出排版）
           text: 'MAKE ALL CHECKS PAYABLE TO:',
-          style: { fontSize: 11, fill: '#A5A0D2' },
+          style: { fontSize: 11, fill: '#CECDE9' },
         },
-        { row: 0, col: 1, rowSpan: 1, colSpan: 1, text: '', style: { fill: '#A5A0D2' } },
+        { row: 0, col: 1, rowSpan: 1, colSpan: 1, text: '', style: { fill: '#CECDE9' } },
       ],
     }
     const text = await renderPdfText(grid)
