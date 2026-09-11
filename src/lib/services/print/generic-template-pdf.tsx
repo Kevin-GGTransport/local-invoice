@@ -44,12 +44,12 @@ function pdfBorderStyle(line: TemplateBorderLineStyle | undefined): 'solid' | 'd
 }
 
 // PDF 必须嵌入中文字形；依赖操作系统字体会导致开发机正常、服务器打印乱码。
-// 同一个可变字体文件覆盖常规和粗体，且保留 Helvetica 配置的历史模板也会自动升级。
+// 粗体必须使用独立的静态字体；react-pdf 不会将同一个可变字体实例化为 700 字重。
 Font.register({
   family: PDF_FONT_FAMILY,
   fonts: [
     { src: path.join(process.cwd(), 'public', 'NotoSansSC-VF.ttf'), fontWeight: 400 },
-    { src: path.join(process.cwd(), 'public', 'NotoSansSC-VF.ttf'), fontWeight: 700 },
+    { src: path.join(process.cwd(), 'public', 'NotoSansSC-Bold.otf'), fontWeight: 700 },
   ],
 })
 
