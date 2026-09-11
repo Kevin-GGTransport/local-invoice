@@ -14,10 +14,12 @@ import {
 import {
   normalizeAccountingInvoiceLines,
   sumLineAmounts,
+  validateAccountingInvoiceLines,
   type AccountingInvoiceLineInput,
 } from "@/lib/finance/accounting-invoice-lines"
 import { toInvoiceCreateData } from "@/lib/finance/accounting-invoice-input"
 import { accountingInvoiceCreateSchema } from "@/lib/validations/accounting-invoice"
+import { validateAccountingInvoiceRendererSelection } from "@/lib/finance/accounting-invoice-renderers"
 import {
   requireSession,
   userIdBigint,
@@ -54,6 +56,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = await readJsonBody(request)
     const { lines, ...rest } = body
+    if (lines !== undefined && !Array.isArray(lines)) {
+      return jsonError("lines 必须为数组", 400)
+    }
 
     // 发票号留空 → 先按公司前缀 + 月 + 年 + 当月序号自动生成，再进校验
     if (!String(rest.invoice_number ?? "").trim() && rest.company) {
@@ -68,6 +73,18 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return jsonError(parsed.error.issues[0]?.message ?? "参数校验失败", 400)
     }
+
+    const rendererError = validateAccountingInvoiceRendererSelection({
+      company: parsed.data.company,
+      rendererKey: parsed.data.renderer_key,
+      invoiceTemplateId: parsed.data.invoice_template_id,
+    })
+    if (rendererError) return jsonError(rendererError, 400)
+
+    const lineError = Array.isArray(lines)
+      ? validateAccountingInvoiceLines(lines as AccountingInvoiceLineInput[])
+      : null
+    if (lineError) return jsonError(lineError, 400)
 
     if (parsed.data.invoice_template_id) {
       const selectedTemplate = await prisma.invoice_templates.findFirst({

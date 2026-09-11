@@ -15,6 +15,8 @@ import type {
 import { renderTemplateData } from '@/lib/templates/render-template-data'
 import { deriveBindingFromGrid } from '@/lib/templates/token-binding'
 import { GenericTemplateDocument } from './generic-template-pdf'
+import { AA_COLD_CHAIN_COMPANY, AA_COLD_CHAIN_RENDERER_KEY } from '@/lib/finance/accounting-invoice-renderers'
+import { AA_COLD_CHAIN_PAGE_CONFIG, buildAaColdChainGrid } from '@/lib/templates/aa-cold-chain-template'
 
 export type AccountingInvoicePdfResult =
   | { status: 'ok'; buffer: Buffer; invoiceNumber: string; company: string }
@@ -48,6 +50,37 @@ export async function generateAccountingInvoicePdf(id: bigint): Promise<Accounti
     },
   })
   if (!row) return { status: 'not_found' }
+
+  if (row.company === AA_COLD_CHAIN_COMPANY && row.renderer_key === AA_COLD_CHAIN_RENDERER_KEY) {
+    const total = (row.accounting_invoice_lines ?? []).reduce(
+      (sum, line) => sum + Number(line.amount ?? 0),
+      0
+    )
+    const grid = buildAaColdChainGrid({
+      invoiceNumber: row.invoice_number,
+      invoiceDate: formatDate(row.invoice_date),
+      loadNumber: row.broker_load_number ?? '',
+      billTo: row.bill_to ?? '',
+      total: formatMoney(Math.round(total * 100) / 100),
+      lines: (row.accounting_invoice_lines ?? []).map((line) => ({
+        serviceDate: formatDate(line.service_date),
+        pickupAddress: line.pickup_address ?? '',
+        dropAddress1: line.drop_address_1 ?? '',
+        dropAddress2: line.drop_address_2 ?? '',
+        dropAddress3: line.drop_address_3 ?? '',
+        amount: formatMoney(line.amount),
+      })),
+    })
+    const buf = await renderToBuffer(
+      <GenericTemplateDocument pageConfig={AA_COLD_CHAIN_PAGE_CONFIG} grid={grid} />
+    )
+    return {
+      status: 'ok',
+      buffer: Buffer.isBuffer(buf) ? buf : Buffer.from(buf as ArrayBuffer),
+      invoiceNumber: row.invoice_number,
+      company: row.company,
+    }
+  }
 
   const template = row.invoice_template_id
     ? await prisma.invoice_templates.findFirst({

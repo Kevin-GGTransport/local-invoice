@@ -1,5 +1,6 @@
 import { z } from "zod"
 import type { Prisma } from "@prisma/client"
+import { AA_COLD_CHAIN_RENDERER_KEY, AA_COLD_CHAIN_COMPANY } from "./accounting-invoice-renderers"
 
 export const MAX_ACCOUNTING_INVOICE_SEND = 40
 const POSTGRES_BIGINT_MAX = BigInt("9223372036854775807")
@@ -55,6 +56,7 @@ export async function sendAccountingInvoices(
       invoice_number: true,
       invoice_date: true,
       company: true,
+      renderer_key: true,
     },
   })
 
@@ -72,7 +74,10 @@ export async function sendAccountingInvoices(
     )
   }
 
-  const companies = [...new Set(records.map((record) => record.company))]
+  const recordsRequiringTemplate = records.filter(
+    (record) => !(record.company === AA_COLD_CHAIN_COMPANY && record.renderer_key === AA_COLD_CHAIN_RENDERER_KEY)
+  )
+  const companies = [...new Set(recordsRequiringTemplate.map((record) => record.company))]
   const activeTemplates = await tx.invoice_templates.findMany({
     where: { status: "active", company: { code: { in: companies } } },
     select: { company: { select: { code: true } } },

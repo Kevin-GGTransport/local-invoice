@@ -5,10 +5,12 @@ import { FileStack } from "lucide-react"
 import { toast } from "sonner"
 import { fetchJson } from "@/lib/api/client"
 import { openPdf } from "@/lib/utils/open-pdf"
+import { AA_COLD_CHAIN_COMPANY, AA_COLD_CHAIN_RENDERER_KEY } from "@/lib/finance/accounting-invoice-renderers"
 
 type AccountingInvoiceRow = {
   id?: string | number | bigint | null
   company?: string | null
+  renderer_key?: string | null
 }
 
 /** 陆运账单：勾选后合并打开 PDF（GET /api/finance/accounting-invoices/batch-pdf） */
@@ -33,6 +35,7 @@ export function AccountingInvoicesBatchPdf({ selectedRows }: { selectedRows: Acc
     const unsupported = [
       ...new Set(
         rows
+          .filter((r) => !(r.company === AA_COLD_CHAIN_COMPANY && r.renderer_key === AA_COLD_CHAIN_RENDERER_KEY))
           .map((r) => r.company)
           .filter((c): c is string => !!c)
           .filter((c) => !companyOptions.find((o) => o.code === c)?.has_active_template)

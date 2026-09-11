@@ -29,17 +29,33 @@ async function runImport(plans: ImportRowPlan[], userId: bigint | null): Promise
     async (tx) => {
       // $executeRaw：函数返回 void 列，$queryRaw 无法反序列化
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(91501120001)`
-      const [orderNumbers, existingRows] = await Promise.all([
+      const companyCodes = [...new Set(plans.map((plan) => String(plan.updateData.company ?? plan.createData.company)))]
+      const [orderNumbers, existingRows, defaultTemplates] = await Promise.all([
         getNextAccountingOrderNumbers(tx),
         tx.accounting_invoices.findMany({
           where: { invoice_number: { in: plans.map((plan) => plan.invoiceNumber) } },
-          select: { invoice_number: true },
+          select: { invoice_number: true, company: true },
+        }),
+        tx.invoice_templates.findMany({
+          where: { status: "active", is_default: true, company: { code: { in: companyCodes } } },
+          select: { id: true, company: { select: { code: true } } },
+          orderBy: { updated_at: "desc" },
         }),
       ])
       const existingNumbers = new Set(existingRows.map((row) => row.invoice_number))
+      const existingByNumber = new Map(existingRows.map((row) => [row.invoice_number, row]))
+      const defaultTemplateByCompany = new Map<string, bigint>()
+      for (const template of defaultTemplates) {
+        if (!defaultTemplateByCompany.has(template.company.code)) {
+          defaultTemplateByCompany.set(template.company.code, template.id)
+        }
+      }
       let seq = Number.parseInt(orderNumbers.orderNumber, 10)
       for (const plan of plans) {
         const nextOrderNumber = String(seq)
+        const existing = existingByNumber.get(plan.invoiceNumber)
+        const nextCompany = String(plan.updateData.company ?? plan.createData.company)
+        const companyChanged = existing != null && existing.company !== nextCompany
         await tx.accounting_invoices.upsert({
           where: { invoice_number: plan.invoiceNumber },
           create: {
@@ -50,6 +66,14 @@ async function runImport(plans: ImportRowPlan[], userId: bigint | null): Promise
           },
           update: {
             ...plan.updateData,
+            ...(companyChanged
+              ? {
+                  renderer_key: null,
+                  invoice_template: defaultTemplateByCompany.has(nextCompany)
+                    ? { connect: { id: defaultTemplateByCompany.get(nextCompany)! } }
+                    : { disconnect: true },
+                }
+              : {}),
             ...(userId != null ? { updated_by: userId } : {}),
           },
         })

@@ -8,10 +8,12 @@ import { prisma } from "@/lib/prisma"
 import {
   normalizeAccountingInvoiceLines,
   sumLineAmounts,
+  validateAccountingInvoiceLines,
   type AccountingInvoiceLineInput,
 } from "@/lib/finance/accounting-invoice-lines"
 import { toInvoiceUpdateData } from "@/lib/finance/accounting-invoice-input"
 import { accountingInvoiceUpdateSchema } from "@/lib/validations/accounting-invoice"
+import { validateAccountingInvoiceRendererSelection } from "@/lib/finance/accounting-invoice-renderers"
 import {
   requireSession,
   userIdBigint,
@@ -63,6 +65,9 @@ export async function PUT(
 
     const body = await readJsonBody(request)
     const { lines, ...rest } = body
+    if (lines !== undefined && !Array.isArray(lines)) {
+      return jsonError("lines 必须为数组", 400)
+    }
 
     const parsed = accountingInvoiceUpdateSchema.safeParse(rest)
     if (!parsed.success) {
@@ -71,25 +76,50 @@ export async function PUT(
 
     const current = await prisma.accounting_invoices.findUnique({
       where: { id },
-      select: { company: true, invoice_template_id: true },
+      select: { company: true, invoice_template_id: true, renderer_key: true },
     })
     if (!current) return jsonError("记录不存在", 404)
 
-    // 更换公司但未显式传模版时，自动改绑新公司默认版，绝不保留跨公司旧引用。
-    if (parsed.data.company && parsed.data.company !== current.company && parsed.data.invoice_template_id === undefined) {
-      const fallback = await prisma.invoice_templates.findFirst({
-        where: { status: "active", is_default: true, company: { code: parsed.data.company } },
-        select: { id: true },
-      })
-      parsed.data.invoice_template_id = fallback?.id.toString() ?? null
+    // 更换公司时必须同步规范化版式选择，避免保留跨公司的旧模版/内置渲染器。
+    const companyChanged = parsed.data.company != null && parsed.data.company !== current.company
+    if (companyChanged) {
+      if (parsed.data.renderer_key != null) {
+        if (parsed.data.invoice_template_id === undefined) parsed.data.invoice_template_id = null
+      } else if (parsed.data.invoice_template_id != null) {
+        if (parsed.data.renderer_key === undefined) parsed.data.renderer_key = null
+      } else {
+        const fallback = await prisma.invoice_templates.findFirst({
+          where: { status: "active", is_default: true, company: { code: parsed.data.company! } },
+          select: { id: true },
+        })
+        parsed.data.invoice_template_id = fallback?.id.toString() ?? null
+        parsed.data.renderer_key = null
+      }
     }
 
-    if (parsed.data.invoice_template_id) {
-      const company = parsed.data.company ?? current.company
-      const selectedTemplate = company ? await prisma.invoice_templates.findFirst({
-        where: { id: BigInt(parsed.data.invoice_template_id), status: "active", company: { code: company } },
+
+    const effectiveCompany = parsed.data.company ?? current.company
+    const effectiveRendererKey = parsed.data.renderer_key === undefined ? current.renderer_key : parsed.data.renderer_key
+    const effectiveTemplateId = parsed.data.invoice_template_id === undefined
+      ? current.invoice_template_id?.toString() ?? null
+      : parsed.data.invoice_template_id
+    const rendererError = validateAccountingInvoiceRendererSelection({
+      company: effectiveCompany,
+      rendererKey: effectiveRendererKey,
+      invoiceTemplateId: effectiveTemplateId,
+    })
+    if (rendererError) return jsonError(rendererError, 400)
+
+    const lineError = Array.isArray(lines)
+      ? validateAccountingInvoiceLines(lines as AccountingInvoiceLineInput[])
+      : null
+    if (lineError) return jsonError(lineError, 400)
+
+    if (effectiveTemplateId) {
+      const selectedTemplate = await prisma.invoice_templates.findFirst({
+        where: { id: BigInt(effectiveTemplateId), status: "active", company: { code: effectiveCompany } },
         select: { id: true },
-      }) : null
+      })
       if (!selectedTemplate) return jsonError("所选模版不属于该公司或尚未发布", 400)
     }
 

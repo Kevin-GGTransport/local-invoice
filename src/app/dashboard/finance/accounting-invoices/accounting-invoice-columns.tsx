@@ -30,6 +30,7 @@ export type AccountingInvoiceRow = {
   billing_category: string | null
   tonu: boolean
   invoice_number: string
+  renderer_key: string | null
   invoice_date: string | null
   invoice_price: string | null
   check_date: string | null
@@ -43,7 +44,7 @@ export type AccountingInvoiceRow = {
 
 export type SelectedInvoiceRow = Pick<
   AccountingInvoiceRow,
-  "id" | "company" | "invoice_number" | "invoice_date" | "invoice_price" | "deduction"
+  "id" | "company" | "invoice_number" | "invoice_date" | "invoice_price" | "deduction" | "renderer_key"
 >
 
 export function fmtDate(value: string | null) {

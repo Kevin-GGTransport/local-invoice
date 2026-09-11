@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 
 import { renderTemplateData, sampleTemplateRenderData } from '../render-template-data'
 import type { TemplateBinding, TemplateGrid } from '../types'
+import { buildAaColdChainGrid, sampleAaColdChainRenderData } from '../aa-cold-chain-template'
 
 function grid(rows: number, cols: number): TemplateGrid {
   return {
@@ -209,5 +210,30 @@ describe('renderTemplateData', () => {
     const desc = out.cells.find((c) => c.row === 1 && c.col === 0)!
     assert.equal(desc.text, 'Carrier Charge')
     assert.equal(desc.style.wrap, true)
+  })
+})
+
+describe('buildAaColdChainGrid', () => {
+  it('把运输日期、提货地址、三个卸货地址和 RATE 放入对应列', () => {
+    const out = buildAaColdChainGrid(sampleAaColdChainRenderData())
+    assert.equal(out.cells.find((c) => c.row === 15 && c.col === 0)?.text, '09/10/2026')
+    assert.equal(out.cells.find((c) => c.row === 15 && c.col === 1)?.text, 'Oakland, CA')
+    assert.equal(out.cells.find((c) => c.row === 15 && c.col === 2)?.text, 'San Jose, CA')
+    assert.equal(out.cells.find((c) => c.row === 15 && c.col === 3)?.text, 'Fremont, CA')
+    assert.equal(out.cells.find((c) => c.row === 15 && c.col === 4)?.text, '')
+    assert.equal(out.cells.find((c) => c.row === 15 && c.col === 5)?.text, '$1,250.00')
+  })
+
+  it('超出 17 行预留容量时增长表格并下移合计与页脚', () => {
+    const sample = sampleAaColdChainRenderData()
+    const out = buildAaColdChainGrid({
+      ...sample,
+      lines: Array.from({ length: 19 }, (_, index) => ({
+        ...sample.lines[0], serviceDate: `09/${String(index + 1).padStart(2, '0')}/2026`, amount: '$1.00',
+      })),
+    })
+    assert.equal(out.cells.find((c) => c.text === 'TOTAL DUE')?.row, 35)
+    assert.equal(out.cells.find((c) => c.text === 'DIRECT ALL INQUIRIES TO:')?.row, 37)
+    assert.equal(out.cells.find((c) => c.row === 33 && c.col === 5)?.text, '$1.00')
   })
 })

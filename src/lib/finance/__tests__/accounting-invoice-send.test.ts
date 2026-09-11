@@ -11,7 +11,7 @@ import {
 type SendTx = Parameters<typeof sendAccountingInvoices>[0]
 
 function fakeTransaction(options: {
-  records?: Array<{ id: bigint; invoice_number: string; invoice_date: Date | null; company: string }>
+  records?: Array<{ id: bigint; invoice_number: string; invoice_date: Date | null; company: string; renderer_key?: string | null }>
   templateCompanies?: string[]
   updateCount?: number
 }) {
@@ -133,6 +133,18 @@ test("updates every eligible invoice and returns the stable request order", asyn
     ids: ["1", "2"],
     invoice_date: "2026-09-04",
   })
+})
+
+test("AA cold-chain invoices can be sent without an uploaded template", async () => {
+  const fake = fakeTransaction({
+    records: [
+      { id: BigInt(1), invoice_number: "AA-1", invoice_date: null, company: "AA", renderer_key: "aa_cold_chain" },
+      { id: BigInt(2), invoice_number: "INV-2", invoice_date: null, company: "GNG", renderer_key: null },
+    ],
+    templateCompanies: ["GNG"],
+    updateCount: 2,
+  })
+  assert.equal((await sendAccountingInvoices(fake.tx, sendInput)).count, 2)
 })
 
 test("enforces the shared 40 invoice batch limit", () => {

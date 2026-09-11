@@ -13,6 +13,7 @@ import { toast } from "sonner"
 import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
 import { fetchJson } from "@/lib/api/client"
 import { openPdf } from "@/lib/utils/open-pdf"
+import { AA_COLD_CHAIN_RENDERER_KEY } from "@/lib/finance/accounting-invoice-renderers"
 
 const LIST_URL = "/dashboard/finance/accounting-invoices"
 
@@ -48,7 +49,8 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
   const company = record?.company != null ? String(record.company) : ""
   const invoiceNumber = record?.invoice_number != null ? String(record.invoice_number) : ""
   const hasTemplate =
-    companies.find((c) => c.code === company)?.has_active_template ?? false
+    record?.renderer_key === AA_COLD_CHAIN_RENDERER_KEY ||
+    (companies.find((c) => c.code === company)?.has_active_template ?? false)
   const handlePrint = () => {
     if (!hasTemplate) {
       toast.error(`公司「${company || "未知"}」暂无 PDF 模版`)

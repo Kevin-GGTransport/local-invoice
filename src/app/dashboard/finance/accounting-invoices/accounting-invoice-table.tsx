@@ -43,6 +43,7 @@ import { openPdf, reservePdfWindow } from "@/lib/utils/open-pdf"
 import { MAX_NEGATIVE_INVOICE_DATE_BATCH } from "@/lib/finance/accounting-invoice-negative-date"
 import { MAX_INVOICE_DEDUCTION_BATCH } from "@/lib/finance/accounting-invoice-deduction"
 import { MAX_ACCOUNTING_INVOICE_SEND } from "@/lib/finance/accounting-invoice-send"
+import { AA_COLD_CHAIN_RENDERER_KEY } from "@/lib/finance/accounting-invoice-renderers"
 import type {
   ImportRowError,
   ImportSummary,
@@ -843,7 +844,8 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
   const handleRowPrint = React.useCallback(
     (row: AccountingInvoiceRow) => {
       const hasTemplate =
-        companyOptions.find((c) => c.code === row.company)?.has_active_template ?? false
+        row.renderer_key === AA_COLD_CHAIN_RENDERER_KEY ||
+        (companyOptions.find((c) => c.code === row.company)?.has_active_template ?? false)
       if (!row.company || !hasTemplate) {
         toast.error(`公司「${row.company || "未知"}」暂无 PDF 模版`)
         return
