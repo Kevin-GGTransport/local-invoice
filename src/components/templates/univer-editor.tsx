@@ -96,6 +96,10 @@ export const UniverEditor = React.forwardRef<UniverEditorHandle, UniverEditorPro
         univerInstance = univer;
         apiRef.current = univerAPI;
         univerAPI.createWorkbook(templateGridToWorkbookData(grid, pageConfig));
+        // Univer 会把新建工作簿自动缩放到可视区（例如 62%），
+        // 导致导入的 Excel 列宽看起来被挤窄。初始显示固定为 100%，
+        // 用户仍可通过底部缩放滑块自行调整视图。
+        univerAPI.getActiveWorkbook()?.getActiveSheet()?.zoom(1);
 
         const scheduleSync = () => {
           if (syncTimer) clearTimeout(syncTimer);

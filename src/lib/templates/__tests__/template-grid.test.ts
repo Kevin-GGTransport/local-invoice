@@ -35,12 +35,13 @@ test("编辑空白格会创建单元格，清空无样式格会移除", () => {
   assert.equal(removed.cells.some((cell) => cell.row === 1 && cell.col === 1), false);
 });
 
-test("格式与行列尺寸使用不可变更新并限制范围", () => {
+test("格式与行列尺寸使用不可变更新并只防止无效尺寸", () => {
   const grid = makeGrid();
   const styled = patchCellStyle(grid, { startRow: 1, endRow: 1, startCol: 1, endCol: 1 }, { bold: true });
   assert.equal(styled.cells.find((cell) => cell.row === 1 && cell.col === 1)?.style.bold, true);
-  assert.equal(resizeRow(grid, 0, 500).rowHeights[0], 200);
-  assert.equal(resizeColumn(grid, 0, 1).colWidths[0], 16);
+  assert.equal(resizeRow(grid, 0, 500).rowHeights[0], 500);
+  assert.equal(resizeColumn(grid, 0, 1000).colWidths[0], 1000);
+  assert.equal(resizeColumn(grid, 0, 1).colWidths[0], 4);
   assert.equal(grid.rowHeights[0], 15);
 });
 

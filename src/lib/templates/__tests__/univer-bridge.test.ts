@@ -38,6 +38,27 @@ describe('univer-bridge round-trip', () => {
     assert.deepEqual(back, grid)
   })
 
+  it('保存时保留无内容但已调整的末尾行列尺寸', () => {
+    const grid: TemplateGrid = {
+      colWidths: [48],
+      rowHeights: [15],
+      cells: [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: 'Invoice', style: {} }],
+    }
+    const workbook = templateGridToWorkbookData(grid, pageConfig)
+    const sheet = workbook.sheets[workbook.sheetOrder[0]]
+    sheet.rowCount = 8
+    sheet.columnCount = 7
+    // Univer 对新增行列的尺寸命令可能不写 customHeight/customWidth。
+    sheet.rowData[7] = { h: 160 }
+    sheet.columnData[6] = { w: 320 }
+
+    const restored = workbookDataToTemplateGrid(workbook, pageConfig)
+    assert.equal(restored.rowHeights.length, 8)
+    assert.equal(restored.colWidths.length, 7)
+    assert.equal(restored.rowHeights[7], 120)
+    assert.equal(restored.colWidths[6], 240)
+  })
+
   it('合并格四周边框写到 Univer 实际外沿单元格', () => {
     const grid: TemplateGrid = {
       colWidths: [48, 48, 48],

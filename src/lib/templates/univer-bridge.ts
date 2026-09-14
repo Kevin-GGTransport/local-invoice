@@ -377,15 +377,19 @@ export function workbookDataToTemplateGrid(
     maxCol = Math.max(maxCol, merge.endColumn);
   }
 
-  const rowCount = maxRow + 1;
-  const colCount = maxCol + 1;
+  // Keep the worksheet geometry even when its last rows/columns are intentionally
+  // blank. A resize is a layout edit and must survive the next save.
+  const rowCount = Math.max(maxRow + 1, sheet.rowCount || 0);
+  const colCount = Math.max(maxCol + 1, sheet.columnCount || 0);
   const rowHeights = Array.from({ length: rowCount }, (_, row) => {
     const rd = sheet.rowData?.[row];
-    return rd?.customHeight && rd.h != null ? pxToPt(rd.h) : DEFAULT_ROW_HEIGHT_PT;
+    // Univer 调整新增行时可能只写 h，不写 customHeight。
+    // 尺寸数值才是真正的用户编辑结果，不应被标记丢失。
+    return rd?.h != null && Number.isFinite(rd.h) && rd.h > 0 ? pxToPt(rd.h) : DEFAULT_ROW_HEIGHT_PT;
   });
   const colWidths = Array.from({ length: colCount }, (_, col) => {
     const cd = sheet.columnData?.[col];
-    return cd?.customWidth && cd.w != null ? pxToPt(cd.w) : DEFAULT_COL_WIDTH_PT;
+    return cd?.w != null && Number.isFinite(cd.w) && cd.w > 0 ? pxToPt(cd.w) : DEFAULT_COL_WIDTH_PT;
   });
 
   return { colWidths, rowHeights, cells: cells.sort((a, b) => a.row - b.row || a.col - b.col) };

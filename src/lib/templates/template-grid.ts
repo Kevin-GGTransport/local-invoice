@@ -9,6 +9,8 @@ import {
 
 export const TEMPLATE_MAX_ROWS = 80;
 export const TEMPLATE_MAX_COLS = 30;
+export const TEMPLATE_MAX_ROW_HEIGHT = 1000;
+export const TEMPLATE_MAX_COL_WIDTH = 2000;
 
 export interface GridRange {
   startRow: number;
@@ -93,13 +95,13 @@ export function patchCellStyle(
 
 export function resizeRow(grid: TemplateGrid, row: number, height: number): TemplateGrid {
   const rowHeights = [...grid.rowHeights];
-  rowHeights[row] = Math.max(8, Math.min(200, Math.round(height * 10) / 10));
+  rowHeights[row] = Math.max(4, Math.min(TEMPLATE_MAX_ROW_HEIGHT, Math.round(height * 10) / 10));
   return { ...grid, rowHeights };
 }
 
 export function resizeColumn(grid: TemplateGrid, col: number, width: number): TemplateGrid {
   const colWidths = [...grid.colWidths];
-  colWidths[col] = Math.max(16, Math.min(400, Math.round(width * 10) / 10));
+  colWidths[col] = Math.max(4, Math.min(TEMPLATE_MAX_COL_WIDTH, Math.round(width * 10) / 10));
   return { ...grid, colWidths };
 }
 
@@ -421,11 +423,11 @@ export function validateTemplateGrid(grid: TemplateGrid, binding?: TemplateBindi
   if (!Array.isArray(grid.colWidths) || grid.colWidths.length < 1 || grid.colWidths.length > TEMPLATE_MAX_COLS) {
     errors.push(`模板列数必须为 1-${TEMPLATE_MAX_COLS}`);
   }
-  if (grid.rowHeights.some((value) => !Number.isFinite(value) || value < 8 || value > 200)) {
-    errors.push("行高必须在 8-200pt 之间");
+  if (grid.rowHeights.some((value) => !Number.isFinite(value) || value < 4 || value > TEMPLATE_MAX_ROW_HEIGHT)) {
+    errors.push(`行高必须在 4-${TEMPLATE_MAX_ROW_HEIGHT}pt 之间`);
   }
-  if (grid.colWidths.some((value) => !Number.isFinite(value) || value < 16 || value > 400)) {
-    errors.push("列宽必须在 16-400pt 之间");
+  if (grid.colWidths.some((value) => !Number.isFinite(value) || value < 4 || value > TEMPLATE_MAX_COL_WIDTH)) {
+    errors.push(`列宽必须在 4-${TEMPLATE_MAX_COL_WIDTH}pt 之间`);
   }
 
   const occupied = new Set<string>();

@@ -73,6 +73,11 @@ export function TemplatesClient() {
   const [duplicatingId, setDuplicatingId] = React.useState<string | null>(null);
   const [defaultingId, setDefaultingId] = React.useState<string | null>(null);
 
+  const layoutForCompany = React.useCallback((companyId: string) => {
+    const code = companies.find((company) => company.id === companyId)?.code.toLowerCase();
+    return code === 'aa' || code === 'yg' ? code : 'original';
+  }, [companies]);
+
   const loadCompanies = React.useCallback(async () => {
     const list = await fetchJson<CompanyRow[]>("/api/companies");
     setCompanies(list);
@@ -97,7 +102,12 @@ export function TemplatesClient() {
       const list = await loadCompanies().catch(() => null);
       if (cancelled || !list) return;
       setCompanies(list);
-      if (list.length > 0) setUploadCompany((prev) => prev || list[0].id);
+      if (list.length > 0) setUploadCompany((prev) => {
+        const next = prev || list[0].id;
+        const code = list.find((company) => company.id === next)?.code.toLowerCase();
+        setUploadLayout(code === 'aa' || code === 'yg' ? code : 'original');
+        return next;
+      });
     })();
     return () => {
       cancelled = true;
@@ -255,7 +265,7 @@ export function TemplatesClient() {
       <div className="grid gap-3 rounded-lg border bg-card p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
         <div className="space-y-1.5">
           <Label>公司</Label>
-          <Select value={uploadCompany} onValueChange={value => { setUploadCompany(value); setUploadLayout('original'); }}>
+          <Select value={uploadCompany} onValueChange={value => { setUploadCompany(value); setUploadLayout(layoutForCompany(value)); }}>
             <SelectTrigger>
               <SelectValue placeholder="选择公司" />
             </SelectTrigger>

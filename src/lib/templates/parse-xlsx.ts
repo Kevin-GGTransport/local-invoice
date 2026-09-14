@@ -8,6 +8,7 @@
 import ExcelJS from 'exceljs'
 import { readWorkbook } from './native-excel'
 import { format as formatNumber } from 'numfmt'
+import { TEMPLATE_MAX_ROWS, TEMPLATE_MAX_COLS } from './template-grid'
 import { BORDER_WIDTH_PT, EXCEL_BORDER_TO_LINE } from './border-style'
 import { parseExcelThemeColors, resolveSpreadsheetColor, type SpreadsheetColor } from './color'
 import type {
@@ -19,8 +20,7 @@ import type {
 } from './types'
 
 export const TEMPLATE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024
-export const TEMPLATE_MAX_ROWS = 80
-export const TEMPLATE_MAX_COLS = 30
+export { TEMPLATE_MAX_ROWS, TEMPLATE_MAX_COLS }
 
 /** Excel 列宽（字符数）→ 像素 → pt；无宽度信息的列按默认 64px */
 function excelColWidthToPt(width: number | undefined): number {
@@ -119,7 +119,7 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
   }))
   for (const range of [...merges, ...printRanges]) {
     const area = parseMergeRange(range)
-    if (area && (area.r2 >= TEMPLATE_MAX_ROWS || area.c2 >= TEMPLATE_MAX_COLS)) throw new Error('合并区域或打印区域超出网页模板 80 行、30 列的范围，请缩小后重试')
+    if (area && (area.r2 >= TEMPLATE_MAX_ROWS || area.c2 >= TEMPLATE_MAX_COLS)) throw new Error(`合并区域或打印区域超出网页模板 ${TEMPLATE_MAX_ROWS} 行、${TEMPLATE_MAX_COLS} 列的范围，请缩小后重试`)
   }
 
   ws.eachRow({ includeEmpty: true }, (row, rowNum) => {

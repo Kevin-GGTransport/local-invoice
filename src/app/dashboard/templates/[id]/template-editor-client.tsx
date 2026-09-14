@@ -538,7 +538,7 @@ export function TemplateEditorClient({ id }: { id: string }) {
             ) : (
               <TemplatePreview
                 grid={showSample && renderedGrid ? renderedGrid : grid}
-                scale={0.75}
+                scale={1}
                 showCoordinates={!showSample}
                 highlightedCells={showSample ? undefined : highlightedCells}
                 lineItemRegion={
