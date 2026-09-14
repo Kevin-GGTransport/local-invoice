@@ -34,8 +34,31 @@ describe('univer-bridge round-trip', () => {
       rowHeights: [15],
       cells: [{ row: 0, col: 0, rowSpan: 1, colSpan: 1, text: '', style: { fill: '#EEEEEE' } }],
     }
-    const back = workbookDataToTemplateGrid(templateGridToWorkbookData(grid, pageConfig), pageConfig)
+    const workbook = templateGridToWorkbookData(grid, pageConfig)
+    // Univer 对 Excel 格式化空白格的原生表示：有样式，无 v 字段。
+    assert.equal('v' in workbook.sheets[workbook.sheetOrder[0]].cellData[0][0], false)
+    const back = workbookDataToTemplateGrid(workbook, pageConfig)
     assert.deepEqual(back, grid)
+  })
+
+  it('YG 空白合并明细行保留左右边框', () => {
+    const grid: TemplateGrid = {
+      colWidths: [48, 48, 48, 48],
+      rowHeights: [20, 20],
+      cells: [
+        { row: 0, col: 0, rowSpan: 1, colSpan: 4, text: '{{描述}}', style: { borders: { left: 1, right: 1 } } },
+        { row: 1, col: 0, rowSpan: 1, colSpan: 4, text: '', style: { borders: { left: 1, right: 1 } } },
+      ],
+    }
+    const workbook = templateGridToWorkbookData(grid, pageConfig)
+    const sheet = workbook.sheets[workbook.sheetOrder[0]]
+    assert.equal('v' in sheet.cellData[1][0], false)
+    assert.equal(workbook.styles[sheet.cellData[1][0].s as string].bd?.l?.s, 1)
+    assert.equal(workbook.styles[sheet.cellData[1][3].s as string].bd?.r?.s, 1)
+    const restored = workbookDataToTemplateGrid(workbook, pageConfig)
+    const blank = restored.cells.find((cell) => cell.row === 1 && cell.col === 0)
+    assert.equal(blank?.style.borders?.left, 1)
+    assert.equal(blank?.style.borders?.right, 1)
   })
 
   it('保存时保留无内容但已调整的末尾行列尺寸', () => {

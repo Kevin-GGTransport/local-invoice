@@ -207,7 +207,10 @@ export function templateGridToWorkbookData(
       });
     }
     const s = internStyle(cell.style);
-    const entry: UniverCell = { v: cell.text };
+    // A formatted blank Excel cell is style-only. Writing `v: ""` makes Univer
+    // normalize some blank merged anchors as empty values and their perimeter
+    // borders can disappear (notably YG detail rows after the token row).
+    const entry: UniverCell = cell.text === "" ? {} : { v: cell.text };
     if (s != null) entry.s = s;
     (cellData[cell.row] ??= {})[cell.col] = entry;
 
