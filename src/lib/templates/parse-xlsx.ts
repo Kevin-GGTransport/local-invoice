@@ -6,6 +6,8 @@
  */
 
 import ExcelJS from 'exceljs'
+import { readWorkbook } from './native-excel'
+import { format as formatNumber } from 'numfmt'
 import { BORDER_WIDTH_PT, EXCEL_BORDER_TO_LINE } from './border-style'
 import { parseExcelThemeColors, resolveSpreadsheetColor, type SpreadsheetColor } from './color'
 import type {
@@ -64,16 +66,20 @@ function parseMergeRange(range: string): { r1: number; c1: number; r2: number; c
 export interface ParsedTemplateWorkbook {
   pageConfig: TemplatePageConfig
   grid: TemplateGrid
+  origin: { row: number; col: number }
 }
 
 export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<ParsedTemplateWorkbook> {
-  const wb = new ExcelJS.Workbook()
+  let wb: ExcelJS.Workbook
+  let raw: ExcelJS.Workbook
   try {
-    await wb.xlsx.load(buffer as ArrayBuffer)
+    const bytes = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer)
+    ;[wb, raw] = await Promise.all([readWorkbook(bytes), readWorkbook(bytes, true)])
   } catch {
     throw new Error('无法解析该文件，请确认为有效的 .xlsx 文件（不支持 .xls）')
   }
-  const ws = wb.worksheets[0]
+  // Read styles before ExcelJS merges cells: merging overwrites covered-cell edges.
+  const ws = raw.worksheets[0]
   if (!ws) throw new Error('文件中不包含工作表')
   const themes = (wb.model as unknown as { themes?: Record<string, string> }).themes
   const themeColors = parseExcelThemeColors(themes?.theme1 ?? Object.values(themes ?? {})[0])
@@ -81,7 +87,7 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
   // 合并区域：锚点 → span；非锚点被覆盖格跳过
   const covered = new Set<string>()
   const anchorSpan = new Map<string, { rowSpan: number; colSpan: number }>()
-  const merges: string[] = (ws.model?.merges ?? []) as string[]
+  const merges: string[] = (wb.worksheets[0].model?.merges ?? []) as string[]
   for (const range of merges) {
     const r = parseMergeRange(range)
     if (!r) continue
@@ -106,6 +112,15 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
   const collected: TemplateCell[] = []
   let maxRow = 0
   let maxCol = 0
+  ws.eachRow(row => row.eachCell(cell => {
+    if (cell.value != null && (Number(cell.row) > TEMPLATE_MAX_ROWS || Number(cell.col) > TEMPLATE_MAX_COLS)) {
+      throw new Error(`网页模板最多支持 ${TEMPLATE_MAX_ROWS} 行、${TEMPLATE_MAX_COLS} 列，${cell.address} 超出范围；请缩小模板后重试`)
+    }
+  }))
+  for (const range of [...merges, ...printRanges]) {
+    const area = parseMergeRange(range)
+    if (area && (area.r2 >= TEMPLATE_MAX_ROWS || area.c2 >= TEMPLATE_MAX_COLS)) throw new Error('合并区域或打印区域超出网页模板 80 行、30 列的范围，请缩小后重试')
+  }
 
   ws.eachRow({ includeEmpty: true }, (row, rowNum) => {
     const r = rowNum - 1
@@ -119,14 +134,32 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
       const fill = cell.style?.fill as
         | { pattern?: string; patternType?: string; fgColor?: SpreadsheetColor }
         | undefined
-      const border = cell.style?.border as
+      let border = cell.style?.border as
         | Record<string, { style?: string; color?: SpreadsheetColor }>
         | undefined
+      const merged = anchorSpan.get(`${r}:${c}`)
+      if (merged) {
+        border = { ...border }
+        for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+          const horizontal = side === 'top' || side === 'bottom'
+          const count = horizontal ? merged.colSpan : merged.rowSpan
+          for (let offset = 0; offset < count; offset++) {
+            const edgeRow = r + (horizontal ? (side === 'bottom' ? merged.rowSpan - 1 : 0) : offset)
+            const edgeCol = c + (horizontal ? offset : (side === 'right' ? merged.colSpan - 1 : 0))
+            const edge = ws.getCell(edgeRow + 1, edgeCol + 1).border?.[side]
+            if (edge?.style) { border[side] = edge; break }
+          }
+        }
+      }
       const alignment = cell.style?.alignment as
         | { horizontal?: string; vertical?: string; wrapText?: boolean }
         | undefined
 
-      const rawText = typeof cell.text === 'string' ? cell.text : cell.value == null ? '' : String(cell.text)
+      const value = cell.value instanceof Date ? cell.value : cell.result ?? cell.value
+      // ExcelJS has already resolved 1900/1904 date serials to UTC Date objects.
+      const rawText = value instanceof Date || typeof value === 'number'
+        ? formatNumber(cell.numFmt || (value instanceof Date ? 'mm/dd/yyyy' : 'General'), value, { locale: 'en', throws: false })
+        : cell.text
       const fillPattern = fill?.pattern ?? fill?.patternType
       const fillColor = fillPattern === 'solid' && fill ? resolveSpreadsheetColor(fill.fgColor, themeColors) : null
       const hasBorder =
@@ -187,8 +220,12 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
 
       const span = anchorSpan.get(`${r}:${c}`) ?? { rowSpan: 1, colSpan: 1 }
       collected.push({ row: r, col: c, rowSpan: span.rowSpan, colSpan: span.colSpan, text: rawText, style })
-      maxRow = Math.max(maxRow, r + span.rowSpan - 1)
-      maxCol = Math.max(maxCol, c + span.colSpan - 1)
+      // Whole-sheet default fonts/alignment are not a printable invoice extent.
+      // Explicit print areas and merges below still retain intentional blank space.
+      if (rawText || fillColor || hasBorder) {
+        maxRow = Math.max(maxRow, r + span.rowSpan - 1)
+        maxCol = Math.max(maxCol, c + span.colSpan - 1)
+      }
     })
   })
 
@@ -233,7 +270,7 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
     rowHeights.push(h != null && Number.isFinite(h) && h > 0 ? h : DEFAULT_ROW_HEIGHT)
   }
 
-  const rawGrid: TemplateGrid = { colWidths, rowHeights, cells: collected }
+  const rawGrid: TemplateGrid = { colWidths, rowHeights, cells: collected.filter(c => c.row < rowCount && c.col < colCount) }
   const area = printRanges.length > 0 ? parseMergeRange(printRanges[0]) : null
   const printGrid = area
     ? {
@@ -247,7 +284,9 @@ export async function parseTemplateXlsx(buffer: Buffer | ArrayBuffer): Promise<P
 
   const margins = ws.pageSetup.margins
   return {
+    origin: { row: area?.r1 ?? 0, col: area?.c1 ?? 0 },
     pageConfig: {
+      textStyle: 'template',
       size: pageSizeFromWorksheet(ws),
       orientation: ws.pageSetup.orientation === 'landscape' ? 'landscape' : 'portrait',
       margin: {

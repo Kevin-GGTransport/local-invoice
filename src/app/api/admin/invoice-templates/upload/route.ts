@@ -12,6 +12,8 @@ import {
 } from "@/lib/templates/parse-xlsx"
 import { deriveBindingFromGrid } from "@/lib/templates/token-binding"
 import { importNativeExcel } from "@/lib/templates/native-excel"
+import { archiveExcel } from "@/lib/templates/web-excel"
+import { calibrateInvoiceReference } from "@/lib/templates/invoice-reference-layout"
 
 export async function POST(request: NextRequest) {
   const { session, error } = await requireAdmin()
@@ -36,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer())
     // New uploads retain the source. Legacy records are never rewritten or switched.
-    if (form.get("mode") !== "legacy") {
+    if (form.get("mode") === "native") {
       let native
       try { native = await importNativeExcel(buffer, file.name) }
       catch (err) { return jsonError(err instanceof Error ? err.message : "无法读取 Excel 原件", 400) }
@@ -52,6 +54,11 @@ export async function POST(request: NextRequest) {
     let parsed
     try {
       parsed = await parseTemplateXlsx(buffer)
+      const layout = form.get("layout")
+      if (layout === 'aa' || layout === 'yg') {
+        if (company.code.toLowerCase() !== layout) return jsonError('公司与所选参考版式不匹配', 400)
+        parsed = calibrateInvoiceReference(parsed, layout)
+      }
     } catch (err) {
       return jsonError(err instanceof Error ? err.message : "样张解析失败", 400)
     }
@@ -70,7 +77,7 @@ export async function POST(request: NextRequest) {
         name,
         status: "draft",
         page_config: parsed.pageConfig as unknown as object,
-        grid_config: parsed.grid as unknown as object,
+        grid_config: { ...parsed.grid, sourceExcel: archiveExcel(buffer, file.name) } as unknown as object,
         binding_config: derived.binding as unknown as object,
         created_by: userIdBigint(session),
         updated_by: userIdBigint(session),

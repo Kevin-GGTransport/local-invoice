@@ -13,6 +13,8 @@ export interface TemplatePageConfig {
   fontFamily: string
   baseFontSize: number
   textColor: string
+  /** New imports preserve text style; absence keeps historical bold-black printing. */
+  textStyle?: 'template'
 }
 
 /** 边框线型（与 Univer BorderStyleType 对齐的子集） */

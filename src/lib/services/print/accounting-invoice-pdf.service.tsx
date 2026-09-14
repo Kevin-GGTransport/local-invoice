@@ -19,7 +19,7 @@ import { AA_COLD_CHAIN_COMPANY, AA_COLD_CHAIN_RENDERER_KEY } from '@/lib/finance
 import { AA_COLD_CHAIN_PAGE_CONFIG, buildAaColdChainGrid } from '@/lib/templates/aa-cold-chain-template'
 import { isNativeExcelGrid } from '@/lib/templates/native-excel-types'
 import { fillNativeExcel } from '@/lib/templates/native-excel'
-import { nativeExcelToPdf } from './native-excel-pdf'
+import { webExcelToPdf } from './web-excel-pdf'
 import type { TemplateBinding } from '@/lib/templates/types'
 
 export type AccountingInvoicePdfResult =
@@ -139,7 +139,7 @@ export async function generateAccountingInvoicePdf(id: bigint, format: 'pdf' | '
   // 绑定由网格现场推导（与保存/发布同源），存量模版无需迁移即享受最新推导规则
   if (isNativeExcelGrid(template.grid_config)) {
     const xlsx = await fillNativeExcel(template.grid_config, template.binding_config as unknown as TemplateBinding, data)
-    const buffer = format === 'xlsx' ? xlsx : await nativeExcelToPdf(xlsx)
+    const buffer = format === 'xlsx' ? xlsx : await webExcelToPdf(xlsx)
     return { status: 'ok', buffer, invoiceNumber: row.invoice_number, company: row.company }
   }
   if (format === 'xlsx') return { status: 'unsupported', company: row.company }

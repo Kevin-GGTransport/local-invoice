@@ -18,7 +18,7 @@ const valueKeys = { invoice_number: 'invoiceNumber', invoice_date: 'invoiceDate'
 export class NativeExcelError extends Error {}
 /** ExcelJS cannot read some valid namespace-prefixed exports. Normalize a disposable
  * metadata copy only; source storage and emitted OOXML always use the original bytes. */
-async function readWorkbook(bytes: Buffer): Promise<ExcelJS.Workbook> {
+export async function readWorkbook(bytes: Buffer, ignoreMerges = false): Promise<ExcelJS.Workbook> {
   const zip = await JSZip.loadAsync(bytes)
   let changed = false
   for (const path of Object.keys(zip.files)) {
@@ -33,7 +33,7 @@ async function readWorkbook(bytes: Buffer): Promise<ExcelJS.Workbook> {
     zip.file(path, xml); changed = true
   }
   const wb = new ExcelJS.Workbook()
-  await wb.xlsx.load((changed ? await zip.generateAsync({ type: 'nodebuffer' }) : bytes) as unknown as ArrayBuffer)
+  await wb.xlsx.load((changed ? await zip.generateAsync({ type: 'nodebuffer' }) : bytes) as unknown as ArrayBuffer, ignoreMerges ? { ignoreNodes: ['mergeCells'] } : {})
   return wb
 }
 export function nativeSourceBytes(grid: NativeExcelGrid): Buffer {

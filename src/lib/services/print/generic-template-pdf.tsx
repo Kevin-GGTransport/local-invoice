@@ -63,6 +63,7 @@ function fontFamily(style: { bold?: boolean; italic?: boolean }, base: string): 
 }
 
 export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDocumentProps) {
+  const preserveText = pageConfig.textStyle === 'template'
   const containsCjk = grid.cells.some((cell) => /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(cell.text))
   const baseFontFamily =
     pageConfig.fontFamily === PDF_FONT_FAMILY || containsCjk ? PDF_FONT_FAMILY : pageConfig.fontFamily
@@ -171,6 +172,8 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
             .map((cell, i) => {
               const { top, height } = cellRect(cell)
               const s = cell.style
+              const cellBaseFont = preserveText && !/[\u3000-\u30ff\u3400-\u9fff]/.test(cell.text) && /^(Arial|Helvetica|Calibri|Aptos)$/i.test(s.fontFamily ?? pageConfig.fontFamily)
+                ? 'Helvetica' : baseFontFamily
               const { textBoxLeft, textBoxWidth, fontSize } = layoutCellText(
                 grid,
                 cell,
@@ -197,12 +200,12 @@ export function GenericTemplateDocument({ pageConfig, grid }: GenericTemplateDoc
                 >
                   <Text
                     style={{
-                      // 打印文字统一使用已嵌入的静态粗体和纯黑色，避免模版浅色/细字重导致纸张上难以辨认。
-                      fontFamily: fontFamily({ ...s, bold: true }, baseFontFamily),
-                      fontWeight: baseFontFamily === PDF_FONT_FAMILY ? 700 : undefined,
+                      // Missing textStyle retains historical bold-black output.
+                      fontFamily: fontFamily({ ...s, bold: preserveText ? s.bold : true }, cellBaseFont),
+                      fontWeight: cellBaseFont === PDF_FONT_FAMILY ? (preserveText && !s.bold ? 400 : 700) : undefined,
                       fontSize: fontSize * scale,
                       lineHeight: 1.1,
-                      color: '#000000',
+                      color: preserveText ? templateRenderColor(s.color ?? pageConfig.textColor) ?? '#000000' : '#000000',
                       textAlign: s.halign ?? 'left',
                       width: '100%',
                       textDecoration:

@@ -69,6 +69,7 @@ export interface UniverWorksheetData {
   mergeData: UniverMergeData[];
   rowCount: number;
   columnCount: number;
+  showGridlines?: number;
 }
 
 export interface UniverWorkbookData {
@@ -266,6 +267,7 @@ export function templateGridToWorkbookData(
         mergeData: merges,
         rowCount: grid.rowHeights.length,
         columnCount: grid.colWidths.length,
+        showGridlines: 0,
       },
     },
   };

@@ -12,6 +12,7 @@ import { deriveBindingFromGrid } from "@/lib/templates/token-binding"
 import type { TemplateGrid } from "@/lib/templates/types"
 import { isNativeExcelGrid } from "@/lib/templates/native-excel-types"
 import { nativeBindingSchema, validateNativeBinding, NativeExcelError } from "@/lib/templates/native-excel"
+import { excelSource } from "@/lib/templates/web-excel"
 
 export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { error } = await requireAdmin()
@@ -30,6 +31,14 @@ export async function GET(_request: NextRequest, ctx: { params: Promise<{ id: st
       const { version, filename, sha256, sheetName } = template.grid_config.nativeExcel
       const source = { version, filename, sha256, sheetName }
       return jsonOk({ ...template, grid_config: undefined, source })
+    }
+    const source = excelSource(template.grid_config)
+    if (source) {
+      const { base64: _bytes, ...metadata } = source
+      void _bytes
+      const { sourceExcel: _archive, ...grid } = template.grid_config as unknown as import('@/lib/templates/web-excel').WebExcelGrid
+      void _archive
+      return jsonOk({ ...template, grid_config: grid, source: metadata })
     }
     return jsonOk(template)
   } catch (err) {
@@ -56,6 +65,7 @@ const patchSchema = z.object({
             bold: z.boolean().optional(),
             italic: z.boolean().optional(),
             fontSize: z.number().optional(),
+            fontFamily: z.string().max(100).optional(),
             color: z.string().optional(),
             fill: z.string().optional(),
             underline: z.boolean().optional(),
@@ -154,7 +164,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
           ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
           ...(changesCompany ? { company_id: requestedCompanyId } : {}),
           ...(bindingToSave ? { binding_config: bindingToSave as unknown as object } : {}),
-          ...(grid ? { grid_config: grid as unknown as object } : {}),
+          ...(grid ? { grid_config: { ...grid, ...(excelSource(existing.grid_config) ? { sourceExcel: excelSource(existing.grid_config) } : {}) } as unknown as object } : {}),
           updated_by: userIdBigint(session),
         },
       })

@@ -14,7 +14,7 @@ import { deriveBindingFromGrid } from "@/lib/templates/token-binding"
 import { GenericTemplateDocument } from "@/lib/services/print/generic-template-pdf"
 import { isNativeExcelGrid } from "@/lib/templates/native-excel-types"
 import { fillNativeExcel, nativeSourceBytes, NativeExcelError, nativeSampleData } from "@/lib/templates/native-excel"
-import { nativeExcelToPdf } from "@/lib/services/print/native-excel-pdf"
+import { webExcelToPdf } from "@/lib/services/print/web-excel-pdf"
 import type { TemplateBinding } from "@/lib/templates/types"
 
 export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -31,7 +31,7 @@ export async function POST(_request: NextRequest, ctx: { params: Promise<{ id: s
       const source = _request.nextUrl.searchParams.get("source") === "1"
       const nativeBinding = template.binding_config as unknown as TemplateBinding
       const xlsx = source ? nativeSourceBytes(template.grid_config) : await fillNativeExcel(template.grid_config, nativeBinding, nativeSampleData(nativeBinding, sampleTemplateRenderData()))
-      const buffer = await nativeExcelToPdf(xlsx)
+      const buffer = await webExcelToPdf(xlsx, !source)
       return new NextResponse(new Uint8Array(buffer), { headers: { "Content-Type": "application/pdf", "Cache-Control": "no-store" } })
     }
 

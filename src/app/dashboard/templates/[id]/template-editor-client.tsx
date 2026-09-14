@@ -55,6 +55,7 @@ interface TemplateDetail {
   status: "draft" | "active" | "archived";
   page_config: TemplatePageConfig;
   grid_config: TemplateGrid;
+  source?: { filename: string };
   binding_config: TemplateBinding;
   company: { id: string; code: string; name: string };
 }
@@ -437,6 +438,7 @@ export function TemplateEditorClient({ id }: { id: string }) {
         )}
         <span className="text-sm text-muted-foreground">· {STATUS_LABEL[detail.status]}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {detail.source ? <Button variant="outline" size="sm" asChild><a href={`/api/admin/invoice-templates/${id}/source`}>下载原 Excel</a></Button> : null}
           {isDirty ? <span className="text-xs font-medium text-amber-700">有未保存修改</span> : null}
           {detail.status === "draft" ? (
             <>

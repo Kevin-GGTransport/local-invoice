@@ -67,6 +67,7 @@ export function TemplatesClient() {
   const [uploadCompany, setUploadCompany] = React.useState<string>("");
   const [uploadName, setUploadName] = React.useState("");
   const [uploadFile, setUploadFile] = React.useState<File | null>(null);
+  const [uploadLayout, setUploadLayout] = React.useState('original');
   const [previewingId, setPreviewingId] = React.useState<string | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = React.useState<string | null>(null);
@@ -134,6 +135,7 @@ export function TemplatesClient() {
       form.set("company_id", uploadCompany);
       form.set("name", uploadName.trim() || uploadFile.name.replace(/\.xlsx$/i, ""));
       form.set("file", uploadFile);
+      form.set("layout", uploadLayout);
       const res = await fetch("/api/admin/invoice-templates/upload", { method: "POST", body: form });
       if (!res.ok) throw new Error(await getApiErrorMessage(res, "上传失败"));
       const created = (await res.json()) as { data?: { id?: string; warnings?: string[] } };
@@ -253,7 +255,7 @@ export function TemplatesClient() {
       <div className="grid gap-3 rounded-lg border bg-card p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
         <div className="space-y-1.5">
           <Label>公司</Label>
-          <Select value={uploadCompany} onValueChange={setUploadCompany}>
+          <Select value={uploadCompany} onValueChange={value => { setUploadCompany(value); setUploadLayout('original'); }}>
             <SelectTrigger>
               <SelectValue placeholder="选择公司" />
             </SelectTrigger>
@@ -290,13 +292,25 @@ export function TemplatesClient() {
             ) : (
               <FileUp className="mr-2 size-4" />
             )}
-            上传原 Excel
+            上传 Excel 并编辑
           </Button>
         </div>
       </div>
 
       {/* 模版列表 */}
-      <p className="text-sm text-muted-foreground">新上传模板保留 Excel 原文件，通过单元格地址绑定变量。已有模板和历史账单继续使用原有方式。</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <Label>导入版式</Label>
+        <Select value={uploadLayout} onValueChange={setUploadLayout}>
+          <SelectTrigger className="w-72" aria-label="导入版式"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="original">保留 Excel 版式</SelectItem>
+            {companies.find(c => c.id === uploadCompany)?.code.toLowerCase() === 'aa' ? <SelectItem value="aa">按 AA 参考图校准并绑定变量</SelectItem> : null}
+            {companies.find(c => c.id === uploadCompany)?.code.toLowerCase() === 'yg' ? <SelectItem value="yg">按 YG 参考图校准并绑定变量</SelectItem> : null}
+          </SelectContent>
+        </Select>
+        <span className="text-xs text-muted-foreground">参考版式会调整行列、边框和打印区域，并将账单数据位置替换为变量；原 Excel 仍保留。</span>
+      </div>
+      <p className="text-sm text-muted-foreground">上传后在网页表格中调整样式、绑定变量并试打 PDF，无需安装 Office。原 Excel 留存备份；请以试打 PDF 核对边框和分页。已有模板和历史账单不会被覆盖。</p>
       <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
         <Table>
           <TableHeader>

@@ -95,8 +95,14 @@ export function NativeExcelEditor({ id }: { id: string }) {
     </div>
     <p className="text-sm text-muted-foreground">原文件：{detail.source.filename}。在「{detail.source.sheetName}」中绑定单元格地址，合并单元格填左上角地址。样式、公式、图片和打印设置来自上传的 Excel。修改版式请在 Excel 中编辑后上传为新模板。</p>
     <div className="flex flex-wrap gap-2">
+      <Button disabled={busy} onClick={() => void action(async () => {
+        if (dirty) await save();
+        const copy = await fetchJson<{id: string}>(`/api/admin/invoice-templates/${id}/web-draft`, { method: 'POST' });
+        toast.success('已另存为网页草稿，原模板未覆盖，请试打确认后发布');
+        router.push(`/dashboard/templates/${copy.id}`);
+      })}>另存为网页草稿</Button>
       <Button asChild variant="outline"><Link href={`/api/admin/invoice-templates/${id}/source`}>下载原 Excel</Link></Button>
-      <Button disabled={busy} variant="outline" onClick={() => void action(() => preview(true))}>预览原件 PDF</Button>
+      <Button disabled={busy} variant="outline" onClick={() => void action(() => preview(true))}>网页试打原件</Button>
       <Button disabled={busy} variant="outline" onClick={() => void action(sampleDownload)}>下载示例 Excel</Button>
       <Button disabled={busy} variant="outline" onClick={() => void action(() => preview(false))}>预览填入数据后的 PDF</Button>
       {detail.status === 'draft' ? <>
@@ -119,7 +125,7 @@ export function NativeExcelEditor({ id }: { id: string }) {
         <p className="text-xs text-muted-foreground">只填入预留行，不移动总计和页脚。超出容量会提示增加 Excel 预留行。金额列请在 Excel 中设置货币格式。</p>
       </div>
       <div className="min-h-[700px] rounded-lg border bg-muted/20">
-        {pdf ? <iframe title="Excel 打印预览" src={pdf} className="h-[900px] w-full" /> : <div className="p-8 text-sm text-muted-foreground">点击上方预览按钮查看原 Excel 的打印效果。PDF 使用服务器的表格转换引擎，字体需与原件一致；原 Excel 可直接下载核对。</div>}
+        {pdf ? <iframe title="Excel 打印预览" src={pdf} className="h-[900px] w-full" /> : <div className="p-8 text-sm text-muted-foreground">PDF 已使用网页渲染，无需 LibreOffice；不是 Excel 原生打印，字体和分页可能存在差异。需要微调样式请「另存为网页草稿」，不会覆盖原模板或更改历史账单。</div>}
       </div>
     </div>
   </div>;
