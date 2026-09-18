@@ -34,10 +34,37 @@ export async function parseApiResponse<TData>(
 
 export async function fetchJson<TData>(
   url: string,
-  init?: RequestInit
+  init?: RequestInit,
+  timeoutMs = 30_000
 ): Promise<TData> {
-  const response = await fetch(url, init);
-  return parseApiResponse<TData>(response);
+  const controller = new AbortController();
+  let timedOut = false;
+  const externalSignal = init?.signal;
+  const abortFromExternalSignal = () => controller.abort(externalSignal?.reason);
+
+  if (externalSignal?.aborted) {
+    abortFromExternalSignal();
+  } else {
+    externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
+  }
+
+  const timeout = globalThis.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    return await parseApiResponse<TData>(response);
+  } catch (error) {
+    if (timedOut) {
+      throw new ApiClientError("请求超时，请检查网络连接后重试");
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeout);
+    externalSignal?.removeEventListener("abort", abortFromExternalSignal);
+  }
 }
 
 export async function getApiErrorMessage(
