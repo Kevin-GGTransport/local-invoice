@@ -28,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { fetchJson, getApiErrorMessage } from "@/lib/api/client";
+import { fetchJson, fetchResponse, getApiError } from "@/lib/api/client";
 import { loadIntoPdfWindow, reservePdfWindow } from "@/lib/utils/open-pdf";
 
 interface CompanyRow {
@@ -146,8 +146,8 @@ export function TemplatesClient() {
       form.set("name", uploadName.trim() || uploadFile.name.replace(/\.xlsx$/i, ""));
       form.set("file", uploadFile);
       form.set("layout", uploadLayout);
-      const res = await fetch("/api/admin/invoice-templates/upload", { method: "POST", body: form });
-      if (!res.ok) throw new Error(await getApiErrorMessage(res, "上传失败"));
+      const res = await fetchResponse("/api/admin/invoice-templates/upload", { method: "POST", body: form });
+      if (!res.ok) throw await getApiError(res, "上传失败");
       const created = (await res.json()) as { data?: { id?: string; warnings?: string[] } };
       toast.success("样张已解析为草稿模版，即将进入编辑页绑定字段");
       if (created.data?.warnings?.length) {
@@ -175,8 +175,8 @@ export function TemplatesClient() {
     setPreviewingId(id);
     try {
       await loadIntoPdfWindow(popup, async () => {
-        const res = await fetch(`/api/admin/invoice-templates/${id}/preview-pdf`, { method: "POST" });
-        if (!res.ok) throw new Error(await getApiErrorMessage(res, "生成预览失败"));
+        const res = await fetchResponse(`/api/admin/invoice-templates/${id}/preview-pdf`, { method: "POST" });
+        if (!res.ok) throw await getApiError(res, "生成预览失败");
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         setTimeout(() => URL.revokeObjectURL(url), 60_000);

@@ -12,7 +12,13 @@ export async function requireSession(): Promise<{
   session: Session | null
   error: NextResponse | null
 }> {
-  const session = await auth().catch(() => null)
+  let session: Session | null
+  try {
+    session = await auth()
+  } catch (error) {
+    console.error("读取登录会话失败", error)
+    return { session: null, error: jsonError("登录服务暂时不可用，请稍后重试", 500) }
+  }
   if (!session?.user) {
     return { session: null, error: jsonError("未授权", 401) }
   }
@@ -41,6 +47,7 @@ export function userIdBigint(session: Session | null): bigint | null {
 
 /** BigInt 安全的统一成功响应：{ success: true, data } */
 export function jsonOk<TData>(data: TData, status = 200): NextResponse {
+  const requestId = crypto.randomUUID()
   const payload: ApiResponse<TData> = { success: true, data }
   return new NextResponse(
     JSON.stringify(payload, (_key, value) =>
@@ -48,16 +55,35 @@ export function jsonOk<TData>(data: TData, status = 200): NextResponse {
     ),
     {
       status,
-      headers: { "Content-Type": "application/json; charset=utf-8" },
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Request-Id": requestId,
+      },
     }
   )
 }
 
 /** 统一错误响应：{ success: false, error } */
 export function jsonError(message: string, status: number): NextResponse {
-  return new NextResponse(JSON.stringify({ success: false, error: message }), {
+  const requestId = crypto.randomUUID()
+  const code =
+    status === 400 ? "VALIDATION_ERROR" :
+    status === 401 ? "UNAUTHORIZED" :
+    status === 403 ? "FORBIDDEN" :
+    status === 404 ? "NOT_FOUND" :
+    status === 409 ? "CONFLICT" :
+    status === 413 ? "PAYLOAD_TOO_LARGE" :
+    status === 429 ? "RATE_LIMITED" :
+    status >= 500 ? "INTERNAL_ERROR" :
+    "REQUEST_FAILED"
+  return new NextResponse(JSON.stringify({ success: false, error: message, code, requestId }), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Request-Id": requestId,
+    },
   })
 }
 

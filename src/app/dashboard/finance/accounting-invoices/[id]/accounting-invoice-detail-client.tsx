@@ -11,7 +11,7 @@ import { ArrowLeft, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { AccountingInvoiceForm } from "@/components/finance/accounting-invoice-form"
-import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
+import { fetchJson, fetchResponse, getApiError } from "@/lib/api/client"
 import { openPdf } from "@/lib/utils/open-pdf"
 import { AA_COLD_CHAIN_RENDERER_KEY } from "@/lib/finance/accounting-invoice-renderers"
 
@@ -62,11 +62,12 @@ export function AccountingInvoiceDetailClient({ id }: { id: string }) {
   const downloadExcel = async () => {
     setDownloadingExcel(true)
     try {
-      const response = await fetch(`/api/finance/accounting-invoices/${id}/pdf?format=xlsx`)
-      if (!response.ok) throw new Error(await getApiErrorMessage(response, '下载失败'))
+      const response = await fetchResponse(`/api/finance/accounting-invoices/${id}/pdf?format=xlsx`)
+      if (!response.ok) throw await getApiError(response, '下载失败')
       const url = URL.createObjectURL(await response.blob())
       const a = document.createElement('a'); a.href = url; a.download = `${invoiceNumber}.xlsx`; a.click()
       setTimeout(() => URL.revokeObjectURL(url), 10000)
+      toast.success("Excel 已下载")
     } catch (e) { toast.error(e instanceof Error ? e.message : '下载失败') }
     finally { setDownloadingExcel(false) }
   }

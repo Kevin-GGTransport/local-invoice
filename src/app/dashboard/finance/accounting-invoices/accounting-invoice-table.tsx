@@ -38,7 +38,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { AccountingInvoicesBatchPdf } from "@/components/finance/accounting-invoices-batch-pdf"
-import { fetchJson, getApiErrorMessage } from "@/lib/api/client"
+import { fetchJson, fetchResponse, getApiError, parseApiResponse } from "@/lib/api/client"
 import { openPdf, reservePdfWindow } from "@/lib/utils/open-pdf"
 import { MAX_NEGATIVE_INVOICE_DATE_BATCH } from "@/lib/finance/accounting-invoice-negative-date"
 import { MAX_INVOICE_DEDUCTION_BATCH } from "@/lib/finance/accounting-invoice-deduction"
@@ -122,6 +122,28 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
+function readImportErrorDetails(payload: unknown): {
+  rowErrors: ImportRowError[]
+  ignoredColumns: string[] | null
+} | null {
+  if (!payload || typeof payload !== "object") return null
+  const failure = payload as { success?: unknown; details?: unknown }
+  if (failure.success !== false || !failure.details || typeof failure.details !== "object") return null
+  const details = failure.details as { rowErrors?: unknown; ignoredColumns?: unknown }
+  if (!Array.isArray(details.rowErrors)) return null
+  const rowErrors = details.rowErrors.filter(
+    (item): item is ImportRowError =>
+      !!item &&
+      typeof item === "object" &&
+      typeof (item as { row?: unknown }).row === "number" &&
+      typeof (item as { message?: unknown }).message === "string"
+  )
+  const ignoredColumns = Array.isArray(details.ignoredColumns)
+    ? details.ignoredColumns.filter((item): item is string => typeof item === "string")
+    : null
+  return rowErrors.length > 0 ? { rowErrors, ignoredColumns } : null
+}
+
 function localToday(): string {
   const now = new Date()
   const pad = (value: number) => String(value).padStart(2, "0")
@@ -142,10 +164,9 @@ function CardField({ label, value }: { label: string; value: string }) {
 async function downloadExport(url: string, filename: string, successToast: string) {
   try {
     toast.loading("正在生成 Excel 文件，请稍候...")
-    const response = await fetch(url)
+    const response = await fetchResponse(url)
     if (!response.ok) {
-      const errorMsg = await getApiErrorMessage(response, `导出失败 (${response.status})`)
-      throw new Error(errorMsg)
+      throw await getApiError(response, `导出失败 (${response.status})`)
     }
     const blob = await response.blob()
     const objectUrl = window.URL.createObjectURL(blob)
@@ -802,32 +823,23 @@ export function AccountingInvoiceTable({ initialToday }: { initialToday: string 
     if (!importFile || importing) return
     setImporting(true)
     try {
-      // 裸 fetch（不走 fetchJson）：错误响应需读取 details.rowErrors 展示行级明细
+      // 保留原始响应以读取批量导入的行级错误，但仍走统一超时/鉴权策略。
       const form = new FormData()
       form.set("file", importFile)
-      const res = await fetch("/api/finance/accounting-invoices/import", {
+      const res = await fetchResponse("/api/finance/accounting-invoices/import", {
         method: "POST",
         body: form,
       })
-      // 平台/代理错误（413、502 等）可能返回非 JSON，解析失败按无明细处理
-      const payload = (await res.json().catch(() => null)) as
-        | { success: true; data: ImportSummary }
-        | {
-            success: false
-            error: string
-            details?: { rowErrors?: ImportRowError[]; ignoredColumns?: string[] }
-          }
-        | null
-      if (!res.ok || !payload || !payload.success) {
-        if (payload?.success === false && payload.details?.rowErrors?.length) {
-          setImportRowErrors(payload.details.rowErrors)
-          setImportIgnoredColumns(payload.details.ignoredColumns ?? null)
+      if (!res.ok) {
+        // Response 已在统一请求层缓冲，可安全 clone 一份提取可选的行级错误。
+        const details = readImportErrorDetails(await res.clone().json().catch(() => null))
+        if (details) {
+          setImportRowErrors(details.rowErrors)
+          setImportIgnoredColumns(details.ignoredColumns)
         }
-        throw new Error(
-          payload?.success === false && payload.error ? payload.error : "导入失败，请重试"
-        )
+        throw await getApiError(res, "导入失败，请重试")
       }
-      const { total, created, updated } = payload.data
+      const { total, created, updated } = await parseApiResponse<ImportSummary>(res)
       toast.success(`导入完成：共 ${total} 行，新增 ${created} 条，更新 ${updated} 条`)
       setImportOpen(false)
       setImportFile(null)

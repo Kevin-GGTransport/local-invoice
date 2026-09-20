@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { fetchJson, getApiErrorMessage } from '@/lib/api/client';
+import { fetchJson, fetchResponse, getApiError } from '@/lib/api/client';
 import { columnName, type NativeExcelDetail } from '@/lib/templates/native-excel-types';
 import { TEMPLATE_FIELDS, type TemplateBinding } from '@/lib/templates/types';
 
@@ -72,17 +72,18 @@ export function NativeExcelEditor({ id }: { id: string }) {
   }
   async function preview(source: boolean) {
     if (!source) await save();
-    const response = await fetch(`/api/admin/invoice-templates/${id}/preview-pdf${source ? '?source=1' : ''}`, { method: 'POST' });
-    if (!response.ok) throw new Error(await getApiErrorMessage(response, '预览失败'));
+    const response = await fetchResponse(`/api/admin/invoice-templates/${id}/preview-pdf${source ? '?source=1' : ''}`, { method: 'POST' });
+    if (!response.ok) throw await getApiError(response, '预览失败');
     setPdf(URL.createObjectURL(await response.blob()));
   }
   async function sampleDownload() {
     await save();
-    const response = await fetch(`/api/admin/invoice-templates/${id}/source?sample=1`);
-    if (!response.ok) throw new Error(await getApiErrorMessage(response, '下载失败'));
+    const response = await fetchResponse(`/api/admin/invoice-templates/${id}/source?sample=1`);
+    if (!response.ok) throw await getApiError(response, '下载失败');
     const url = URL.createObjectURL(await response.blob());
     const a = document.createElement('a'); a.href = url; a.download = `示例-${detail?.source.filename || 'template.xlsx'}`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast.success('示例 Excel 已下载');
   }
   if (!detail) return <div className="p-6">{error || '正在加载 Excel 模板…'}</div>;
   const editable = detail.status === 'draft' && !busy;

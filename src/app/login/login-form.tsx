@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -42,22 +43,33 @@ export function LoginForm() {
       ? raw
       : "/dashboard";
 
+  useEffect(() => {
+    if (searchParams.get("reason") === "session-expired") {
+      toast.error("登录已过期，请重新登录");
+    }
+  }, [searchParams]);
+
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { username: "", password: "" },
   });
 
   const onSubmit = async (values: LoginValues) => {
-    const result = await signIn("credentials", {
-      ...values,
-      redirect: false,
-    });
-    if (result?.error) {
-      toast.error("用户名或密码错误");
-      return;
+    try {
+      const result = await signIn("credentials", {
+        ...values,
+        redirect: false,
+      });
+      if (result?.error) {
+        toast.error("用户名或密码错误");
+        return;
+      }
+      toast.success("登录成功");
+      router.push(callbackUrl);
+      router.refresh();
+    } catch {
+      toast.error("暂时无法连接登录服务，请稍后重试");
     }
-    router.push(callbackUrl);
-    router.refresh();
   };
 
   return (

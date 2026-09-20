@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/select";
 import type { UniverEditorHandle } from "@/components/templates/univer-editor";
 import { TemplatePreview } from "@/components/templates/template-preview";
-import { fetchJson, getApiErrorMessage } from "@/lib/api/client";
+import { fetchJson, fetchResponse, getApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { loadIntoPdfWindow, reservePdfWindow } from "@/lib/utils/open-pdf";
 import { renderTemplateData, sampleTemplateRenderData } from "@/lib/templates/render-template-data";
@@ -305,10 +305,10 @@ export function TemplateEditorClient({ id }: { id: string }) {
         }
       }
       await loadIntoPdfWindow(popup, async () => {
-        const res = await fetch(`/api/admin/invoice-templates/${detail.id}/preview-pdf`, {
+        const res = await fetchResponse(`/api/admin/invoice-templates/${detail.id}/preview-pdf`, {
           method: "POST",
         });
-        if (!res.ok) throw new Error(await getApiErrorMessage(res, "生成预览失败"));
+        if (!res.ok) throw await getApiError(res, "生成预览失败");
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
