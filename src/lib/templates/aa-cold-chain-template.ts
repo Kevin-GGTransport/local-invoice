@@ -12,6 +12,7 @@ export const AA_COLD_CHAIN_PAGE_CONFIG: TemplatePageConfig = {
 export interface AaColdChainRenderData {
   invoiceNumber: string
   invoiceDate: string
+  dateRange: string
   loadNumber: string
   billTo: string
   total: string
@@ -85,6 +86,8 @@ export function buildAaColdChainGrid(data: AaColdChainRenderData): TemplateGrid 
   cells.push(cell(5, 5, data.invoiceDate, { fontSize: 10, halign: 'right', wrap: true }))
   cells.push(cell(6, 3, 'Load no.', { bold: true, fontSize: 14, color: '#333333', halign: 'right' }))
   cells.push(cell(6, 5, data.loadNumber, { fontSize: 10, halign: 'right', wrap: true }))
+  cells.push(cell(7, 3, 'Date range', { bold: true, fontSize: 14, color: '#333333', halign: 'right' }))
+  cells.push(cell(7, 5, data.dateRange, { fontSize: 10, halign: 'right', wrap: true }))
   cells.push(cell(8, 0, 'TO', { bold: true, fontSize: 14, color: '#333333' }))
   cells.push(cell(9, 0, data.billTo, { fontSize: 11, wrap: true }, 3))
 
@@ -151,6 +154,7 @@ export function sampleAaColdChainRenderData(): AaColdChainRenderData {
   return {
     invoiceNumber: 'AA092026001',
     invoiceDate: '09/11/2026',
+    dateRange: '09/10/2026-09/12/2026',
     loadNumber: 'CL-001',
     billTo: 'WELCOME MARKET INC',
     total: '$1,250.00',

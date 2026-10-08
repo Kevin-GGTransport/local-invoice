@@ -73,6 +73,8 @@ interface FormValues {
   contract_price: string
   invoice_number: string
   invoice_date: string
+  date_range_start: string
+  date_range_end: string
   broker_load_number: string
   bill_to: string
   tonu: boolean
@@ -162,6 +164,13 @@ function formatDateInput(v: string): string {
   return `${m}/${d}/${y}`
 }
 
+function formatDateRange(start: string, end: string): string {
+  const startDate = formatDateInput(start)
+  const endDate = formatDateInput(end)
+  if (startDate && endDate) return `${startDate}-${endDate}`
+  return startDate || endDate
+}
+
 /** 编辑回显：把接口返回的明细行转成表单结构 */
 function initLines(data: RowData): FormLine[] {
   const raw = Array.isArray(data?.accounting_invoice_lines) ? data.accounting_invoice_lines : []
@@ -195,6 +204,8 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
     contract_price: str(data?.contract_price),
     invoice_number: str(data?.invoice_number),
     invoice_date: dateStr(data?.invoice_date),
+    date_range_start: dateStr(data?.date_range_start),
+    date_range_end: dateStr(data?.date_range_end),
     broker_load_number: str(data?.broker_load_number),
     bill_to: str(data?.bill_to),
     tonu: data?.tonu === true,
@@ -287,6 +298,15 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
       toast.error("请选择公司")
       return
     }
+    if (
+      isColdChain &&
+      values.date_range_start &&
+      values.date_range_end &&
+      values.date_range_end < values.date_range_start
+    ) {
+      toast.error("Date range 结束日期不能早于开始日期")
+      return
+    }
     setLoading(true)
     try {
       const dateOrNull = (v: string) => (v.trim() === "" ? null : v.trim())
@@ -320,6 +340,8 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
         billing_category: billingCategoryPayloadValue(values.billing_category),
         ...(!isEditing ? { contract_price: toNumber(values.contract_price) } : {}),
         invoice_number: values.invoice_number.trim(),
+        date_range_start: isColdChain ? dateOrNull(values.date_range_start) : null,
+        date_range_end: isColdChain ? dateOrNull(values.date_range_end) : null,
         broker_load_number: values.broker_load_number.trim() || null,
         bill_to: values.bill_to.trim() || null,
         tonu: values.tonu,
@@ -361,6 +383,7 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
       return buildAaColdChainGrid({
         invoiceNumber: values.invoice_number,
         invoiceDate: formatDateInput(values.invoice_date),
+        dateRange: formatDateRange(values.date_range_start, values.date_range_end),
         loadNumber: values.broker_load_number,
         billTo: values.bill_to,
         total: total == null ? "$0.00" : fmtMoney(total),
@@ -501,6 +524,28 @@ export function AccountingInvoiceForm({ data, onSuccess, onCancel, cancelLabel =
                 <Input type="number" step="0.01" value={values.contract_price} onChange={(e) => setField("contract_price", e.target.value)} disabled={isEditing} className={inputCls} />
               </div>
               {renderField("broker_load_number", "Load #")}
+              {isColdChain && (
+                <div className="col-span-2 space-y-1">
+                  <Label className="text-xs" htmlFor="invoice-date-range-start">Date range</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      id="invoice-date-range-start"
+                      type="date"
+                      value={values.date_range_start}
+                      onChange={(e) => setField("date_range_start", e.target.value)}
+                      className={inputCls}
+                    />
+                    <Input
+                      id="invoice-date-range-end"
+                      type="date"
+                      aria-label="Date range 结束日期"
+                      value={values.date_range_end}
+                      onChange={(e) => setField("date_range_end", e.target.value)}
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+              )}
               {renderField("bill_to", "客户 / Broker 公司（Bill To）")}
               <div className="space-y-1">
                 <Label className="text-xs">账单分类</Label>

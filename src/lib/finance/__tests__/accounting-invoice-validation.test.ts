@@ -51,6 +51,18 @@ test('create and update schemas carry the deduction note within 200 chars', () =
   )
 })
 
+test('create and update schemas carry editable date-range dates', () => {
+  const base = { company: 'AA', invoice_number: 'AA-001' }
+  const expected = { date_range_start: '2026-09-21', date_range_end: '2026-09-26' }
+
+  const created = accountingInvoiceCreateSchema.parse({ ...base, ...expected })
+  assert.equal(created.company, 'AA')
+  assert.equal(created.invoice_number, 'AA-001')
+  assert.equal(created.date_range_start, expected.date_range_start)
+  assert.equal(created.date_range_end, expected.date_range_end)
+  assert.deepEqual(accountingInvoiceUpdateSchema.parse(expected), expected)
+})
+
 test('tonu stays an optional boolean on create and update', () => {
   assert.equal(
     accountingInvoiceCreateSchema.parse({ company: 'GNG', invoice_number: 'INV-001', tonu: true }).tonu,

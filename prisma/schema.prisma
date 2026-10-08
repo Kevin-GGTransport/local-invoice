@@ -38,6 +38,8 @@ model accounting_invoices {
   tonu                     Boolean                    @default(false)
   invoice_number           String                     @unique @db.VarChar(50)
   invoice_date             DateTime?                  @db.Date
+  date_range_start         DateTime?                  @db.Date
+  date_range_end           DateTime?                  @db.Date
   invoice_price            Decimal?                   @db.Decimal(12, 2)
   check_date               DateTime?                  @db.Date
   check_amount             Decimal?                   @db.Decimal(12, 2)

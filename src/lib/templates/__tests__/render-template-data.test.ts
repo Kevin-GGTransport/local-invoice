@@ -214,6 +214,18 @@ describe('renderTemplateData', () => {
 })
 
 describe('buildAaColdChainGrid', () => {
+  it('在 Load no. 下方渲染 Date range，且不移动后续版式', () => {
+    const out = buildAaColdChainGrid({
+      ...sampleAaColdChainRenderData(),
+      dateRange: '09/21/2026-09/26/2026',
+    })
+
+    assert.equal(out.cells.find((c) => c.row === 7 && c.col === 3)?.text, 'Date range')
+    assert.equal(out.cells.find((c) => c.row === 7 && c.col === 5)?.text, '09/21/2026-09/26/2026')
+    assert.equal(out.cells.find((c) => c.row === 8 && c.col === 0)?.text, 'TO')
+    assert.equal(out.cells.find((c) => c.row === 14 && c.col === 0)?.text, 'DATE')
+  })
+
   it('把运输日期、提货地址、三个卸货地址和 RATE 放入对应列', () => {
     const out = buildAaColdChainGrid(sampleAaColdChainRenderData())
     assert.equal(out.cells.find((c) => c.row === 15 && c.col === 0)?.text, '09/10/2026')

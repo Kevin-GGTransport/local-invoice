@@ -40,6 +40,13 @@ function formatDate(date: Date | null): string {
   return `${mm}/${dd}/${date.getUTCFullYear()}`
 }
 
+function formatDateRange(start: Date | null, end: Date | null): string {
+  const startDate = formatDate(start)
+  const endDate = formatDate(end)
+  if (startDate && endDate) return `${startDate}-${endDate}`
+  return startDate || endDate
+}
+
 function formatNumber(value: unknown): string {
   const num = Number(value)
   if (value == null || Number.isNaN(num)) return ''
@@ -64,6 +71,7 @@ export async function generateAccountingInvoicePdf(id: bigint, format: 'pdf' | '
     const grid = buildAaColdChainGrid({
       invoiceNumber: row.invoice_number,
       invoiceDate: formatDate(row.invoice_date),
+      dateRange: formatDateRange(row.date_range_start, row.date_range_end),
       loadNumber: row.broker_load_number ?? '',
       billTo: row.bill_to ?? '',
       total: formatMoney(Math.round(total * 100) / 100),
