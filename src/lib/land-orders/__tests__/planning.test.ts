@@ -7,7 +7,7 @@ function source(): LandOrderPlanningSource {
   return {
     id: BigInt(1),
     identifier: "AA",
-    company_code: "AA",
+    operating_company: "AA",
     dispatch_person: "刘辉Eric",
     broker: "Matrix",
     load_number: "141288",

@@ -10,7 +10,7 @@ export const LAND_ORDER_STOP_TYPES = ["pickup", "drop"] as const
 export const LAND_ORDER_SORT_FIELDS_SAFE = [
   "pickup_date",
   "drop_date",
-  "company_code",
+  "operating_company",
   "identifier",
   "load_number",
   "broker",
@@ -147,9 +147,9 @@ export const landOrderStopSchema = stopBaseSchema.superRefine((stop, ctx) => {
 export const landOrderCreateSchema = z
   .object({
     identifier: optionalText(50, "标识"),
-    company_code: z.preprocess(
-      (value) => (typeof value === "string" ? value.trim().toUpperCase() : value),
-      z.string().min(1, "请选择公司").max(20, "公司代码不能超过 20 个字符")
+    operating_company: z.preprocess(
+      (value) => (typeof value === "string" ? value.trim() : value),
+      z.string().min(1, "请填写运营公司").max(100, "运营公司不能超过 100 个字符")
     ),
     dispatch_person: optionalText(100, "提货/调度人"),
     broker: optionalText(100, "Broker"),

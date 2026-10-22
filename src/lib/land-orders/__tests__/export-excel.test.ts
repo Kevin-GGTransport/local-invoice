@@ -8,7 +8,7 @@ test("Excel 生成标题、表头、冻结行、筛选与多行站点", async ()
   const source: LandOrderPlanningSource = {
     id: BigInt(1),
     identifier: "AA",
-    company_code: "AA",
+    operating_company: "AA",
     dispatch_person: "刘辉Eric",
     broker: "Matrix",
     load_number: "00141288",

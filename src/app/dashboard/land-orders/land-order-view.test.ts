@@ -10,7 +10,7 @@ test("视图配置保存筛选、排序、列显隐与列组顺序并安全解�
   const config = buildLandOrderViewConfig({
     filters: {
       search: "Matrix",
-      company: "AA",
+      operatingCompany: "G&G",
       status: "planned",
       driver: "Gary",
       haulType: "long_haul",

@@ -12,7 +12,7 @@ import type { LandOrderPlanningSource } from "../planning"
 test("筛选参数被规范化并拒绝非法枚举、日期与排序", () => {
   const params = new URLSearchParams({
     q: " Santa Rosa ",
-    company: "aa",
+    operatingCompany: "aa",
     status: "planned",
     driver: "Gary",
     haulType: "long_haul",
@@ -24,7 +24,7 @@ test("筛选参数被规范化并拒绝非法枚举、日期与排序", () => {
   })
   assert.deepEqual(parseLandOrderQuery(params), {
     q: "Santa Rosa",
-    company: "AA",
+    operatingCompany: "aa",
     status: "planned",
     driver: "Gary",
     haulType: "long_haul",
@@ -60,7 +60,7 @@ function fixtureOrder(): LandOrderPlanningSource & { id: bigint } {
   return {
     id: BigInt(7),
     identifier: "AA",
-    company_code: "AA",
+    operating_company: "AA",
     dispatch_person: "刘辉Eric",
     broker: "Matrix",
     load_number: "141288",

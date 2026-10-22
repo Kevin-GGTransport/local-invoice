@@ -4,7 +4,6 @@ import { jsonError, jsonOk, readJsonBody, requireSession, userIdBigint } from "@
 import { landOrderCreateSchema } from "@/lib/land-orders/validation"
 import { LandOrderQueryError, readLandOrders } from "@/lib/land-orders/query"
 import {
-  companyExists,
   parseLandOrderIds,
   toLandOrderCreateData,
   toLandOrderStopCreateData,
@@ -43,10 +42,6 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) {
       return jsonError(parsed.error.issues[0]?.message ?? "参数校验失败", 400)
     }
-    if (!(await companyExists(prisma, parsed.data.company_code, true))) {
-      return jsonError("公司不存在或已停用", 400)
-    }
-
     const createdBy = userIdBigint(session)
     const order = await prisma.$transaction(async (tx) => {
       const data = toLandOrderCreateData(parsed.data)
@@ -62,8 +57,6 @@ export async function POST(request: NextRequest) {
     })
     return jsonOk(order, 201)
   } catch (error) {
-    const code = (error as { code?: string })?.code
-    if (code === "P2025") return jsonError("公司不存在", 404)
     console.error("创建陆运订单失败", error)
     return jsonError("创建陆运订单失败", 500)
   }

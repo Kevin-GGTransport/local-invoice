@@ -99,7 +99,7 @@ model accounting_invoice_reconciliations {
 model land_orders {
   id               BigInt             @id @default(autoincrement())
   identifier       String?            @db.VarChar(50)
-  company_code     String             @db.VarChar(20)
+  operating_company String             @db.VarChar(100)
   dispatch_person  String?            @db.VarChar(100)
   broker           String?            @db.VarChar(100)
   load_number      String?            @db.VarChar(100)
@@ -122,7 +122,7 @@ model land_orders {
   updated_by       BigInt?
   land_order_stops land_order_stops[]
 
-  @@index([company_code], map: "idx_land_orders_company_code")
+  @@index([operating_company], map: "idx_land_orders_operating_company")
   @@index([status], map: "idx_land_orders_status")
   @@index([created_at], map: "idx_land_orders_created_at")
   @@index([driver], map: "idx_land_orders_driver")

@@ -24,7 +24,7 @@ function stop(stopType: "pickup" | "drop", overrides: Record<string, unknown> = 
 function order(stops: Array<ReturnType<typeof stop>>, overrides: Record<string, unknown> = {}) {
   return {
     identifier: "AA",
-    company_code: "aa",
+    operating_company: "aa",
     dispatch_person: "刘辉Eric",
     broker: "Matrix",
     load_number: "141288",
@@ -48,7 +48,7 @@ function order(stops: Array<ReturnType<typeof stop>>, overrides: Record<string, 
 
 test("截图订单通过校验并规范化字段", () => {
   const parsed = landOrderCreateSchema.parse(order([stop("pickup"), stop("drop")]))
-  assert.equal(parsed.company_code, "AA")
+  assert.equal(parsed.operating_company, "aa")
   assert.equal(parsed.quantity, 26)
   assert.equal(parsed.weight_lbs, 44000)
   assert.equal(parsed.price, 700)

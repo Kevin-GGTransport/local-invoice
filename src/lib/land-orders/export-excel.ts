@@ -7,7 +7,7 @@ import {
 
 const COLUMNS = [
   { header: "标识", width: 16 },
-  { header: "公司", width: 10 },
+  { header: "运营公司", width: 16 },
   { header: "Load #", width: 16, text: true },
   { header: "数量", width: 10, number: true },
   { header: "板位", width: 10, number: true },
@@ -83,7 +83,7 @@ export async function generateLandOrderPlanningExcel(
   for (const row of rows) {
     const values: Array<string | number | ""> = [
       row.identifier ?? "",
-      row.company_code,
+      row.operating_company,
       row.load_number ?? "",
       row.quantity ?? "",
       row.pallet_positions ?? "",

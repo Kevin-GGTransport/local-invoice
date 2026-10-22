@@ -18,7 +18,7 @@ export type LandOrderPlanningStop = {
 export type LandOrderPlanningSource = {
   id: string | bigint
   identifier?: string | null
-  company_code: string
+  operating_company: string
   dispatch_person?: string | null
   broker?: string | null
   load_number?: string | null

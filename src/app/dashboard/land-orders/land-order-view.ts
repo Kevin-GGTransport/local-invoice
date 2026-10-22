@@ -18,7 +18,7 @@ export const DEFAULT_LAND_ORDER_GROUP_ORDER = [
 ] as const
 
 export const LAND_ORDER_GROUP_LEAF_COLUMN_IDS: Record<string, string[]> = {
-  identification: ["select", "identifier", "company_code", "load_number"],
+  identification: ["select", "identifier", "operating_company", "load_number"],
   cargo: ["quantity", "pallet_positions", "weight_lbs", "note"],
   pickup: ["dispatch_person", "pickup_locations", "pickup_dates", "pickup_times"],
   delivery: ["drop_locations", "drop_dates", "drop_times", "delivery_person"],
@@ -39,7 +39,7 @@ export const LAND_ORDER_COLUMN_SETTINGS_GROUPS = [
     columns: [
       { id: "select", label: "勾选", locked: true },
       { id: "identifier", label: "标识" },
-      { id: "company_code", label: "公司" },
+      { id: "operating_company", label: "公司" },
       { id: "load_number", label: "Load #" },
     ],
   },
@@ -96,7 +96,7 @@ export const LAND_ORDER_COLUMN_SETTINGS_GROUPS = [
 
 export type LandOrderViewFilters = {
   search: string
-  company: string
+  operatingCompany: string
   status: string
   driver: string
   haulType: string
@@ -159,7 +159,7 @@ export function parseLandOrderViewConfig(config: unknown): LandOrderViewConfig |
   return {
     filters: {
       search: safeString(filters.search, 100),
-      company: safeString(filters.company, 20),
+      operatingCompany: safeString(filters.operatingCompany, 100),
       status: ["draft", "planned", "completed", "cancelled"].includes(status) ? status : "",
       driver: safeString(filters.driver, 100),
       haulType: ["local", "long_haul"].includes(haulType) ? haulType : "",

@@ -38,7 +38,6 @@ import {
   type SelectedLandOrderRow,
 } from "./land-order-columns"
 
-type CompanyOption = { id: string; code: string; name: string; is_active: boolean }
 type ApiTableView = {
   id: string
   table_key: string
@@ -100,7 +99,8 @@ export function LandOrderTable() {
   const router = useRouter()
   const [searchInput, setSearchInput] = React.useState("")
   const [appliedSearch, setAppliedSearch] = React.useState("")
-  const [company, setCompany] = React.useState("all")
+  const [operatingCompanyInput, setOperatingCompanyInput] = React.useState("")
+  const [appliedOperatingCompany, setAppliedOperatingCompany] = React.useState("")
   const [status, setStatus] = React.useState("all")
   const [driverInput, setDriverInput] = React.useState("")
   const [appliedDriver, setAppliedDriver] = React.useState("")
@@ -108,7 +108,6 @@ export function LandOrderTable() {
   const [todoDone, setTodoDone] = React.useState("all")
   const [dateFrom, setDateFrom] = React.useState("")
   const [dateTo, setDateTo] = React.useState("")
-  const [companyOptions, setCompanyOptions] = React.useState<CompanyOption[]>([])
   const [columnOverrides, setColumnOverrides] = React.useState<VisibilityState>({})
   const [groupOrder, setGroupOrder] = React.useState<string[]>([...DEFAULT_LAND_ORDER_GROUP_ORDER])
   const [views, setViews] = React.useState<ApiTableView[]>([])
@@ -122,12 +121,6 @@ export function LandOrderTable() {
 
   React.useEffect(() => {
     setGroupOrder(loadGroupOrder())
-  }, [])
-
-  React.useEffect(() => {
-    void fetchJson<CompanyOption[]>("/api/companies")
-      .then(setCompanyOptions)
-      .catch(() => setCompanyOptions([]))
   }, [])
 
   const buildParams = React.useCallback(
@@ -153,7 +146,9 @@ export function LandOrderTable() {
         params.set("order", "asc")
       }
       if (appliedSearch) params.set("q", appliedSearch)
-      if (company !== "all") params.set("company", company)
+      if (appliedOperatingCompany) {
+        params.set("operatingCompany", appliedOperatingCompany)
+      }
       if (status !== "all") params.set("status", status)
       if (appliedDriver) params.set("driver", appliedDriver)
       if (haulType !== "all") params.set("haulType", haulType)
@@ -162,7 +157,16 @@ export function LandOrderTable() {
       if (dateTo) params.set("dateTo", dateTo)
       return params
     },
-    [appliedDriver, appliedSearch, company, dateFrom, dateTo, haulType, status, todoDone]
+    [
+      appliedDriver,
+      appliedOperatingCompany,
+      appliedSearch,
+      dateFrom,
+      dateTo,
+      haulType,
+      status,
+      todoDone,
+    ]
   )
 
   const {
@@ -312,7 +316,7 @@ export function LandOrderTable() {
     (): LandOrderViewConfig => ({
       filters: {
         search: appliedSearch,
-        company: company === "all" ? "" : company,
+        operatingCompany: appliedOperatingCompany,
         status: status === "all" ? "" : status,
         driver: appliedDriver,
         haulType: haulType === "all" ? "" : haulType,
@@ -326,8 +330,8 @@ export function LandOrderTable() {
     }),
     [
       appliedDriver,
+      appliedOperatingCompany,
       appliedSearch,
-      company,
       dateFrom,
       dateTo,
       groupOrder,
@@ -343,7 +347,8 @@ export function LandOrderTable() {
     (config: LandOrderViewConfig, viewId: string | null) => {
       setSearchInput(config.filters.search)
       setAppliedSearch(config.filters.search)
-      setCompany(config.filters.company || "all")
+      setOperatingCompanyInput(config.filters.operatingCompany)
+      setAppliedOperatingCompany(config.filters.operatingCompany)
       setStatus(config.filters.status || "all")
       setDriverInput(config.filters.driver)
       setAppliedDriver(config.filters.driver)
@@ -491,7 +496,8 @@ export function LandOrderTable() {
   const resetFilters = React.useCallback(() => {
     setSearchInput("")
     setAppliedSearch("")
-    setCompany("all")
+    setOperatingCompanyInput("")
+    setAppliedOperatingCompany("")
     setStatus("all")
     setDriverInput("")
     setAppliedDriver("")
@@ -529,7 +535,7 @@ export function LandOrderTable() {
 
   const activeFilterCount = [
     appliedSearch,
-    company !== "all" ? company : "",
+    appliedOperatingCompany,
     status !== "all" ? status : "",
     appliedDriver,
     haulType !== "all" ? haulType : "",
@@ -635,25 +641,23 @@ export function LandOrderTable() {
             </Button>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <Select
-              value={company}
-              onValueChange={(value) => {
-                setCompany(value)
+            <Input
+              aria-label="运营公司"
+              placeholder="运营公司"
+              className="h-10"
+              value={operatingCompanyInput}
+              onChange={(event) => setOperatingCompanyInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  setAppliedOperatingCompany(operatingCompanyInput)
+                  setPage(1)
+                }
+              }}
+              onBlur={() => {
+                setAppliedOperatingCompany(operatingCompanyInput)
                 setPage(1)
               }}
-            >
-              <SelectTrigger className="h-10">
-                <SelectValue placeholder="公司" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部公司</SelectItem>
-                {companyOptions.map((item) => (
-                  <SelectItem key={item.code} value={item.code}>
-                    {item.code}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
             <Select
               value={status}
               onValueChange={(value) => {

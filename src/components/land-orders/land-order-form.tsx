@@ -18,13 +18,6 @@ import {
 import { fetchJson, getRequestErrorMessage } from "@/lib/api/client"
 import { MAX_LAND_ORDER_STOPS } from "@/lib/land-orders/validation"
 
-type CompanyOption = {
-  id: string
-  code: string
-  name: string
-  is_active: boolean
-}
-
 type StopForm = {
   stop_type: "pickup" | "drop"
   company_name: string
@@ -42,7 +35,7 @@ type StopForm = {
 
 type OrderForm = {
   identifier: string
-  company_code: string
+  operating_company: string
   dispatch_person: string
   broker: string
   load_number: string
@@ -96,7 +89,7 @@ function emptyStop(stopType: "pickup" | "drop"): StopForm {
 function emptyOrder(): OrderForm {
   return {
     identifier: "",
-    company_code: "",
+    operating_company: "",
     dispatch_person: "",
     broker: "",
     load_number: "",
@@ -121,7 +114,7 @@ function orderFromRecord(record: LandOrderRecord): OrderForm {
   const rawStops = Array.isArray(record.land_order_stops) ? record.land_order_stops : []
   return {
     identifier: text(record.identifier),
-    company_code: text(record.company_code),
+    operating_company: text(record.operating_company),
     dispatch_person: text(record.dispatch_person),
     broker: text(record.broker),
     load_number: text(record.load_number),
@@ -180,22 +173,18 @@ function Field({
 export function LandOrderForm({ orderId }: { orderId?: string }) {
   const router = useRouter()
   const isEditing = orderId != null
-  const [companies, setCompanies] = React.useState<CompanyOption[]>([])
   const [values, setValues] = React.useState<OrderForm>(emptyOrder)
   const [loading, setLoading] = React.useState(orderId != null)
   const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
+    if (!orderId) return
     let cancelled = false
     void (async () => {
       try {
-        const [companyList, order] = await Promise.all([
-          fetchJson<CompanyOption[]>("/api/companies"),
-          orderId ? fetchJson<LandOrderRecord>(`/api/land-orders/${orderId}`) : null,
-        ])
+        const order = await fetchJson<LandOrderRecord>(`/api/land-orders/${orderId}`)
         if (cancelled) return
-        setCompanies(companyList)
-        if (order) setValues(orderFromRecord(order))
+        setValues(orderFromRecord(order))
       } catch (error) {
         toast.error(getRequestErrorMessage(error, "加载陆运订单失败"))
       } finally {
@@ -250,8 +239,8 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!values.company_code) {
-      toast.error("请选择公司")
+    if (!values.operating_company) {
+      toast.error("请填写运营公司")
       return
     }
     if (!values.stops.some((stop) => stop.stop_type === "pickup")) {
@@ -315,23 +304,12 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="公司">
-            <Select value={values.company_code} onValueChange={(value) => update("company_code", value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="选择公司" />
-              </SelectTrigger>
-              <SelectContent>
-                {companies.map((company) => (
-                  <SelectItem
-                    key={company.code}
-                    value={company.code}
-                    disabled={!isEditing && !company.is_active}
-                  >
-                    {company.code} · {company.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <Field label="运营公司">
+            <Input
+              value={values.operating_company}
+              placeholder="独立于开票公司"
+              onChange={(e) => update("operating_company", e.target.value)}
+            />
           </Field>
           <Field label="标识">
             <Input value={values.identifier} onChange={(e) => update("identifier", e.target.value)} />

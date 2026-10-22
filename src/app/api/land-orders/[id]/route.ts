@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma"
 import { jsonError, jsonOk, readJsonBody, requireSession, userIdBigint } from "@/lib/api-helpers"
 import { landOrderCreateSchema, landOrderPatchSchema } from "@/lib/land-orders/validation"
 import {
-  companyExists,
   parseLandOrderId,
   toLandOrderPatchData,
   toLandOrderStopCreateData,
@@ -45,17 +44,6 @@ export async function PUT(request: NextRequest, { params }: Context) {
 
     const updatedBy = userIdBigint(session)
     const order = await prisma.$transaction(async (tx) => {
-      const current = await tx.land_orders.findUnique({
-        where: { id },
-        select: { company_code: true },
-      })
-      if (!current) throw new LandOrderNotFoundError()
-      if (
-        parsed.data.company_code !== current.company_code &&
-        !(await companyExists(tx, parsed.data.company_code, true))
-      ) {
-        throw new LandOrderCompanyError()
-      }
       const data = toLandOrderUpdateData(parsed.data)
       if (updatedBy != null) data.updated_by = updatedBy
       await tx.land_orders.update({ where: { id }, data })
@@ -72,14 +60,10 @@ export async function PUT(request: NextRequest, { params }: Context) {
   } catch (error) {
     const code = (error as { code?: string })?.code
     if (code === "P2025") return jsonError("订单不存在", 404)
-    if (error instanceof LandOrderCompanyError) return jsonError("公司不存在或已停用", 400)
     console.error("更新陆运订单失败", error)
     return jsonError("更新陆运订单失败", 500)
   }
 }
-
-class LandOrderNotFoundError extends Error {}
-class LandOrderCompanyError extends Error {}
 
 export async function PATCH(request: NextRequest, { params }: Context) {
   const { session, error } = await requireSession()

@@ -92,8 +92,8 @@ export function useLandOrderColumns({
             header: () => sortable("identifier", "标识", toggleSort, sorting),
             cell: (info) => info.getValue() ?? "—",
           }),
-          columnHelper.accessor("company_code", {
-            header: () => sortable("company_code", "公司", toggleSort, sorting),
+          columnHelper.accessor("operating_company", {
+            header: () => sortable("operating_company", "运营公司", toggleSort, sorting),
           }),
           columnHelper.accessor("load_number", {
             header: () => (

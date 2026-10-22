@@ -15,7 +15,7 @@ export function parseLandOrderIds(raw: string | null): bigint[] {
 export function toLandOrderCreateData(input: LandOrderCreateInput): Prisma.land_ordersCreateInput {
   return {
     identifier: input.identifier,
-    company_code: input.company_code,
+    operating_company: input.operating_company,
     dispatch_person: input.dispatch_person,
     broker: input.broker,
     load_number: input.load_number,
@@ -38,7 +38,7 @@ export function toLandOrderCreateData(input: LandOrderCreateInput): Prisma.land_
 export function toLandOrderUpdateData(input: LandOrderCreateInput): Prisma.land_ordersUpdateInput {
   return {
     identifier: input.identifier,
-    company_code: input.company_code,
+    operating_company: input.operating_company,
     dispatch_person: input.dispatch_person,
     broker: input.broker,
     load_number: input.load_number,
@@ -87,17 +87,4 @@ export function toLandOrderStopCreateData(
     reference_numbers: stop.reference_numbers,
     stop_note: stop.stop_note,
   }))
-}
-
-export async function companyExists(
-  tx: Pick<Prisma.TransactionClient, "companies">,
-  companyCode: string,
-  requireActive: boolean
-) {
-  const company = await tx.companies.findUnique({
-    where: { code: companyCode },
-    select: { is_active: true },
-  })
-  if (!company || (requireActive && !company.is_active)) return false
-  return true
 }

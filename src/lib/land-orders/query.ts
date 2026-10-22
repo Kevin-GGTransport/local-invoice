@@ -31,7 +31,7 @@ export function parseSelectedLandOrderIds(value: string | null): bigint[] {
 
 type ParsedLandOrderQuery = {
   q: string
-  company: string
+  operatingCompany: string
   status: string
   driver: string
   haulType: string
@@ -72,7 +72,11 @@ export function parseLandOrderQuery(params: URLSearchParams): ParsedLandOrderQue
 
   return {
     q: boundedFilter(params.get("q") ?? "", "搜索关键词", 100),
-    company: boundedFilter(params.get("company") ?? "", "公司", 20).toUpperCase(),
+    operatingCompany: boundedFilter(
+      params.get("operatingCompany") ?? "",
+      "运营公司",
+      100
+    ),
     status: enumFilter(params.get("status") ?? "", LAND_ORDER_STATUSES, "状态"),
     driver: boundedFilter(params.get("driver") ?? "", "司机", 100),
     haulType: enumFilter(params.get("haulType") ?? "", LAND_ORDER_HAUL_TYPES, "运输类型"),
@@ -94,7 +98,7 @@ function buildSqlWhere(filters: ParsedLandOrderQuery, selectedIds: bigint[]): Pr
     const pattern = `%${filters.q}%`
     conditions.push(Prisma.sql`(
       o.identifier ILIKE ${pattern}
-      OR o.company_code ILIKE ${pattern}
+      OR o.operating_company ILIKE ${pattern}
       OR o.load_number ILIKE ${pattern}
       OR o.broker ILIKE ${pattern}
       OR o.driver ILIKE ${pattern}
@@ -118,7 +122,11 @@ function buildSqlWhere(filters: ParsedLandOrderQuery, selectedIds: bigint[]): Pr
       )
     )`)
   }
-  if (filters.company) conditions.push(Prisma.sql`o.company_code = ${filters.company}`)
+  if (filters.operatingCompany) {
+    conditions.push(
+      Prisma.sql`o.operating_company ILIKE ${`%${filters.operatingCompany}%`}`
+    )
+  }
   if (filters.status) conditions.push(Prisma.sql`o.status = ${filters.status}`)
   if (filters.driver) conditions.push(Prisma.sql`o.driver ILIKE ${`%${filters.driver}%`}`)
   if (filters.haulType) conditions.push(Prisma.sql`o.haul_type = ${filters.haulType}`)
