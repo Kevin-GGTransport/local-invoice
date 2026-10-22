@@ -307,7 +307,6 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
           <Field label="运营公司">
             <Input
               value={values.operating_company}
-              placeholder="独立于开票公司"
               onChange={(e) => update("operating_company", e.target.value)}
             />
           </Field>
