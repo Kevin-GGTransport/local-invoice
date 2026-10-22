@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Building2, ChevronDown, CircleDollarSign, CircleHelp, FileSliders, Home, Landmark, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Route, Settings2, X } from "lucide-react";
+import { BookOpen, Building2, ChevronDown, CircleDollarSign, CircleHelp, FileSliders, Home, Landmark, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Route, Settings2, Truck, X } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,7 @@ export function DashboardShell({
   }, [menuOpen]);
 
   const homeActive = pathname === "/dashboard";
+  const landOrdersActive = pathname.startsWith("/dashboard/land-orders");
 
   return (
     <div className="min-h-dvh bg-muted/40 text-foreground">
@@ -113,6 +114,19 @@ export function DashboardShell({
           >
             <Home className="size-4" aria-hidden="true" />
             首页
+          </Link>
+
+          <Link
+            href="/dashboard/land-orders"
+            aria-current={landOrdersActive ? "page" : undefined}
+            onClick={() => setMenuOpen(false)}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              landOrdersActive && "bg-primary font-medium text-primary-foreground"
+            )}
+          >
+            <Truck className="size-4" aria-hidden="true" />
+            陆运订单
           </Link>
 
           {isAdmin && (
