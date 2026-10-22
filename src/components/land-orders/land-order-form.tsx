@@ -45,7 +45,7 @@ type OrderForm = {
   price: string
   load_type: "full" | "partial"
   delivery_person: string
-  status: "draft" | "planned" | "completed" | "cancelled"
+  status: "draft" | "confirmed" | "completed" | "cancelled"
   note: string
   stops: StopForm[]
 }
@@ -198,6 +198,7 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
     setValues((prev) => {
       const target = index + offset
       if (target < 0 || target >= prev.stops.length) return prev
+      if (prev.stops[target].stop_type !== prev.stops[index].stop_type) return prev
       const stops = [...prev.stops]
       const [moved] = stops.splice(index, 1)
       stops.splice(target, 0, moved)
@@ -205,12 +206,21 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
     })
   }
 
-  const addStop = () => {
+  const addStop = (stopType: "pickup" | "drop") => {
     if (values.stops.length >= MAX_LAND_ORDER_STOPS) {
       toast.error(`站点最多 ${MAX_LAND_ORDER_STOPS} 个`)
       return
     }
-    setValues((prev) => ({ ...prev, stops: [...prev.stops, emptyStop("pickup")] }))
+    setValues((prev) => {
+      const stops = [...prev.stops, emptyStop(stopType)]
+      return {
+        ...prev,
+        stops: [
+          ...stops.filter((stop) => stop.stop_type === "pickup"),
+          ...stops.filter((stop) => stop.stop_type === "drop"),
+        ],
+      }
+    })
   }
 
   const removeStop = (index: number) => {
@@ -239,9 +249,13 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
 
     setSaving(true)
     try {
+      const orderedStops = [
+        ...values.stops.filter((stop) => stop.stop_type === "pickup"),
+        ...values.stops.filter((stop) => stop.stop_type === "drop"),
+      ]
       const payload = {
         ...values,
-        stops: values.stops.map((stop) => ({
+        stops: orderedStops.map((stop) => ({
           ...stop,
           time_from: stop.time_from || null,
           time_to: stop.time_to || null,
@@ -279,6 +293,102 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
       </div>
     )
   }
+
+  const stopEntries = values.stops.map((stop, index) => ({ stop, index }))
+  const pickupEntries = stopEntries.filter((entry) => entry.stop.stop_type === "pickup")
+  const dropEntries = stopEntries.filter((entry) => entry.stop.stop_type === "drop")
+
+  const renderStop = (
+    { stop, index }: { stop: StopForm; index: number },
+    numberWithinType: number,
+    totalOfType: number
+  ) => (
+    <article key={index} className="rounded-xl border bg-card p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+        <div className="flex items-center gap-2">
+          <span className="flex size-7 items-center justify-center rounded-full border text-xs font-semibold">
+            {numberWithinType}
+          </span>
+          <span
+            className={`rounded-full px-2 py-1 text-xs font-medium ${
+              stop.stop_type === "pickup"
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                : "bg-sky-500/10 text-sky-700 dark:text-sky-400"
+            }`}
+          >
+            {stop.stop_type === "pickup" ? "提货点" : "卸货点"}
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-8"
+            disabled={numberWithinType === 1}
+            onClick={() => moveStop(index, -1)}
+          >
+            <ArrowUp className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-8"
+            disabled={numberWithinType === totalOfType}
+            onClick={() => moveStop(index, 1)}
+          >
+            <ArrowDown className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="size-8 text-destructive"
+            onClick={() => removeStop(index)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 pt-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Field label="公司名" className="sm:col-span-2">
+          <Input value={stop.company_name} onChange={(e) => updateStop(index, "company_name", e.target.value)} />
+        </Field>
+        <Field label="地址" className="sm:col-span-2">
+          <Input value={stop.address} onChange={(e) => updateStop(index, "address", e.target.value)} />
+        </Field>
+        <Field label="城市">
+          <Input value={stop.city} onChange={(e) => updateStop(index, "city", e.target.value)} />
+        </Field>
+        <Field label="州">
+          <Input value={stop.state} onChange={(e) => updateStop(index, "state", e.target.value)} />
+        </Field>
+        <Field label="Zip Code">
+          <Input value={stop.zip_code} onChange={(e) => updateStop(index, "zip_code", e.target.value)} />
+        </Field>
+        <Field label="日期">
+          <Input type="date" value={stop.stop_date} onChange={(e) => updateStop(index, "stop_date", e.target.value)} />
+        </Field>
+        <Field label="Time From">
+          <Input type="time" value={stop.time_from} onChange={(e) => updateStop(index, "time_from", e.target.value)} />
+        </Field>
+        <Field label="Time To">
+          <Input type="time" value={stop.time_to} onChange={(e) => updateStop(index, "time_to", e.target.value)} />
+        </Field>
+        <Field label="时间类型">
+          <Input value={stop.time_type} onChange={(e) => updateStop(index, "time_type", e.target.value)} />
+        </Field>
+        <Field label={stop.stop_type === "pickup" ? "PU#" : "DEL#"} className="sm:col-span-2">
+          <Textarea rows={2} value={stop.reference_numbers} onChange={(e) => updateStop(index, "reference_numbers", e.target.value)} />
+        </Field>
+        <Field label="站点备注" className="sm:col-span-2">
+          <Textarea rows={2} value={stop.stop_note} onChange={(e) => updateStop(index, "stop_note", e.target.value)} />
+        </Field>
+      </div>
+    </article>
+  )
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
@@ -352,92 +462,30 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
           <div>
-            <h2 className="text-sm font-semibold">提货 / 交货站点</h2>
+            <h2 className="text-sm font-semibold">订单站点</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              按实际执行顺序录入；可新增多个提货点和交货点。
+              先录入全部提货点，再录入全部卸货点；排车时会自动带出这些站点。
             </p>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={addStop}
-            disabled={values.stops.length >= MAX_LAND_ORDER_STOPS}
-          >
-            <Plus className="mr-2 h-4 w-4" /> 新增站点
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => addStop("pickup")} disabled={values.stops.length >= MAX_LAND_ORDER_STOPS}>
+              <Plus className="mr-2 h-4 w-4" /> 提货点
+            </Button>
+            <Button type="button" variant="outline" onClick={() => addStop("drop")} disabled={values.stops.length >= MAX_LAND_ORDER_STOPS}>
+              <Plus className="mr-2 h-4 w-4" /> 卸货点
+            </Button>
+          </div>
         </div>
 
-        <div className="space-y-3">
-          {values.stops.map((stop, index) => (
-            <article key={index} className="rounded-xl border bg-card p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="flex size-7 items-center justify-center rounded-full border text-xs font-semibold">
-                    {index + 1}
-                  </span>
-                  <Select
-                    value={stop.stop_type}
-                    onValueChange={(value) => updateStop(index, "stop_type", value)}
-                  >
-                    <SelectTrigger className="h-8 w-28">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pickup">提货</SelectItem>
-                      <SelectItem value="drop">交货</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button type="button" variant="outline" size="icon" className="size-8" disabled={index === 0} onClick={() => moveStop(index, -1)}>
-                    <ArrowUp className="h-4 w-4" />
-                  </Button>
-                  <Button type="button" variant="outline" size="icon" className="size-8" disabled={index === values.stops.length - 1} onClick={() => moveStop(index, 1)}>
-                    <ArrowDown className="h-4 w-4" />
-                  </Button>
-                  <Button type="button" variant="outline" size="icon" className="size-8 text-destructive" onClick={() => removeStop(index)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid gap-3 pt-3 sm:grid-cols-2 xl:grid-cols-4">
-                <Field label="公司名" className="sm:col-span-2">
-                  <Input value={stop.company_name} onChange={(e) => updateStop(index, "company_name", e.target.value)} />
-                </Field>
-                <Field label="地址" className="sm:col-span-2">
-                  <Input value={stop.address} onChange={(e) => updateStop(index, "address", e.target.value)} />
-                </Field>
-                <Field label="城市">
-                  <Input value={stop.city} onChange={(e) => updateStop(index, "city", e.target.value)} />
-                </Field>
-                <Field label="州">
-                  <Input value={stop.state} onChange={(e) => updateStop(index, "state", e.target.value)} />
-                </Field>
-                <Field label="Zip Code">
-                  <Input value={stop.zip_code} onChange={(e) => updateStop(index, "zip_code", e.target.value)} />
-                </Field>
-                <Field label="日期">
-                  <Input type="date" value={stop.stop_date} onChange={(e) => updateStop(index, "stop_date", e.target.value)} />
-                </Field>
-                <Field label="Time From">
-                  <Input type="time" value={stop.time_from} onChange={(e) => updateStop(index, "time_from", e.target.value)} />
-                </Field>
-                <Field label="Time To">
-                  <Input type="time" value={stop.time_to} onChange={(e) => updateStop(index, "time_to", e.target.value)} />
-                </Field>
-                <Field label="时间类型">
-                  <Input value={stop.time_type} onChange={(e) => updateStop(index, "time_type", e.target.value)} />
-                </Field>
-                <Field label={stop.stop_type === "pickup" ? "PU#" : "DEL#"} className="sm:col-span-2">
-                  <Textarea rows={2} value={stop.reference_numbers} onChange={(e) => updateStop(index, "reference_numbers", e.target.value)} />
-                </Field>
-                <Field label="站点备注" className="sm:col-span-2">
-                  <Textarea rows={2} value={stop.stop_note} onChange={(e) => updateStop(index, "stop_note", e.target.value)} />
-                </Field>
-              </div>
-            </article>
-          ))}
+        <div className="space-y-4">
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">提货点</h3>
+            {pickupEntries.map((entry, i) => renderStop(entry, i + 1, pickupEntries.length))}
+          </div>
+          <div className="space-y-3 border-t pt-4">
+            <h3 className="text-sm font-semibold text-sky-700 dark:text-sky-400">卸货点</h3>
+            {dropEntries.map((entry, i) => renderStop(entry, i + 1, dropEntries.length))}
+          </div>
         </div>
 
         <div className="flex flex-wrap justify-end gap-2 rounded-xl border bg-card p-4">

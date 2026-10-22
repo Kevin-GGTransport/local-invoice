@@ -27,6 +27,28 @@ type LandOrderOption = {
 
 type LandDispatchRecord = Record<string, unknown>
 
+type OrderStopDetail = {
+  stop_type: "pickup" | "drop"
+  company_name: string
+  address: string
+  city: string
+  state: string
+  zip_code: string
+  stop_date: string
+  time_from: string
+  time_to: string
+  reference_numbers: string
+}
+
+type SelectedOrderDetail = {
+  id: string
+  identifier: string | null
+  load_number: string | null
+  operating_company: string
+  broker: string | null
+  stops: OrderStopDetail[]
+}
+
 type FormValues = {
   land_order_id: string
   dispatch_date: string
@@ -46,6 +68,55 @@ function text(value: unknown): string {
 
 function dateText(value: unknown): string {
   return text(value).slice(0, 10)
+}
+
+function orderDetailFromRecord(record: LandDispatchRecord): SelectedOrderDetail {
+  const rawStops = Array.isArray(record.land_order_stops) ? record.land_order_stops : []
+  return {
+    id: text(record.id),
+    identifier: text(record.identifier) || null,
+    load_number: text(record.load_number) || null,
+    operating_company: text(record.operating_company),
+    broker: text(record.broker) || null,
+    stops: rawStops.map((rawStop) => {
+      const stop = rawStop as LandDispatchRecord
+      return {
+        stop_type: text(stop.stop_type) === "drop" ? "drop" : "pickup",
+        company_name: text(stop.company_name),
+        address: text(stop.address),
+        city: text(stop.city),
+        state: text(stop.state),
+        zip_code: text(stop.zip_code),
+        stop_date: dateText(stop.stop_date),
+        time_from: text(stop.time_from),
+        time_to: text(stop.time_to),
+        reference_numbers: text(stop.reference_numbers),
+      }
+    }),
+  }
+}
+
+function StopCard({ stop, index }: { stop: OrderStopDetail; index: number }) {
+  const lines = [
+    `${stop.company_name || "未填写公司"} · ${stop.city || "未填写城市"}, ${stop.state || "--"} ${stop.zip_code}`,
+    stop.address,
+    `${stop.stop_date || "未填写日期"} ${stop.time_from && stop.time_to ? `${stop.time_from}-${stop.time_to}` : ""}`.trim(),
+    stop.reference_numbers ? `${stop.stop_type === "pickup" ? "PU#" : "DEL#"} ${stop.reference_numbers}` : "",
+  ].filter(Boolean)
+
+  return (
+    <li className="rounded-lg border bg-background/60 p-3">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <span className="flex size-5 items-center justify-center rounded-full border">{index + 1}</span>
+        {stop.stop_type === "pickup" ? "提货点" : "卸货点"}
+      </div>
+      <div className="mt-2 space-y-1 text-sm">
+        {lines.map((line) => (
+          <p key={line} className="break-words">{line}</p>
+        ))}
+      </div>
+    </li>
+  )
 }
 
 function emptyValues(): FormValues {
@@ -68,9 +139,11 @@ export function LandDispatchForm({ dispatchId }: { dispatchId?: string }) {
   const searchParams = useSearchParams()
   const isEditing = dispatchId != null
   const [orders, setOrders] = React.useState<LandOrderOption[]>([])
+  const [selectedOrder, setSelectedOrder] = React.useState<SelectedOrderDetail | null>(null)
   const [orderSearch, setOrderSearch] = React.useState("")
   const [values, setValues] = React.useState<FormValues>(emptyValues)
   const [loading, setLoading] = React.useState(true)
+  const [orderLoading, setOrderLoading] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
@@ -87,17 +160,13 @@ export function LandDispatchForm({ dispatchId }: { dispatchId?: string }) {
           if (cancelled) return
           const related = record.land_orders as LandDispatchRecord | undefined
           if (related) {
-            const stops = Array.isArray(related.land_order_stops)
-              ? related.land_order_stops
-              : []
-            const pickup = stops.find((stop) => text((stop as LandDispatchRecord).stop_type) === "pickup") as
-              | LandDispatchRecord
-              | undefined
+            const relatedDetail = orderDetailFromRecord(related)
+            setSelectedOrder(relatedDetail)
             selectedOrder = {
-              id: text(record.land_order_id),
-              identifier: text(related.identifier) || null,
-              load_number: text(related.load_number) || null,
-              pickup_dates: pickup ? dateText(pickup.stop_date) : "",
+              id: relatedDetail.id,
+              identifier: relatedDetail.identifier,
+              load_number: relatedDetail.load_number,
+              pickup_dates: relatedDetail.stops.find((stop) => stop.stop_type === "pickup")?.stop_date ?? "",
               drop_locations: text(related.delivery_person),
             }
           }
@@ -118,15 +187,13 @@ export function LandDispatchForm({ dispatchId }: { dispatchId?: string }) {
           if (orderId) {
             const detail = await fetchJson<LandDispatchRecord>(`/api/land-orders/${orderId}`)
             if (cancelled) return
-            const stops = Array.isArray(detail.land_order_stops) ? detail.land_order_stops : []
-            const pickup = stops.find(
-              (stop) => text((stop as LandDispatchRecord).stop_type) === "pickup"
-            ) as LandDispatchRecord | undefined
+            const detailOrder = orderDetailFromRecord(detail)
+            setSelectedOrder(detailOrder)
             selectedOrder = {
-              id: text(detail.id),
-              identifier: text(detail.identifier) || null,
-              load_number: text(detail.load_number) || null,
-              pickup_dates: pickup ? dateText(pickup.stop_date) : "",
+              id: detailOrder.id,
+              identifier: detailOrder.identifier,
+              load_number: detailOrder.load_number,
+              pickup_dates: detailOrder.stops.find((stop) => stop.stop_type === "pickup")?.stop_date ?? "",
               drop_locations: text(detail.delivery_person),
             }
           }
@@ -156,6 +223,27 @@ export function LandDispatchForm({ dispatchId }: { dispatchId?: string }) {
 
   const update = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setValues((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const selectOrder = async (orderId: string) => {
+    update("land_order_id", orderId)
+    if (!orderId) {
+      setSelectedOrder(null)
+      return
+    }
+    setOrderLoading(true)
+    try {
+      const detail = await fetchJson<LandDispatchRecord>(`/api/land-orders/${orderId}`)
+      setSelectedOrder(orderDetailFromRecord(detail))
+      if (!values.dispatch_date) {
+        update("dispatch_date", new Date().toISOString().slice(0, 10))
+      }
+    } catch (error) {
+      setSelectedOrder(null)
+      toast.error(getRequestErrorMessage(error, "加载订单站点失败"))
+    } finally {
+      setOrderLoading(false)
+    }
   }
 
   const searchOrders = async () => {
@@ -238,100 +326,172 @@ export function LandDispatchForm({ dispatchId }: { dispatchId?: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-4 rounded-xl border bg-card p-4 sm:grid-cols-2 xl:grid-cols-4">
-      <div className="sm:col-span-2 xl:col-span-2">
-        <Label className="text-xs text-muted-foreground">陆运订单</Label>
-        <div className="mt-1.5 flex gap-2">
-          <Input
-            aria-label="搜索陆运订单"
-            placeholder="输入 Load# / 站点 / 标识后搜索"
-            value={orderSearch}
-            onChange={(event) => setOrderSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault()
-                void searchOrders()
-              }
-            }}
-          />
-          <Button type="button" variant="outline" onClick={() => void searchOrders()}>
-            搜索
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <section className="space-y-4 rounded-xl border bg-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">第一步：选择陆运订单</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              选择后自动带出该订单的全部提货点和卸货点。
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">搜索订单</Label>
+            <div className="flex gap-2">
+              <Input
+                aria-label="搜索陆运订单"
+                placeholder="Load# / 站点 / 标识"
+                value={orderSearch}
+                onChange={(event) => setOrderSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    void searchOrders()
+                  }
+                }}
+              />
+              <Button type="button" variant="outline" onClick={() => void searchOrders()}>
+                搜索
+              </Button>
+            </div>
+            <Select
+              value={values.land_order_id}
+              onValueChange={(value) => void selectOrder(value)}
+              disabled={isEditing}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="选择订单" />
+              </SelectTrigger>
+              <SelectContent>
+                {orders.map((order) => (
+                  <SelectItem key={order.id} value={order.id}>
+                    {order.load_number || order.identifier || order.id} · {order.pickup_dates || "无提货日期"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="min-w-0 rounded-lg border bg-muted/40 p-3">
+            {orderLoading ? (
+              <div className="flex min-h-24 items-center justify-center text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 正在带出订单站点...
+              </div>
+            ) : selectedOrder ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-sm font-semibold">
+                    {selectedOrder.load_number || selectedOrder.identifier || selectedOrder.id}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{selectedOrder.operating_company}</span>
+                  {selectedOrder.broker && (
+                    <span className="text-xs text-muted-foreground">Broker：{selectedOrder.broker}</span>
+                  )}
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">提货点</h3>
+                    <ul className="space-y-2">
+                      {selectedOrder.stops
+                        .filter((stop) => stop.stop_type === "pickup")
+                        .map((stop, index) => (
+                          <StopCard key={`${stop.company_name}-${index}`} stop={stop} index={index} />
+                        ))}
+                    </ul>
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-semibold text-sky-700 dark:text-sky-400">卸货点</h3>
+                    <ul className="space-y-2">
+                      {selectedOrder.stops
+                        .filter((stop) => stop.stop_type === "drop")
+                        .map((stop, index) => (
+                          <StopCard key={`${stop.company_name}-${index}`} stop={stop} index={index} />
+                        ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-24 items-center justify-center text-sm text-muted-foreground">
+                请先选择陆运订单
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-xl border bg-card p-4">
+        <div>
+          <h2 className="text-sm font-semibold">第二步：填写排车信息</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            这里只维护调度属性；订单货物和站点信息仍在陆运订单中维护。
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <Label className="text-xs text-muted-foreground">排车日期</Label>
+            <Input type="date" className="mt-1.5" value={values.dispatch_date} onChange={(event) => update("dispatch_date", event.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">车牌/标识</Label>
+            <Input className="mt-1.5" value={values.truck} onChange={(event) => update("truck", event.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">司机</Label>
+            <Input className="mt-1.5" value={values.driver} onChange={(event) => update("driver", event.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">Trailer</Label>
+            <Input className="mt-1.5" value={values.trailer} onChange={(event) => update("trailer", event.target.value)} />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">运输类型</Label>
+            <Select value={values.haul_type} onValueChange={(value) => update("haul_type", value as FormValues["haul_type"])}>
+              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="long_haul">长途</SelectItem>
+                <SelectItem value="local">本地</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">排车状态</Label>
+            <Select value={values.status} onValueChange={(value) => update("status", value as FormValues["status"])}>
+              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="planned">已排车</SelectItem>
+                <SelectItem value="dispatched">已出车</SelectItem>
+                <SelectItem value="completed">已完成</SelectItem>
+                <SelectItem value="cancelled">已取消</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground">排序</Label>
+            <Input type="number" min="0" className="mt-1.5" value={values.sort_order} onChange={(event) => update("sort_order", event.target.value)} />
+          </div>
+          <div className="sm:col-span-2">
+            <Label className="text-xs text-muted-foreground">Todo</Label>
+            <Textarea rows={2} className="mt-1.5" value={values.todo_note} onChange={(event) => update("todo_note", event.target.value)} />
+          </div>
+          <label className="flex items-end gap-2 pb-2 text-sm">
+            <input type="checkbox" className="size-4 accent-primary" checked={values.todo_done} onChange={(event) => update("todo_done", event.target.checked)} />
+            Todo 已完成
+          </label>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t pt-4">
+          <Button type="button" variant="outline" onClick={() => router.push("/dashboard/land-dispatches")}>取消</Button>
+          <Button disabled={saving || !selectedOrder}>
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            {saving ? "正在保存..." : "保存排车"}
           </Button>
         </div>
-        <Select
-          value={values.land_order_id}
-          onValueChange={(value) => update("land_order_id", value)}
-          disabled={isEditing}
-        >
-          <SelectTrigger className="mt-1.5">
-            <SelectValue placeholder="选择订单" />
-          </SelectTrigger>
-          <SelectContent>
-            {orders.map((order) => (
-              <SelectItem key={order.id} value={order.id}>
-                {order.load_number || order.identifier || order.id} · {order.pickup_dates || "无提货日期"}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div>
-        <Label className="text-xs text-muted-foreground">排车日期</Label>
-        <Input type="date" className="mt-1.5" value={values.dispatch_date} onChange={(event) => update("dispatch_date", event.target.value)} />
-      </div>
-      <div>
-        <Label className="text-xs text-muted-foreground">车牌/标识</Label>
-        <Input className="mt-1.5" value={values.truck} onChange={(event) => update("truck", event.target.value)} />
-      </div>
-      <div>
-        <Label className="text-xs text-muted-foreground">司机</Label>
-        <Input className="mt-1.5" value={values.driver} onChange={(event) => update("driver", event.target.value)} />
-      </div>
-      <div>
-        <Label className="text-xs text-muted-foreground">Trailer</Label>
-        <Input className="mt-1.5" value={values.trailer} onChange={(event) => update("trailer", event.target.value)} />
-      </div>
-      <div>
-        <Label className="text-xs text-muted-foreground">运输类型</Label>
-        <Select value={values.haul_type} onValueChange={(value) => update("haul_type", value as FormValues["haul_type"])}>
-          <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="long_haul">长途</SelectItem>
-            <SelectItem value="local">本地</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div>
-        <Label className="text-xs text-muted-foreground">排车状态</Label>
-        <Select value={values.status} onValueChange={(value) => update("status", value as FormValues["status"])}>
-          <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="planned">已排车</SelectItem>
-            <SelectItem value="dispatched">已出车</SelectItem>
-            <SelectItem value="completed">已完成</SelectItem>
-            <SelectItem value="cancelled">已取消</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div>
-        <Label className="text-xs text-muted-foreground">排序</Label>
-        <Input type="number" min="0" className="mt-1.5" value={values.sort_order} onChange={(event) => update("sort_order", event.target.value)} />
-      </div>
-      <div className="sm:col-span-2">
-        <Label className="text-xs text-muted-foreground">Todo</Label>
-        <Textarea rows={2} className="mt-1.5" value={values.todo_note} onChange={(event) => update("todo_note", event.target.value)} />
-      </div>
-      <label className="flex items-end gap-2 pb-2 text-sm">
-        <input type="checkbox" className="size-4 accent-primary" checked={values.todo_done} onChange={(event) => update("todo_done", event.target.checked)} />
-        Todo 已完成
-      </label>
-      <div className="col-span-full flex justify-end gap-2 border-t pt-4">
-        <Button type="button" variant="outline" onClick={() => router.push("/dashboard/land-dispatches")}>取消</Button>
-        <Button disabled={saving}>
-          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-          {saving ? "正在保存..." : "保存排车"}
-        </Button>
-      </div>
+      </section>
     </form>
   )
 }

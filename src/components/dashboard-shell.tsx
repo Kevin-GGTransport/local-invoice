@@ -15,6 +15,11 @@ const financeChildren = [
   { href: "/dashboard/finance/reconciliation", label: "出纳核销", icon: CircleDollarSign },
 ];
 
+const operationChildren = [
+  { href: "/dashboard/land-orders", label: "陆运订单", icon: Truck },
+  { href: "/dashboard/land-dispatches", label: "长途排车", icon: CalendarClock },
+];
+
 const basicChildren = [
   { href: "/dashboard/companies", label: "公司管理", icon: Building2 },
   { href: "/dashboard/templates", label: "账单模版管理", icon: FileSliders },
@@ -35,6 +40,8 @@ export function DashboardShell({
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const operationActive = pathname.startsWith("/dashboard/land-orders") || pathname.startsWith("/dashboard/land-dispatches");
+  const [operationOpen, setOperationOpen] = React.useState(operationActive);
   const financeActive = pathname.startsWith("/dashboard/finance");
   const [financeOpen, setFinanceOpen] = React.useState(financeActive);
   const isAdmin = user.role === "admin";
@@ -53,8 +60,6 @@ export function DashboardShell({
   }, [menuOpen]);
 
   const homeActive = pathname === "/dashboard";
-  const landOrdersActive = pathname.startsWith("/dashboard/land-orders");
-  const landDispatchesActive = pathname.startsWith("/dashboard/land-dispatches");
 
   return (
     <div className="min-h-dvh bg-muted/40 text-foreground">
@@ -117,31 +122,52 @@ export function DashboardShell({
             首页
           </Link>
 
-          <Link
-            href="/dashboard/land-orders"
-            aria-current={landOrdersActive ? "page" : undefined}
-            onClick={() => setMenuOpen(false)}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              landOrdersActive && "bg-primary font-medium text-primary-foreground"
-            )}
-          >
-            <Truck className="size-4" aria-hidden="true" />
-            陆运订单
-          </Link>
+          <div className="space-y-1">
+            <button
+              type="button"
+              aria-expanded={operationOpen}
+              aria-controls="operations-navigation"
+              onClick={() => setOperationOpen((open) => !open)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                operationActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+              )}
+            >
+              <Route className="size-4" aria-hidden="true" />
+              <span className="min-w-0 flex-1 text-left">运营调度</span>
+              <ChevronDown
+                className={cn(
+                  "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
+                  operationOpen && "rotate-180"
+                )}
+                aria-hidden="true"
+              />
+            </button>
 
-          <Link
-            href="/dashboard/land-dispatches"
-            aria-current={landDispatchesActive ? "page" : undefined}
-            onClick={() => setMenuOpen(false)}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground",
-              landDispatchesActive && "bg-primary font-medium text-primary-foreground"
+            {operationOpen && (
+              <ul id="operations-navigation" className="ml-4 space-y-1 border-l border-sidebar-border pl-3">
+                {operationChildren.map((item) => {
+                  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        aria-current={active ? "page" : undefined}
+                        onClick={() => setMenuOpen(false)}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                          active && "bg-primary font-medium text-primary-foreground"
+                        )}
+                      >
+                        <item.icon className="size-4" aria-hidden="true" />
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
-          >
-            <CalendarClock className="size-4" aria-hidden="true" />
-            长途排车
-          </Link>
+          </div>
 
           {isAdmin && (
             <div className="space-y-1">
