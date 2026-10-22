@@ -2,7 +2,7 @@
 
 import React from "react"
 import { useRouter } from "next/navigation"
-import { ArrowDown, ArrowUp, Loader2, Plus, Save, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Loader2, Plus, Save, ScanLine, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { fetchJson, getRequestErrorMessage } from "@/lib/api/client"
+import { recognizeSocImage, validateSocImage } from "@/lib/land-orders/soc-ocr"
+import { mergeSocIntoOrder, parseSocText } from "@/lib/land-orders/soc-parser"
 import { MAX_LAND_ORDER_STOPS } from "@/lib/land-orders/validation"
 
 type StopForm = {
@@ -43,7 +45,7 @@ type OrderForm = {
   pallet_positions: string
   weight_lbs: string
   price: string
-  load_type: "full" | "partial"
+  load_type: "" | "full" | "partial"
   delivery_person: string
   status: "draft" | "confirmed" | "completed" | "cancelled"
   note: string
@@ -54,6 +56,8 @@ type LandOrderRecord = {
   [key: string]: unknown
 }
 
+type SocRecognitionState = "idle" | "success" | "error"
+
 function text(value: unknown): string {
   if (value == null) return ""
   return String(value)
@@ -62,6 +66,43 @@ function text(value: unknown): string {
 function dateText(value: unknown): string {
   const valueText = text(value)
   return valueText.slice(0, 10)
+}
+
+function socStageText(status: string): string {
+  if (/loading tesseract core/i.test(status)) return "加载识别引擎"
+  if (/loading language/i.test(status)) return "加载语言包"
+  if (/initializing/i.test(status)) return "初始化"
+  if (/recognizing/i.test(status)) return "正在识别"
+  return "准备识别"
+}
+
+function formatFileSize(size: number): string {
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)}MB`
+  return `${Math.max(1, Math.round(size / 1024))}KB`
+}
+
+function SocImagePreview({ file }: { file: File }) {
+  const previewRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    const element = previewRef.current
+    if (!element) return
+    const objectUrl = URL.createObjectURL(file)
+    element.style.backgroundImage = `url(${objectUrl})`
+    return () => {
+      element.style.backgroundImage = ""
+      URL.revokeObjectURL(objectUrl)
+    }
+  }, [file])
+
+  return (
+    <div
+      ref={previewRef}
+      role="img"
+      aria-label="SOC 图片预览"
+      className="size-16 shrink-0 rounded-lg border bg-muted bg-cover bg-center"
+    />
+  )
 }
 
 function emptyStop(stopType: "pickup" | "drop"): StopForm {
@@ -92,7 +133,7 @@ function emptyOrder(): OrderForm {
     pallet_positions: "",
     weight_lbs: "",
     price: "",
-    load_type: "full",
+    load_type: "",
     delivery_person: "",
     status: "draft",
     note: "",
@@ -161,6 +202,15 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
   const [values, setValues] = React.useState<OrderForm>(emptyOrder)
   const [loading, setLoading] = React.useState(orderId != null)
   const [saving, setSaving] = React.useState(false)
+  const socFileInputRef = React.useRef<HTMLInputElement>(null)
+  const [socFile, setSocFile] = React.useState<File | null>(null)
+  const [socRecognizing, setSocRecognizing] = React.useState(false)
+  const [socProgress, setSocProgress] = React.useState(0)
+  const [socStage, setSocStage] = React.useState("准备识别")
+  const [socState, setSocState] = React.useState<SocRecognitionState>("idle")
+  const [socSummary, setSocSummary] = React.useState("")
+  const [socConfidence, setSocConfidence] = React.useState<number | null>(null)
+  const [socWarnings, setSocWarnings] = React.useState<string[]>([])
 
   React.useEffect(() => {
     if (!orderId) return
@@ -192,6 +242,79 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
         stopIndex === index ? { ...stop, [key]: value } : stop
       ),
     }))
+  }
+
+  const clearSocFile = () => {
+    if (socFileInputRef.current) socFileInputRef.current.value = ""
+    setSocFile(null)
+    setSocRecognizing(false)
+    setSocProgress(0)
+    setSocStage("准备识别")
+    setSocState("idle")
+    setSocSummary("")
+    setSocConfidence(null)
+    setSocWarnings([])
+  }
+
+  const recognizeSoc = async (file: File) => {
+    setSocRecognizing(true)
+    setSocState("idle")
+    setSocProgress(0)
+    setSocStage("准备识别")
+    setSocSummary("")
+    setSocConfidence(null)
+    setSocWarnings([])
+
+    try {
+      const result = await recognizeSocImage(file, ({ status, progress }) => {
+        setSocStage(socStageText(status))
+        setSocProgress(Math.round(progress * 100))
+      })
+      const parsed = parseSocText(result.text)
+      setValues((prev) => mergeSocIntoOrder(prev, parsed))
+      setSocConfidence(result.confidence)
+      setSocWarnings(parsed.warnings)
+
+      const pickupCount = parsed.stops.filter((stop) => stop.stop_type === "pickup").length
+      const dropCount = parsed.stops.filter((stop) => stop.stop_type === "drop").length
+      setSocSummary(
+        parsed.stops.length
+          ? `识别到 ${pickupCount} 个提货点、${dropCount} 个卸货点`
+          : "未识别到站点信息"
+      )
+      setSocState("success")
+      toast.success("SOC 识别完成，已填入空字段")
+    } catch (error) {
+      setSocState("error")
+      setSocWarnings(["识别失败，请重试"])
+      toast.error(
+        error instanceof Error && error.message
+          ? `SOC 识别失败：${error.message}`
+          : "SOC 识别失败，请重试"
+      )
+    } finally {
+      setSocRecognizing(false)
+      setSocProgress(100)
+    }
+  }
+
+  const handleSocFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const error = validateSocImage(file)
+    if (error) {
+      event.target.value = ""
+      setSocFile(null)
+      setSocSummary("")
+      setSocConfidence(null)
+      setSocProgress(0)
+      setSocState("error")
+      setSocWarnings([error])
+      toast.error(error)
+      return
+    }
+    setSocFile(file)
+    void recognizeSoc(file)
   }
 
   const moveStop = (index: number, offset: -1 | 1) => {
@@ -255,6 +378,7 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
       ]
       const payload = {
         ...values,
+        load_type: values.load_type || "full",
         stops: orderedStops.map((stop) => ({
           ...stop,
           time_from: stop.time_from || null,
@@ -392,6 +516,111 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
+      {!isEditing && (
+        <section className="space-y-3 rounded-xl border bg-card p-4 xl:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <ScanLine className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">SOC 识别</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                ref={socFileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={handleSocFileChange}
+                disabled={socRecognizing}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={socRecognizing}
+                onClick={() => socFileInputRef.current?.click()}
+              >
+                {socFile ? "重新选择" : "选择图片"}
+              </Button>
+              {socFile && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={socRecognizing}
+                  onClick={clearSocFile}
+                >
+                  <X className="mr-2 h-4 w-4" />
+                  清除
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {socFile ? (
+            <div className="flex flex-wrap items-start gap-3">
+              <SocImagePreview file={socFile} />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <p className="max-w-full truncate text-sm font-medium">{socFile.name}</p>
+                  <span className="text-xs text-muted-foreground">
+                    {formatFileSize(socFile.size)}
+                  </span>
+                </div>
+
+                {socRecognizing ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      {socStage} {socProgress}%
+                    </div>
+                    <div
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={socProgress}
+                      aria-label="SOC 识别进度"
+                      className="h-1.5 overflow-hidden rounded-full bg-muted"
+                    >
+                      <div
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{ width: `${socProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <p
+                      className={
+                        socState === "error"
+                          ? "text-xs text-destructive"
+                          : "text-xs text-muted-foreground"
+                      }
+                    >
+                      {socState === "idle"
+                        ? "等待识别"
+                        : socSummary ||
+                          (socState === "error" ? "识别失败，请核对或重新上传" : "识别完成")}
+                      {socConfidence != null ? ` · 置信度 ${Math.round(socConfidence)}%` : ""}
+                    </p>
+                    {socWarnings.length > 0 && (
+                      <div className="max-h-20 overflow-y-auto text-xs text-amber-600 dark:text-amber-400">
+                        {socWarnings.map((warning) => (
+                          <p key={warning}>· {warning}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              支持 PNG / JPG / WEBP，最大 10MB；图片只在浏览器本地识别，不会上传。
+            </p>
+          )}
+        </section>
+      )}
+
       <section className="space-y-4 rounded-xl border bg-card p-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold">订单主信息</h2>
@@ -431,7 +660,7 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
           </Field>
           <Field label="装载类型">
             <Select value={values.load_type} onValueChange={(value) => update("load_type", value as OrderForm["load_type"])}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Full" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="full">Full</SelectItem>
                 <SelectItem value="partial">Partial</SelectItem>
