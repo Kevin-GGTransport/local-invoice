@@ -13,8 +13,8 @@ export const DEFAULT_LAND_ORDER_GROUP_ORDER = [
   "cargo",
   "pickup",
   "delivery",
-  "operations",
-  "todo",
+  "broker",
+  "actions",
 ] as const
 
 export const LAND_ORDER_GROUP_LEAF_COLUMN_IDS: Record<string, string[]> = {
@@ -22,8 +22,8 @@ export const LAND_ORDER_GROUP_LEAF_COLUMN_IDS: Record<string, string[]> = {
   cargo: ["quantity", "pallet_positions", "weight_lbs", "note"],
   pickup: ["dispatch_person", "pickup_locations", "pickup_dates", "pickup_times"],
   delivery: ["drop_locations", "drop_dates", "drop_times", "delivery_person"],
-  operations: ["broker", "trailer", "haul_type", "driver", "status"],
-  todo: ["todo", "actions"],
+  broker: ["broker", "status"],
+  actions: ["actions"],
 }
 
 export const ALL_LAND_ORDER_LEAF_COLUMN_IDS = Object.values(
@@ -74,21 +74,17 @@ export const LAND_ORDER_COLUMN_SETTINGS_GROUPS = [
     ],
   },
   {
-    id: "operations",
-    label: "运营",
+    id: "broker",
+    label: "Broker 与状态",
     columns: [
       { id: "broker", label: "Broker" },
-      { id: "trailer", label: "Trailer" },
-      { id: "haul_type", label: "长途" },
-      { id: "driver", label: "司机" },
-      { id: "status", label: "状态" },
+      { id: "status", label: "订单状态" },
     ],
   },
   {
-    id: "todo",
-    label: "Todo 与操作",
+    id: "actions",
+    label: "操作",
     columns: [
-      { id: "todo", label: "Todo" },
       { id: "actions", label: "操作", locked: true },
     ],
   },
@@ -98,9 +94,6 @@ export type LandOrderViewFilters = {
   search: string
   operatingCompany: string
   status: string
-  driver: string
-  haulType: string
-  todoDone: string
   dateFrom: string
   dateTo: string
 }
@@ -153,17 +146,12 @@ export function parseLandOrderViewConfig(config: unknown): LandOrderViewConfig |
   if (!parsed.success) return null
   const { filters, sorting, columnVisibility, groupOrder } = parsed.data
   const status = safeString(filters.status, 20)
-  const haulType = safeString(filters.haulType, 20)
-  const todoDone = safeString(filters.todoDone, 20)
 
   return {
     filters: {
       search: safeString(filters.search, 100),
       operatingCompany: safeString(filters.operatingCompany, 100),
-      status: ["draft", "planned", "completed", "cancelled"].includes(status) ? status : "",
-      driver: safeString(filters.driver, 100),
-      haulType: ["local", "long_haul"].includes(haulType) ? haulType : "",
-      todoDone: ["done", "undone"].includes(todoDone) ? todoDone : "",
+      status: ["draft", "confirmed", "completed", "cancelled"].includes(status) ? status : "",
       dateFrom: safeDate(filters.dateFrom),
       dateTo: safeDate(filters.dateTo),
     },

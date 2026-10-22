@@ -108,24 +108,20 @@ model land_orders {
   weight_lbs       Decimal?           @db.Decimal(12, 2)
   price            Decimal?           @db.Decimal(12, 2)
   load_type        String             @default("full") @db.VarChar(20)
-  haul_type        String             @default("local") @db.VarChar(20)
-  driver           String?            @db.VarChar(100)
-  trailer          String?            @db.VarChar(100)
   delivery_person  String?            @db.VarChar(100)
+  /// 订单自身生命周期；排车执行状态在 land_dispatch_items.status 独立维护
   status           String             @default("draft") @db.VarChar(20)
   note             String?            @db.VarChar(500)
-  todo_note        String?            @db.VarChar(500)
-  todo_done        Boolean            @default(false)
   created_at       DateTime           @default(now()) @db.Timestamptz(6)
   updated_at       DateTime           @default(now()) @updatedAt @db.Timestamptz(6)
   created_by       BigInt?
   updated_by       BigInt?
   land_order_stops land_order_stops[]
+  land_dispatch_items land_dispatch_items[]
 
   @@index([operating_company], map: "idx_land_orders_operating_company")
   @@index([status], map: "idx_land_orders_status")
   @@index([created_at], map: "idx_land_orders_created_at")
-  @@index([driver], map: "idx_land_orders_driver")
   @@index([identifier], map: "idx_land_orders_identifier")
 }
 
@@ -152,6 +148,32 @@ model land_order_stops {
   @@unique([land_order_id, sequence], map: "uk_land_order_stops_order_sequence")
   @@index([land_order_id, stop_type], map: "idx_land_order_stops_order_type")
   @@index([stop_date], map: "idx_land_order_stops_date")
+}
+
+model land_dispatch_items {
+  id              BigInt       @id @default(autoincrement())
+  land_order_id   BigInt       @unique
+  dispatch_date   DateTime     @db.Date
+  truck           String?      @db.VarChar(50)
+  driver          String?      @db.VarChar(100)
+  trailer         String?      @db.VarChar(100)
+  haul_type       String       @default("long_haul") @db.VarChar(20)
+  /// 排车执行状态；不回写或替代 land_orders.status
+  status          String       @default("planned") @db.VarChar(20)
+  todo_note       String?      @db.VarChar(500)
+  todo_done       Boolean      @default(false)
+  sort_order      Int          @default(0)
+  created_at      DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime     @default(now()) @updatedAt @db.Timestamptz(6)
+  created_by      BigInt?
+  updated_by      BigInt?
+  land_orders     land_orders  @relation(fields: [land_order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([dispatch_date], map: "idx_land_dispatch_items_date")
+  @@index([truck], map: "idx_land_dispatch_items_truck")
+  @@index([driver], map: "idx_land_dispatch_items_driver")
+  @@index([status], map: "idx_land_dispatch_items_status")
+  @@index([haul_type], map: "idx_land_dispatch_items_haul_type")
 }
 
 model users {

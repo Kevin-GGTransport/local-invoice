@@ -16,14 +16,9 @@ function source(): LandOrderPlanningSource {
     weight_lbs: "44000",
     price: "700",
     load_type: "full",
-    haul_type: "long_haul",
-    driver: "Gary",
-    trailer: "CL-638",
     delivery_person: "Eric",
-    status: "planned",
+    status: "confirmed",
     note: "clean trailer",
-    todo_note: "local pickup",
-    todo_done: false,
     land_order_stops: [
       {
         stop_type: "drop",

@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import ExcelJS from "exceljs"
 import { buildLandOrderPlanningRow, type LandOrderPlanningSource } from "../planning"
-import { generateLandOrderPlanningExcel } from "../export-excel"
+import { generateLandOrderExportExcel } from "../export-excel"
 
 test("Excel 生成标题、表头、冻结行、筛选与多行站点", async () => {
   const source: LandOrderPlanningSource = {
@@ -17,14 +17,9 @@ test("Excel 生成标题、表头、冻结行、筛选与多行站点", async ()
     weight_lbs: 44000,
     price: 700,
     load_type: "full",
-    haul_type: "long_haul",
-    driver: "Gary",
-    trailer: "CL-638",
     delivery_person: "Eric",
-    status: "planned",
+    status: "confirmed",
     note: "",
-    todo_note: "",
-    todo_done: false,
     land_order_stops: [
       {
         stop_type: "pickup",
@@ -48,12 +43,12 @@ test("Excel 生成标题、表头、冻结行、筛选与多行站点", async ()
       },
     ],
   }
-  const buffer = await generateLandOrderPlanningExcel([buildLandOrderPlanningRow(source)])
+  const buffer = await generateLandOrderExportExcel([buildLandOrderPlanningRow(source)])
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(buffer as ArrayBuffer)
   const sheet = workbook.worksheets[0]
-  assert.equal(sheet.name, "路程规划表")
-  assert.equal(sheet.getCell("A1").value, "路程规划表")
+  assert.equal(sheet.name, "陆运订单清单")
+  assert.equal(sheet.getCell("A1").value, "陆运订单清单")
   assert.equal(sheet.getCell("C2").value, "Load #")
   assert.equal(sheet.getCell("C3").value, "00141288")
   assert.equal(sheet.getCell("C3").type, ExcelJS.ValueType.String)

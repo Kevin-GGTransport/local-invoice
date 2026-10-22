@@ -27,14 +27,9 @@ export type LandOrderPlanningSource = {
   weight_lbs?: string | number | null
   price?: string | number | null
   load_type: string
-  haul_type: string
-  driver?: string | null
-  trailer?: string | null
   delivery_person?: string | null
   status: string
   note?: string | null
-  todo_note?: string | null
-  todo_done: boolean
   created_at?: Date | string
   updated_at?: Date | string
   land_order_stops: readonly LandOrderPlanningStop[]
@@ -59,7 +54,7 @@ export type LandOrderPlanningRow = Omit<
 
 export const LAND_ORDER_STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
-  planned: "已规划",
+  confirmed: "已确认",
   completed: "已完成",
   cancelled: "已取消",
 }
@@ -69,7 +64,7 @@ export const LAND_ORDER_LOAD_TYPE_LABELS: Record<string, string> = {
   partial: "Partial",
 }
 
-export const LAND_ORDER_HAUL_TYPE_LABELS: Record<string, string> = {
+export const LAND_DISPATCH_HAUL_TYPE_LABELS: Record<string, string> = {
   local: "本地",
   long_haul: "长途",
 }

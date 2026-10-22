@@ -2,17 +2,13 @@
 
 import React from "react"
 import { createColumnHelper, type ColumnDef, type SortingState } from "@tanstack/react-table"
-import { ArrowDown, ArrowUp, ArrowUpDown, Pencil, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, ArrowUpDown, CalendarClock, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  LAND_ORDER_HAUL_TYPE_LABELS,
-  LAND_ORDER_STATUS_LABELS,
-  type LandOrderPlanningRow,
-} from "@/lib/land-orders/planning"
+import { LAND_ORDER_STATUS_LABELS, type LandOrderPlanningRow } from "@/lib/land-orders/planning"
 
 export type LandOrderRow = LandOrderPlanningRow
-export type SelectedLandOrderRow = Pick<LandOrderRow, "id" | "identifier" | "load_number" | "todo_done">
+export type SelectedLandOrderRow = Pick<LandOrderRow, "id" | "identifier" | "load_number">
 
 function SortIcon({ id, sorting }: { id: string; sorting: SortingState }) {
   const current = sorting.find((item) => item.id === id)
@@ -49,11 +45,11 @@ type UseLandOrderColumnsDeps = {
   toggleAll: () => void
   isSelected: (id: string) => boolean
   toggleRow: (row: LandOrderRow) => void
-  toggleTodo: (row: LandOrderRow, checked: boolean) => void
   sorting: SortingState
   toggleSort: (id: string) => void
   onDelete: (row: LandOrderRow) => void
   onEdit: (row: LandOrderRow) => void
+  onDispatch: (row: LandOrderRow) => void
 }
 
 export function useLandOrderColumns({
@@ -61,11 +57,11 @@ export function useLandOrderColumns({
   toggleAll,
   isSelected,
   toggleRow,
-  toggleTodo,
   sorting,
   toggleSort,
   onDelete,
   onEdit,
+  onDispatch,
 }: UseLandOrderColumnsDeps): ColumnDef<LandOrderRow, unknown>[] {
   return React.useMemo(
     () => [
@@ -185,65 +181,39 @@ export function useLandOrderColumns({
         ],
       }),
       columnHelper.group({
-        id: "operations",
-        header: "运营",
+        id: "broker",
+        header: "Broker 与状态",
         columns: [
           columnHelper.accessor("broker", {
             header: () => sortable("broker", "Broker", toggleSort, sorting),
             cell: (info) => info.getValue() ?? "—",
           }),
-          columnHelper.accessor("trailer", {
-            header: "Trailer",
-            cell: (info) => info.getValue() ?? "—",
-          }),
-          columnHelper.accessor("haul_type", {
-            header: "长途",
-            cell: (info) =>
-              LAND_ORDER_HAUL_TYPE_LABELS[info.getValue()] ?? info.getValue(),
-          }),
-          columnHelper.accessor("driver", {
-            header: () => sortable("driver", "司机", toggleSort, sorting),
-            cell: (info) => info.getValue() ?? "—",
-          }),
           columnHelper.accessor("status", {
-            header: () => sortable("status", "状态", toggleSort, sorting),
+            header: () => sortable("status", "订单状态", toggleSort, sorting),
             cell: (info) => LAND_ORDER_STATUS_LABELS[info.getValue()] ?? info.getValue(),
           }),
         ],
       }),
       columnHelper.group({
-        id: "todo",
-        header: "Todo 与操作",
+        id: "actions",
+        header: "操作",
         columns: [
-          columnHelper.display({
-            id: "todo",
-            header: "Todo",
-            size: 220,
-            cell: ({ row }) => (
-              <div className="flex items-start gap-2">
-                <Checkbox
-                  checked={row.original.todo_done}
-                  onCheckedChange={(checked) => toggleTodo(row.original, checked === true)}
-                  aria-label={`标记 ${row.original.load_number ?? row.original.id} Todo`}
-                  className="mt-0.5"
-                />
-                <span
-                  className={`min-w-0 whitespace-pre-line text-xs ${
-                    row.original.todo_done ? "text-muted-foreground line-through" : ""
-                  }`}
-                >
-                  {row.original.todo_note || "—"}
-                </span>
-              </div>
-            ),
-          }),
           columnHelper.display({
             id: "actions",
             header: "操作",
-            size: 90,
+            size: 120,
             enableResizing: false,
             cell: ({ row }) => (
               <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  onClick={() => onDispatch(row.original)}
+                  aria-label="加入排车表"
+                >
+                  <CalendarClock className="size-3.5" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -268,6 +238,6 @@ export function useLandOrderColumns({
         ],
       }),
     ],
-    [allSelected, toggleAll, isSelected, toggleRow, toggleTodo, sorting, toggleSort, onDelete, onEdit]
+    [allSelected, toggleAll, isSelected, toggleRow, sorting, toggleSort, onDelete, onEdit, onDispatch]
   )
 }

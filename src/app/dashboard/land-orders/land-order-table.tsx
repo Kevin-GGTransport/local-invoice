@@ -76,7 +76,7 @@ function persistGroupOrder(order: string[]) {
 }
 
 async function downloadExport(url: string, filename: string) {
-  const loadingToast = toast.loading("正在生成路程规划表...")
+  const loadingToast = toast.loading("正在生成陆运订单清单...")
   try {
     const response = await fetchResponse(url)
     if (!response.ok) throw await getApiError(response, `导出失败 (${response.status})`)
@@ -88,7 +88,7 @@ async function downloadExport(url: string, filename: string) {
     anchor.click()
     URL.revokeObjectURL(objectUrl)
     toast.dismiss(loadingToast)
-    toast.success("路程规划表已导出")
+    toast.success("陆运订单清单已导出")
   } catch (error) {
     toast.dismiss(loadingToast)
     toast.error(getRequestErrorMessage(error, "导出失败，请重试"))
@@ -102,10 +102,6 @@ export function LandOrderTable() {
   const [operatingCompanyInput, setOperatingCompanyInput] = React.useState("")
   const [appliedOperatingCompany, setAppliedOperatingCompany] = React.useState("")
   const [status, setStatus] = React.useState("all")
-  const [driverInput, setDriverInput] = React.useState("")
-  const [appliedDriver, setAppliedDriver] = React.useState("")
-  const [haulType, setHaulType] = React.useState("all")
-  const [todoDone, setTodoDone] = React.useState("all")
   const [dateFrom, setDateFrom] = React.useState("")
   const [dateTo, setDateTo] = React.useState("")
   const [columnOverrides, setColumnOverrides] = React.useState<VisibilityState>({})
@@ -150,23 +146,11 @@ export function LandOrderTable() {
         params.set("operatingCompany", appliedOperatingCompany)
       }
       if (status !== "all") params.set("status", status)
-      if (appliedDriver) params.set("driver", appliedDriver)
-      if (haulType !== "all") params.set("haulType", haulType)
-      if (todoDone !== "all") params.set("todoDone", todoDone)
       if (dateFrom) params.set("dateFrom", dateFrom)
       if (dateTo) params.set("dateTo", dateTo)
       return params
     },
-    [
-      appliedDriver,
-      appliedOperatingCompany,
-      appliedSearch,
-      dateFrom,
-      dateTo,
-      haulType,
-      status,
-      todoDone,
-    ]
+    [appliedOperatingCompany, appliedSearch, dateFrom, dateTo, status]
   )
 
   const {
@@ -189,27 +173,6 @@ export function LandOrderTable() {
     onError: (message) => toast.error(`加载陆运订单失败：${message}`),
   })
 
-  React.useEffect(() => {
-    setSelected((prev) => {
-      if (prev.size === 0) return prev
-      const next = new Map(prev)
-      let changed = false
-      for (const row of rows) {
-        const saved = next.get(row.id)
-        if (saved && saved.todo_done !== row.todo_done) {
-          next.set(row.id, {
-            id: row.id,
-            identifier: row.identifier,
-            load_number: row.load_number,
-            todo_done: row.todo_done,
-          })
-          changed = true
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [rows])
-
   const columnVisibility = React.useMemo(() => ({ ...columnOverrides }), [columnOverrides])
   const columnOrder = React.useMemo(
     () => groupOrder.flatMap((groupId) => LAND_ORDER_GROUP_LEAF_COLUMN_IDS[groupId] ?? []),
@@ -227,7 +190,6 @@ export function LandOrderTable() {
             id: row.id,
             identifier: row.identifier,
             load_number: row.load_number,
-            todo_done: row.todo_done,
           })
         }
       }
@@ -244,30 +206,12 @@ export function LandOrderTable() {
           id: row.id,
           identifier: row.identifier,
           load_number: row.load_number,
-          todo_done: row.todo_done,
         })
       }
       return next
     })
   }, [])
   const isSelected = React.useCallback((id: string) => selected.has(id), [selected])
-
-  const toggleTodo = React.useCallback(
-    async (row: LandOrderRow, checked: boolean) => {
-      try {
-        await fetchJson(`/api/land-orders/${row.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ todo_done: checked }),
-        })
-        toast.success(checked ? "Todo 已标记完成" : "Todo 已恢复未完成")
-        refresh()
-      } catch (error) {
-        toast.error(getRequestErrorMessage(error, "更新 Todo 失败"))
-      }
-    },
-    [refresh]
-  )
 
   const editRow = React.useCallback(
     (row: LandOrderRow) => router.push(`/dashboard/land-orders/${row.id}/edit`),
@@ -298,11 +242,12 @@ export function LandOrderTable() {
     toggleAll,
     isSelected,
     toggleRow,
-    toggleTodo,
     sorting,
     toggleSort,
     onDelete: deleteRow,
     onEdit: editRow,
+    onDispatch: (row: LandOrderRow) =>
+      router.push(`/dashboard/land-dispatches/new?orderId=${row.id}`),
   })
 
   const table = useReactTable({
@@ -318,9 +263,6 @@ export function LandOrderTable() {
         search: appliedSearch,
         operatingCompany: appliedOperatingCompany,
         status: status === "all" ? "" : status,
-        driver: appliedDriver,
-        haulType: haulType === "all" ? "" : haulType,
-        todoDone: todoDone === "all" ? "" : todoDone,
         dateFrom,
         dateTo,
       },
@@ -329,16 +271,13 @@ export function LandOrderTable() {
       groupOrder,
     }),
     [
-      appliedDriver,
       appliedOperatingCompany,
       appliedSearch,
       dateFrom,
       dateTo,
       groupOrder,
-      haulType,
       sorting,
       status,
-      todoDone,
       columnVisibility,
     ]
   )
@@ -350,10 +289,6 @@ export function LandOrderTable() {
       setOperatingCompanyInput(config.filters.operatingCompany)
       setAppliedOperatingCompany(config.filters.operatingCompany)
       setStatus(config.filters.status || "all")
-      setDriverInput(config.filters.driver)
-      setAppliedDriver(config.filters.driver)
-      setHaulType(config.filters.haulType || "all")
-      setTodoDone(config.filters.todoDone || "all")
       setDateFrom(config.filters.dateFrom)
       setDateTo(config.filters.dateTo)
       setSorting(
@@ -499,10 +434,6 @@ export function LandOrderTable() {
     setOperatingCompanyInput("")
     setAppliedOperatingCompany("")
     setStatus("all")
-    setDriverInput("")
-    setAppliedDriver("")
-    setHaulType("all")
-    setTodoDone("all")
     setDateFrom("")
     setDateTo("")
     setPage(1)
@@ -537,9 +468,6 @@ export function LandOrderTable() {
     appliedSearch,
     appliedOperatingCompany,
     status !== "all" ? status : "",
-    appliedDriver,
-    haulType !== "all" ? haulType : "",
-    todoDone !== "all" ? todoDone : "",
     dateFrom,
     dateTo,
   ].filter(Boolean).length
@@ -557,7 +485,7 @@ export function LandOrderTable() {
         collapsedMeta={<span className="text-xs text-muted-foreground">共 {total} 条</span>}
         headerLeft={
           <div className="min-w-0 py-2">
-            <h1 className="text-sm font-semibold tracking-tight">陆运订单 / 路程规划表</h1>
+            <h1 className="text-sm font-semibold tracking-tight">陆运订单</h1>
             <p className="mt-0.5 text-xs text-muted-foreground">共 {total} 条订单</p>
           </div>
         }
@@ -572,7 +500,7 @@ export function LandOrderTable() {
               onClick={() =>
                 void downloadExport(
                   exportUrl(),
-                  `路程规划表_${new Date().toISOString().slice(0, 10)}.xlsx`
+                  `陆运订单清单_${new Date().toISOString().slice(0, 10)}.xlsx`
                 )
               }
             >
@@ -671,60 +599,11 @@ export function LandOrderTable() {
               <SelectContent>
                 <SelectItem value="all">全部状态</SelectItem>
                 <SelectItem value="draft">草稿</SelectItem>
-                <SelectItem value="planned">已规划</SelectItem>
+                <SelectItem value="confirmed">已确认</SelectItem>
                 <SelectItem value="completed">已完成</SelectItem>
                 <SelectItem value="cancelled">已取消</SelectItem>
               </SelectContent>
             </Select>
-            <Select
-              value={haulType}
-              onValueChange={(value) => {
-                setHaulType(value)
-                setPage(1)
-              }}
-            >
-              <SelectTrigger className="h-10">
-                <SelectValue placeholder="运输类型" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部运输</SelectItem>
-                <SelectItem value="local">本地</SelectItem>
-                <SelectItem value="long_haul">长途</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={todoDone}
-              onValueChange={(value) => {
-                setTodoDone(value)
-                setPage(1)
-              }}
-            >
-              <SelectTrigger className="h-10">
-                <SelectValue placeholder="Todo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部 Todo</SelectItem>
-                <SelectItem value="undone">未完成</SelectItem>
-                <SelectItem value="done">已完成</SelectItem>
-              </SelectContent>
-            </Select>
-            <Input
-              aria-label="司机"
-              placeholder="司机"
-              className="h-10"
-              value={driverInput}
-              onChange={(event) => setDriverInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  setAppliedDriver(driverInput)
-                  setPage(1)
-                }
-              }}
-              onBlur={() => {
-                setAppliedDriver(driverInput)
-                setPage(1)
-              }}
-            />
             <div className="flex h-10 items-center gap-1 rounded-lg border border-input bg-background px-2">
               <Input
                 aria-label="开始日期"

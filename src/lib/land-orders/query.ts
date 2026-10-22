@@ -1,6 +1,5 @@
 import { Prisma } from "@prisma/client"
 import {
-  LAND_ORDER_HAUL_TYPES,
   LAND_ORDER_SORT_FIELDS_SAFE,
   LAND_ORDER_STATUSES,
   isRealIsoDate,
@@ -33,9 +32,6 @@ type ParsedLandOrderQuery = {
   q: string
   operatingCompany: string
   status: string
-  driver: string
-  haulType: string
-  todoDone: string
   dateFrom: string
   dateTo: string
   sort: LandOrderSortField
@@ -78,9 +74,6 @@ export function parseLandOrderQuery(params: URLSearchParams): ParsedLandOrderQue
       100
     ),
     status: enumFilter(params.get("status") ?? "", LAND_ORDER_STATUSES, "状态"),
-    driver: boundedFilter(params.get("driver") ?? "", "司机", 100),
-    haulType: enumFilter(params.get("haulType") ?? "", LAND_ORDER_HAUL_TYPES, "运输类型"),
-    todoDone: enumFilter(params.get("todoDone") ?? "", ["done", "undone"], "Todo 状态"),
     dateFrom: dateFilter(params.get("dateFrom") ?? "", "开始日期"),
     dateTo: dateFilter(params.get("dateTo") ?? "", "结束日期"),
     sort,
@@ -101,12 +94,9 @@ function buildSqlWhere(filters: ParsedLandOrderQuery, selectedIds: bigint[]): Pr
       OR o.operating_company ILIKE ${pattern}
       OR o.load_number ILIKE ${pattern}
       OR o.broker ILIKE ${pattern}
-      OR o.driver ILIKE ${pattern}
-      OR o.trailer ILIKE ${pattern}
       OR o.dispatch_person ILIKE ${pattern}
       OR o.delivery_person ILIKE ${pattern}
       OR o.note ILIKE ${pattern}
-      OR o.todo_note ILIKE ${pattern}
       OR EXISTS (
         SELECT 1 FROM land_order_stops st
         WHERE st.land_order_id = o.id
@@ -128,10 +118,6 @@ function buildSqlWhere(filters: ParsedLandOrderQuery, selectedIds: bigint[]): Pr
     )
   }
   if (filters.status) conditions.push(Prisma.sql`o.status = ${filters.status}`)
-  if (filters.driver) conditions.push(Prisma.sql`o.driver ILIKE ${`%${filters.driver}%`}`)
-  if (filters.haulType) conditions.push(Prisma.sql`o.haul_type = ${filters.haulType}`)
-  if (filters.todoDone === "done") conditions.push(Prisma.sql`o.todo_done = TRUE`)
-  if (filters.todoDone === "undone") conditions.push(Prisma.sql`o.todo_done = FALSE`)
 
   const stopDateConditions: Prisma.Sql[] = []
   if (filters.dateFrom) {

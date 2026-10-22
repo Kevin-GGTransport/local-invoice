@@ -44,14 +44,9 @@ type OrderForm = {
   weight_lbs: string
   price: string
   load_type: "full" | "partial"
-  haul_type: "local" | "long_haul"
-  driver: string
-  trailer: string
   delivery_person: string
   status: "draft" | "planned" | "completed" | "cancelled"
   note: string
-  todo_note: string
-  todo_done: boolean
   stops: StopForm[]
 }
 
@@ -98,14 +93,9 @@ function emptyOrder(): OrderForm {
     weight_lbs: "",
     price: "",
     load_type: "full",
-    haul_type: "local",
-    driver: "",
-    trailer: "",
     delivery_person: "",
     status: "draft",
     note: "",
-    todo_note: "",
-    todo_done: false,
     stops: [emptyStop("pickup"), emptyStop("drop")],
   }
 }
@@ -123,14 +113,9 @@ function orderFromRecord(record: LandOrderRecord): OrderForm {
     weight_lbs: text(record.weight_lbs),
     price: text(record.price),
     load_type: (text(record.load_type) || "full") as OrderForm["load_type"],
-    haul_type: (text(record.haul_type) || "local") as OrderForm["haul_type"],
-    driver: text(record.driver),
-    trailer: text(record.trailer),
     delivery_person: text(record.delivery_person),
     status: (text(record.status) || "draft") as OrderForm["status"],
     note: text(record.note),
-    todo_note: text(record.todo_note),
-    todo_done: record.todo_done === true,
     stops: rawStops.length
       ? rawStops.map((rawStop) => {
           const stop = rawStop as LandOrderRecord
@@ -343,21 +328,6 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
               </SelectContent>
             </Select>
           </Field>
-          <Field label="运输类型">
-            <Select value={values.haul_type} onValueChange={(value) => update("haul_type", value as OrderForm["haul_type"])}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="local">本地</SelectItem>
-                <SelectItem value="long_haul">长途</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="司机">
-            <Input value={values.driver} onChange={(e) => update("driver", e.target.value)} />
-          </Field>
-          <Field label="Trailer">
-            <Input value={values.trailer} onChange={(e) => update("trailer", e.target.value)} />
-          </Field>
           <Field label="交货人">
             <Input value={values.delivery_person} onChange={(e) => update("delivery_person", e.target.value)} />
           </Field>
@@ -366,7 +336,7 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="draft">草稿</SelectItem>
-                <SelectItem value="planned">已规划</SelectItem>
+                <SelectItem value="confirmed">已确认</SelectItem>
                 <SelectItem value="completed">已完成</SelectItem>
                 <SelectItem value="cancelled">已取消</SelectItem>
               </SelectContent>
@@ -377,18 +347,6 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
         <Field label="备注">
           <Textarea rows={3} value={values.note} onChange={(e) => update("note", e.target.value)} />
         </Field>
-        <Field label="Todo">
-          <Textarea rows={2} value={values.todo_note} onChange={(e) => update("todo_note", e.target.value)} />
-        </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="size-4 accent-primary"
-            checked={values.todo_done}
-            onChange={(e) => update("todo_done", e.target.checked)}
-          />
-          Todo 已完成
-        </label>
       </section>
 
       <section className="space-y-3">

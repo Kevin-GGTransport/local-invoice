@@ -2,10 +2,11 @@ import { z } from "zod"
 
 export const MAX_LAND_ORDER_STOPS = 50
 
-export const LAND_ORDER_STATUSES = ["draft", "planned", "completed", "cancelled"] as const
+export const LAND_ORDER_STATUSES = ["draft", "confirmed", "completed", "cancelled"] as const
 export const LAND_ORDER_LOAD_TYPES = ["full", "partial"] as const
-export const LAND_ORDER_HAUL_TYPES = ["local", "long_haul"] as const
 export const LAND_ORDER_STOP_TYPES = ["pickup", "drop"] as const
+export const LAND_DISPATCH_HAUL_TYPES = ["local", "long_haul"] as const
+export const LAND_DISPATCH_STATUSES = ["planned", "dispatched", "completed", "cancelled"] as const
 
 export const LAND_ORDER_SORT_FIELDS_SAFE = [
   "pickup_date",
@@ -14,7 +15,6 @@ export const LAND_ORDER_SORT_FIELDS_SAFE = [
   "identifier",
   "load_number",
   "broker",
-  "driver",
   "status",
   "created_at",
 ] as const
@@ -159,14 +159,9 @@ export const landOrderCreateSchema = z
     weight_lbs: nonnegativeNumber("重量", 9_999_999_999.99),
     price: nonnegativeNumber("价格", 9_999_999_999.99),
     load_type: z.enum(LAND_ORDER_LOAD_TYPES, "装载类型无效").default("full"),
-    haul_type: z.enum(LAND_ORDER_HAUL_TYPES, "运输类型无效").default("local"),
-    driver: optionalText(100, "司机"),
-    trailer: optionalText(100, "Trailer"),
     delivery_person: optionalText(100, "交货人"),
     status: z.enum(LAND_ORDER_STATUSES, "订单状态无效").default("draft"),
     note: optionalText(500, "备注"),
-    todo_note: optionalText(500, "Todo"),
-    todo_done: z.boolean().default(false),
     stops: z
       .array(landOrderStopSchema)
       .min(1, "至少需要一个提货点和一个交货点")
@@ -184,12 +179,40 @@ export const landOrderCreateSchema = z
 export const landOrderPatchSchema = z
   .object({
     status: z.enum(LAND_ORDER_STATUSES, "订单状态无效").optional(),
-    todo_done: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "没有需要更新的字段")
+
+export const landDispatchCreateSchema = z
+  .object({
+    land_order_id: landOrderIdSchema,
+    dispatch_date: dateSchema,
+    truck: optionalText(50, "车牌/标识"),
+    driver: optionalText(100, "司机"),
+    trailer: optionalText(100, "Trailer"),
+    haul_type: z.enum(LAND_DISPATCH_HAUL_TYPES, "运输类型无效").default("long_haul"),
+    status: z.enum(LAND_DISPATCH_STATUSES, "排车状态无效").default("planned"),
+    todo_note: optionalText(500, "Todo"),
+    todo_done: z.boolean().default(false),
+    sort_order: z.number().int().min(0).max(999999).default(0),
+  })
+  .refine((value) => Object.keys(value).length > 0, "没有需要更新的字段")
+
+export const landDispatchPatchSchema = z
+  .object({
+    dispatch_date: dateSchema.optional(),
+    truck: optionalText(50, "车牌/标识").optional(),
     driver: optionalText(100, "司机").optional(),
     trailer: optionalText(100, "Trailer").optional(),
+    haul_type: z.enum(LAND_DISPATCH_HAUL_TYPES, "运输类型无效").optional(),
+    status: z.enum(LAND_DISPATCH_STATUSES, "排车状态无效").optional(),
+    todo_note: optionalText(500, "Todo").optional(),
+    todo_done: z.boolean().optional(),
+    sort_order: z.number().int().min(0).max(999999).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "没有需要更新的字段")
 
 export type LandOrderCreateInput = z.output<typeof landOrderCreateSchema>
 export type LandOrderPatchInput = z.output<typeof landOrderPatchSchema>
 export type LandOrderStopInput = z.output<typeof landOrderStopSchema>
+export type LandDispatchCreateInput = z.output<typeof landDispatchCreateSchema>
+export type LandDispatchPatchInput = z.output<typeof landDispatchPatchSchema>

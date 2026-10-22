@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { jsonError, requireSession } from "@/lib/api-helpers"
 import { LandOrderQueryError, readLandOrders } from "@/lib/land-orders/query"
 import { parseLandOrderIds } from "@/lib/land-orders/server"
-import { generateLandOrderPlanningExcel } from "@/lib/land-orders/export-excel"
+import { generateLandOrderExportExcel } from "@/lib/land-orders/export-excel"
 
 export async function GET(request: NextRequest) {
   const { error } = await requireSession()
@@ -23,13 +23,13 @@ export async function GET(request: NextRequest) {
       return jsonError("导出结果超过 10000 条，请缩小筛选范围后重试", 413)
     }
     const rows = result.rows
-    const buffer = await generateLandOrderPlanningExcel(rows)
+    const buffer = await generateLandOrderExportExcel(rows)
     const timestamp = new Date().toISOString().slice(0, 10)
     return new NextResponse(buffer as unknown as BodyInit, {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(`路程规划表_${timestamp}.xlsx`)}"`,
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(`陆运订单清单_${timestamp}.xlsx`)}"`,
       },
     })
   } catch (error) {

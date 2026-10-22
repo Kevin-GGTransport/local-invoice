@@ -1,6 +1,5 @@
 import ExcelJS from "exceljs"
 import {
-  LAND_ORDER_HAUL_TYPE_LABELS,
   LAND_ORDER_STATUS_LABELS,
   type LandOrderPlanningRow,
 } from "./planning"
@@ -22,11 +21,8 @@ const COLUMNS = [
   { header: "交货时间", width: 16, text: true },
   { header: "交货人", width: 14 },
   { header: "Broker", width: 18 },
-  { header: "Trailer", width: 16, text: true },
-  { header: "长途", width: 12 },
-  { header: "司机", width: 14 },
-  { header: "状态", width: 12 },
-  { header: "Todo", width: 24 },
+  { header: "装载类型", width: 12 },
+  { header: "订单状态", width: 12 },
 ] as const
 
 const THIN_BORDER: Partial<ExcelJS.Borders> = {
@@ -47,17 +43,17 @@ function colLetter(index: number): string {
   return result
 }
 
-export async function generateLandOrderPlanningExcel(
+export async function generateLandOrderExportExcel(
   rows: readonly LandOrderPlanningRow[]
 ): Promise<ExcelJS.Buffer> {
   const workbook = new ExcelJS.Workbook()
-  const sheet = workbook.addWorksheet("路程规划表", {
+  const sheet = workbook.addWorksheet("陆运订单清单", {
     views: [{ state: "frozen", ySplit: 2 }],
   })
   sheet.columns = COLUMNS.map((column) => ({ width: column.width }))
   sheet.mergeCells(`A1:${colLetter(COLUMNS.length)}1`)
   const title = sheet.getCell("A1")
-  title.value = "路程规划表"
+  title.value = "陆运订单清单"
   title.font = { bold: true, size: 14 }
   title.alignment = { horizontal: "center", vertical: "middle" }
   sheet.getRow(1).height = 26
@@ -98,11 +94,8 @@ export async function generateLandOrderPlanningExcel(
       row.drop_times,
       row.delivery_person ?? "",
       row.broker ?? "",
-      row.trailer ?? "",
-      LAND_ORDER_HAUL_TYPE_LABELS[row.haul_type] ?? row.haul_type,
-      row.driver ?? "",
+      row.load_type === "full" ? "Full" : "Partial",
       LAND_ORDER_STATUS_LABELS[row.status] ?? row.status,
-      row.todo_done ? `已完成${row.todo_note ? `：${row.todo_note}` : ""}` : row.todo_note ?? "",
     ]
     const excelRow = sheet.addRow(values)
     excelRow.alignment = { vertical: "top", wrapText: true }
