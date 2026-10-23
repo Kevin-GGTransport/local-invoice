@@ -273,17 +273,36 @@ export function LandOrderForm({ orderId }: { orderId?: string }) {
       const parsed = parseSocText(result.text)
       setValues((prev) => mergeSocIntoOrder(prev, parsed))
       setSocConfidence(result.confidence)
-      setSocWarnings(parsed.warnings)
+      setSocWarnings([
+        ...parsed.warnings,
+        ...(result.confidence != null && result.confidence < 75
+          ? ["识别置信度较低，请逐项核对"]
+          : []),
+      ])
 
       const pickupCount = parsed.stops.filter((stop) => stop.stop_type === "pickup").length
       const dropCount = parsed.stops.filter((stop) => stop.stop_type === "drop").length
+      const mainFieldCount = [
+        parsed.operating_company,
+        parsed.broker,
+        parsed.load_number,
+        parsed.quantity,
+        parsed.pallet_positions,
+        parsed.weight_lbs,
+        parsed.price,
+        parsed.load_type,
+      ].filter(Boolean).length
       setSocSummary(
         parsed.stops.length
-          ? `识别到 ${pickupCount} 个提货点、${dropCount} 个卸货点`
+          ? `主信息 ${mainFieldCount} 项；提货点 ${pickupCount} 个、卸货点 ${dropCount} 个`
           : "未识别到站点信息"
       )
       setSocState("success")
-      toast.success("SOC 识别完成，已填入空字段")
+      if (parsed.stops.length) {
+        toast.success("SOC 识别完成，已填入空字段")
+      } else {
+        toast.warning("SOC 识别完成，但未识别到站点，请核对")
+      }
     } catch (error) {
       setSocState("error")
       setSocWarnings(["识别失败，请重试"])

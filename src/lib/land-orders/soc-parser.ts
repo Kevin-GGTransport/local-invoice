@@ -150,7 +150,7 @@ function parseOperatingCompany(text: string, lines: string[]): string | undefine
   const labeled = firstMatch(text, [/\bCarrier\s*[:#]\s*([^\n]+)/i])
   if (labeled) return labeled.slice(0, 100)
 
-  const carrierIndex = lines.findIndex((line) => /^Carrier\b/i.test(line))
+  const carrierIndex = lines.findIndex((line) => /\bCarrier\b/i.test(line))
   if (carrierIndex < 0) return undefined
   const searchEnd = Math.min(lines.length, carrierIndex + 35)
   const markerIndex = lines
@@ -166,11 +166,14 @@ function parseOperatingCompany(text: string, lines: string[]): string | undefine
     }
   }
 
-  const candidate = lines
+  const candidateLine = lines
     .slice(carrierIndex + 1, searchEnd)
     .find((line) =>
       /\b(?:incorporated|inc|llc|l\.l\.c|corp|corporation)\b/i.test(line)
     )
+  const candidate = candidateLine
+    ?.replace(/^(?:3RD PARTY BILL|FREIGHT PREPAID TO:?)\s*/i, "")
+    .replace(/^.*?\b(?=[A-Z][A-Z &.'-]{6,}(?:INC|LLC|CORP)\b)/i, "")
   return candidate ? cleanValue(candidate).slice(0, 100) : undefined
 }
 
@@ -181,14 +184,92 @@ function parseSpecialNote(text: string): string | undefined {
   const instruction = match?.[1]
     ?.replace(/\s+/g, " ")
     .trim()
-    .slice(0, 350)
+    .slice(0, 110)
 
-  const equipment = firstMatch(text, [/\bEquipment Required\s*[:#]\s*([^\n]+)/i])
-  const services = firstMatch(text, [/\bServices\s*[:#]\s*([^\n]+)/i])
-  return [instruction, equipment ? `Equipment: ${equipment}` : "", services ? `Services: ${services}` : ""]
+  const equipment = firstMatch(text, [
+    /\bEquipment Required\s*[:#]\s*(.+?)(?=\s+(?:Shipping|Services|S[eo]nvices|Kinds|Special)\b|$)/i,
+  ])
+  const services = firstMatch(text, [
+    /\bS[eo][rn]?[vi]ces\s*[:#]\s*(.+?)(?=\s+(?:Units|Kinds|Special|Transportation)\b|$)/i,
+  ])
+  const cargoMatch = text.match(
+    /\b\d+(?:\.\d+)?\s+Pallets?\s+([^\n]+?)(?=\s+[A-Z]{4,}[A-Z0-9]*-|\s+\*\*|\s+Stop\s*1\b|\n|$)/im
+  )
+  const cargo = cargoMatch ? cleanValue(cargoMatch[1]) : undefined
+  const cargoStart = text.search(/Description\s+of\s+Articles/i)
+  const linearFeetStart = text.search(/Linear\s+Feet/i)
+  const cargoArea =
+    cargoStart >= 0
+      ? text.slice(cargoStart, linearFeetStart > cargoStart ? linearFeetStart : text.length)
+      : ""
+  const marks = [
+    ...new Set(
+      [...cargoArea.matchAll(/\b[A-Z]{4,}[A-Z0-9]*(?:\s+|-)[A-Z0-9-]+\b/g)]
+        .map((item) => item[0])
+        .filter(Boolean)
+    ),
+  ].slice(0, 5)
+  const linearFeet = firstMatch(text, [/\bLinear\s+Feet\s*[:#]?\s*(\d+(?:\.\d+)?)/i])
+  const totalMiles = firstMatch(text, [
+    /\bTotal\s+Miles\s*[:#]\s*(\d+(?:\.\d+)?)/i,
+    /\(\s*Load\s*ID\s*\)\s*(\d+(?:\.\d+)?)/i,
+    /\bMiles\s*:?\s*\n\s*(\d+(?:\.\d+)?)/i,
+  ])
+  const releasedValue = firstMatch(text, [
+    /\bReleased\s+Value\s*[:#]?\s*\$?\s*([\d,]+(?:\.\d+)?)/i,
+  ])
+  const moneyPattern = /\$?\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)/
+  const fuelSurcharge = firstMatch(text, [
+    new RegExp(`\\bFuel\\s+Surcharge\\s*${moneyPattern.source}`, "i"),
+  ])
+  const lumperFee = firstMatch(text, [
+    new RegExp(`\\bLumper\\s+Fee\\s*${moneyPattern.source}`, "i"),
+  ])
+  const totalCharge = firstMatch(text, [/\bTotal\s*:\s*\$?\s*([\d,]+(?:\.\d+)?)/i])
+  const mcNumber = firstMatch(text, [/\bMC\s*#\s*[:#]?\s*(\w{3,})/i])
+  const dotNumber = firstMatch(text, [/\bDOT\s*#\s*[:#]?\s*(\w{3,})/i])
+  const carrierContact = firstMatch(text, [/\bContact\s*[:#]\s*([^\n]+)/i])
+  const carrierAddress = firstMatch(text, [/\bAddress\s*[:#]\s*([^\n]+)/i])
+  const carrierPhone = firstMatch(text, [/\bPhone\s*[:#]\s*(\(?[\d.-]{3,}\)?[\d.\s-]{7,})/])
+  const driverType = firstMatch(text, [/(\w+)\s*\(\s*Driver\s+Type\s*\)/i])
+  const invoiceEmail = firstMatch(text, [
+    /SEND\s+YOUR\s+CARRIER\s+INVOICE\s+TO\s+([\w.@-]+)/i,
+  ])
+  const trackingSystem = firstMatch(text, [
+    /ALL[ _]+LOADS\s+MUST\s+BE\s+TRACKED\s+WITH\s+([A-Za-z-]+)/i,
+  ])
+  const footerSummary = [
+    invoiceEmail ? `Invoice: ${invoiceEmail}` : "",
+    trackingSystem ? `Tracking: ${trackingSystem}` : "",
+  ]
+    .filter(Boolean)
+    .join("；")
+
+  const details = [
+    instruction,
+    equipment ? `Equip: ${equipment}` : "",
+    services ? `Svc: ${services}` : "",
+    cargo ? `Cargo: ${cargo}` : "",
+    marks.length ? `Marks: ${marks.join(" / ")}` : "",
+    linearFeet ? `LF: ${linearFeet}` : "",
+    totalMiles ? `Miles: ${totalMiles}` : "",
+    releasedValue ? `RV: ${releasedValue}` : "",
+    fuelSurcharge ? `Fuel: $${fuelSurcharge}` : "",
+    lumperFee ? `Lumper: $${lumperFee}` : "",
+    totalCharge ? `Total: $${totalCharge}` : "",
+    carrierAddress ? `CAddr: ${carrierAddress}` : "",
+    carrierPhone ? `CPhone: ${carrierPhone}` : "",
+    mcNumber ? `MC#: ${mcNumber}` : "",
+    dotNumber ? `DOT#: ${dotNumber}` : "",
+    carrierContact ? `CContact: ${carrierContact}` : "",
+    driverType ? `Driver Type: ${driverType}` : "",
+    footerSummary,
+  ]
     .filter(Boolean)
     .join("；")
     .slice(0, 500)
+
+  return details || undefined
 }
 
 function padTwo(value: number): string {
@@ -330,13 +411,23 @@ function stopTypeFromHeader(header: string): "pickup" | "drop" | undefined {
   return undefined
 }
 
+function removeDateColumn(value: string): string {
+  return cleanValue(
+    value
+      .replace(/\bDate\s*:.*/gi, "")
+      .replace(/\s+(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day,.*$/i, "")
+      .replace(/\s+\d{1,2},\s*\d{4}\s+\d{1,2}:\d{2}\s*[AP]\.?M\.?.*$/i, "")
+      .replace(/\s+\d{4}\s+\d{1,2}:\d{2}\s*[AP]\.?M\.?.*$/i, "")
+  )
+}
+
 function parseStopSegment(segment: string): SocParsedStop | undefined {
   const lines = normalizeLines(segment)
   if (!lines.length) return undefined
   const stopType = stopTypeFromHeader(lines[0])
   if (!stopType) return undefined
 
-  const inlineCompany = cleanValue(
+  const inlineCompany = removeDateColumn(
     lines[0].match(
       /\b(?:Customer|Pickup From|Deliver(?:y)? To|Shipper|Consignee|Origin|Destination)\s*[:#-]?\s+(.+)$/i
     )?.[1] ?? ""
@@ -346,16 +437,18 @@ function parseStopSegment(segment: string): SocParsedStop | undefined {
   if (inlineCompany) {
     company_name = inlineCompany
   } else if (customerLineIndex >= 0) {
-    const inline = cleanValue(lines[customerLineIndex].replace(/^Customer\s*[:#]?\s*/i, ""))
-    company_name = inline || cleanValue(lines[customerLineIndex + 1] ?? "")
+    const inline = removeDateColumn(
+      lines[customerLineIndex].replace(/^Customer\s*[:#]?\s*/i, "")
+    )
+    company_name = inline || removeDateColumn(lines[customerLineIndex + 1] ?? "")
   } else if (
     /^(?:Pickup|Pick[- ]?Up|Origin|Shipper|Drop|Delivery|Deliver|Consignee|Destination)(?:\s+(?:From|To|Information))?$/i.test(
       lines[0]
     )
   ) {
-    company_name = cleanValue(lines[1] ?? "")
+    company_name = removeDateColumn(lines[1] ?? "")
   } else {
-    company_name = cleanValue(
+    company_name = removeDateColumn(
       lines.find(
         (line, index) =>
           index > 0 &&
@@ -367,7 +460,7 @@ function parseStopSegment(segment: string): SocParsedStop | undefined {
   }
 
   const address =
-    cleanValue(
+    removeDateColumn(
       lines.find(
         (line) =>
           /^\d{1,6}\s+/.test(line) &&
@@ -375,7 +468,9 @@ function parseStopSegment(segment: string): SocParsedStop | undefined {
           !/[A-Za-z]{2},\s*[A-Za-z]{2}\s+\d/.test(line)
       ) ?? ""
     ) || undefined
-  const location = parseCityStateZip(segment)
+  const location = parseCityStateZip(
+    segment.replace(/([A-Za-z])\.\s*(?=[A-Z]{2}\s+[$OIlSB\d])/g, "$1, ")
+  )
   const dateAndTime = parseStopDateAndTimes(segment)
   const phone = segment.match(/\(?\b\d{3}\)?\s*[-.]?\s*\d{3}\s*[-.]?\s*\d{4}\b/)
   const dock = segment.match(/\bDock\s*[:#]?\s*[A-Za-z0-9,-]+(?:[^\S\r\n]+[A-Za-z0-9,-]+){0,3}/i)
@@ -446,6 +541,8 @@ function parseStops(text: string): SocParsedStop[] {
 
 function normalizeReferences(value: string): string {
   return value
+    .replace(/\bN\s*\/\s*A\b/gi, " ")
+    .replace(/\bNIA\b/gi, " ")
     .split(/\s*(?:\/|\||,|;)\s*/)
     .map(cleanValue)
     .filter((item) => item && !/^(?:n\/?a|nia|none)$/i.test(item))
@@ -484,6 +581,29 @@ function parseLoadType(text: string): "full" | "partial" | undefined {
   return undefined
 }
 
+function parsePackageCount(
+  text: string,
+  packagePattern: RegExp,
+  explicitLabelPattern: RegExp
+): string | undefined {
+  const explicit = firstMatch(text, [
+    new RegExp(`\\b(?:${explicitLabelPattern.source})\\s*[:#]?\\s*(\\d+(?:\\.\\d+)?)`, "i"),
+  ])
+  if (explicit) return numberText(explicit)
+
+  const lineValues = text
+    .split("\n")
+    .map((line) => line.match(new RegExp(`\\b(\\d+(?:\\.\\d+)?)\\s+${packagePattern.source}`, "i"))?.[1])
+    .filter((value): value is string => Boolean(value))
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+
+  if (!lineValues.length) return undefined
+  // A load total is commonly printed after line items. When several counts
+  // appear, the largest is safer than the first commodity's count.
+  return numberText(String(Math.max(...lineValues)))
+}
+
 export function parseSocText(input: string): SocParsedOrder {
   const text = input.replace(/\r\n?/g, "\n").trim()
   const lines = normalizeLines(text)
@@ -517,17 +637,15 @@ export function parseSocText(input: string): SocParsedOrder {
       /\bOrder\s*(?:#|No\.?|Number)\s*[:#]?\s*([A-Z0-9-]{3,})/i,
       /\bPRO\s*#\s*[:#]?\s*([A-Z0-9-]{3,})/i,
     ])?.slice(0, 100),
-    quantity: numberText(
-      firstMatch(text, [
-        /\bUnits\s*[:#]\s*(\d+(?:\.\d+)?)/i,
-        /\b(\d+(?:\.\d+)?)\s+(?:Pallets?|Cases?|Pieces?|Packages?|Skids?)/i,
-      ])
+    quantity: parsePackageCount(
+      text,
+      /(?:Pallets?|Pallet\(s\)|Cases?|Pieces?|Packages?|Skids?)/i,
+      /Units/
     ),
-    pallet_positions: numberText(
-      firstMatch(text, [
-        /\bLinear\s+Feet\s*[:#]?\s*(\d+(?:\.\d+)?)/i,
-        /\bPallet\s+Positions?\s*[:#]?\s*(\d+(?:\.\d+)?)/i,
-      ])
+    pallet_positions: parsePackageCount(
+      text,
+      /Pallet(?:s)?\(s\)?|Pallets?/i,
+      /Pallet\s+Positions?/
     ),
     weight_lbs: numberText(
       firstMatch(text, [

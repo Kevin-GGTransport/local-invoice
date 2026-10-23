@@ -31,7 +31,9 @@ Transportation Mode: Truckload
 Equipment Required: Van
 Services: Fuel Surcharge, Lumper Fee
 
-21 Pallets Wipes
+Description of Articles
+21 Pallets Wipes TAZZAWP1200-864
+TAZZAHBSP-324
 21 Pallet(s)
 Linear Feet: 48.00
 Total Weight: 27366 LB
@@ -43,6 +45,7 @@ NIA (Pickup Number)
 NIA (Delivery Number)
 NIA (BOL Number)
 518491 (PO Reference)
+1 (Driver Type)
 
 Carrier Charges
 Shipping Charges $700.00
@@ -68,6 +71,10 @@ Anaheim, CA 92806
 Date: Friday, October 23, 2026 11:00 AM - Friday, October 23,
 2026 11:00 AM
 APPT.
+
+*PLEASE SEND YOUR CARRIER INVOICE TO AP@ASSOCIATEDLOGISTICS.COM*
+*ALL LOADS MUST BE TRACKED WITH TRUCKERTOOLS UNLESS AUTHORIZATION FOR
+EXCLUSION IS GRANTED*
 `
 
 function blankOrder() {
@@ -121,7 +128,7 @@ test("解析 SOC 主信息和多个站点", () => {
   assert.equal(parsed.operating_company, "ALREADY ARRIVED LOGISTICS INC")
   assert.equal(parsed.load_number, "65080071")
   assert.equal(parsed.quantity, "21")
-  assert.equal(parsed.pallet_positions, "48.00")
+  assert.equal(parsed.pallet_positions, "21")
   assert.equal(parsed.weight_lbs, "27366")
   assert.equal(parsed.price, "700.00")
   assert.equal(parsed.load_type, "full")
@@ -156,6 +163,15 @@ test("解析 SOC 主信息和多个站点", () => {
     stop_note: undefined,
   })
   assert.deepEqual(parsed.warnings, [])
+  assert.ok(parsed.note?.includes("Cargo: Wipes"))
+  assert.ok(parsed.note?.includes("TAZZAWP1200-864"))
+  assert.ok(parsed.note?.includes("LF: 48.00"))
+  assert.ok(parsed.note?.includes("Miles: 428.00"))
+  assert.ok(parsed.note?.includes("MC#: 853868"))
+  assert.ok(parsed.note?.includes("DOT#: 2469728"))
+  assert.ok(parsed.note?.includes("Driver Type: 1"))
+  assert.ok(parsed.note?.includes("Invoice: AP@ASSOCIATEDLOGISTICS.COM"))
+  assert.ok(parsed.note?.includes("Tracking: TRUCKERTOOLS"))
 })
 
 test("兼容 OCR 常见误读和换行", () => {
@@ -258,6 +274,28 @@ Modesto, CA 95357-1234
   assert.equal(parsed.stops[0].zip_code, undefined)
   assert.equal(parsed.stops[1].zip_code, "95357")
   assert.deepEqual(parsed.warnings, ["提货点 1 Zip 未识别，请核对"])
+})
+
+test("多货品数量优先使用总量而不是第一条货品", () => {
+  const parsed = parseSocText(`
+Description of Articles
+10 Pallets Product A
+11 Pallets Product B
+21 Pallet(s)
+Total Weight: 1000 LB
+Stop 1 Pickup
+Customer
+Alpha Warehouse Friday, October 23, 2026 11:00 AM
+Los Angeles, CA 90001
+Stop 2 Delivery
+Customer
+Beta Distribution
+Fresno, CA 93721
+`)
+
+  assert.equal(parsed.quantity, "21")
+  assert.equal(parsed.pallet_positions, "21")
+  assert.equal(parsed.stops[0].company_name, "Alpha Warehouse")
 })
 
 test("识别结果只填入空字段且保留手工内容", () => {
