@@ -170,29 +170,38 @@ export async function readLandOrders(
     ? options.selectedIds
     : parseSelectedLandOrderIds(params.get("ids"))
   const where = buildSqlWhere(filters, selectedIds)
-
-  const total = options.count
-    ? Number(
-        (
-          await tx.$queryRaw<Array<{ total: bigint }>>(
-            Prisma.sql`SELECT COUNT(*)::bigint AS total FROM land_orders o ${where}`
-          )
-        )[0]?.total ?? 0
-      )
-    : undefined
-
-  if (total != null && options.rejectIfOverTake && total > options.take) {
-    return { rows: [] as LandOrderPlanningRow[], total, exceededLimit: true as const }
-  }
-
   const direction = Prisma.raw(filters.order === "desc" ? "DESC" : "ASC")
-  const ids = await tx.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
+  const countQuery = Prisma.sql`SELECT COUNT(*)::bigint AS total FROM land_orders o ${where}`
+  const pageQuery = Prisma.sql`
     SELECT o.id FROM land_orders o ${where}
     ORDER BY ${sortExpression(filters.sort)} ${direction} NULLS LAST,
              o.load_number ${direction} NULLS LAST,
              o.id ${direction}
     LIMIT ${options.take} OFFSET ${options.skip ?? 0}
-  `)
+  `
+
+  let total: number | undefined
+  let ids: Array<{ id: bigint }>
+  if (options.count && options.rejectIfOverTake) {
+    total = Number(
+      (await tx.$queryRaw<Array<{ total: bigint }>>(countQuery))[0]?.total ?? 0
+    )
+    if (total > options.take) {
+      return { rows: [] as LandOrderPlanningRow[], total, exceededLimit: true as const }
+    }
+    ids = await tx.$queryRaw<Array<{ id: bigint }>>(pageQuery)
+  } else if (options.count) {
+    // COUNT and the bounded page-ID query are independent. Running them together
+    // removes one database round-trip from every list request.
+    const [countRows, pageRows] = await Promise.all([
+      tx.$queryRaw<Array<{ total: bigint }>>(countQuery),
+      tx.$queryRaw<Array<{ id: bigint }>>(pageQuery),
+    ])
+    total = Number(countRows[0]?.total ?? 0)
+    ids = pageRows
+  } else {
+    ids = await tx.$queryRaw<Array<{ id: bigint }>>(pageQuery)
+  }
 
   const records = ids.length
     ? await tx.land_orders.findMany({

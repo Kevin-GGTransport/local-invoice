@@ -34,6 +34,60 @@ test("fetchJson returns data and always includes same-origin credentials", async
   }
 })
 
+test("fetchJson retries one transient GET transport failure", async () => {
+  const originalFetch = globalThis.fetch
+  let attempts = 0
+  globalThis.fetch = (async () => {
+    attempts += 1
+    if (attempts === 1) throw new TypeError("Failed to fetch")
+    return apiResponse({ success: true, data: { retry: true } })
+  }) as typeof fetch
+
+  try {
+    assert.deepEqual(await fetchJson("/api/flaky"), { retry: true })
+    assert.equal(attempts, 2)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("fetchJson retries a transient GET HTTP status once", async () => {
+  const originalFetch = globalThis.fetch
+  let attempts = 0
+  globalThis.fetch = (async () => {
+    attempts += 1
+    return attempts === 1
+      ? apiResponse({ success: false, error: "暂时不可用" }, 503)
+      : apiResponse({ success: true, data: { recovered: true } })
+  }) as typeof fetch
+
+  try {
+    assert.deepEqual(await fetchJson("/api/recovering"), { recovered: true })
+    assert.equal(attempts, 2)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("fetchJson does not retry writes", async () => {
+  const originalFetch = globalThis.fetch
+  let attempts = 0
+  globalThis.fetch = (async () => {
+    attempts += 1
+    throw new TypeError("Failed to fetch")
+  }) as typeof fetch
+
+  try {
+    await assert.rejects(
+      fetchJson("/api/save", { method: "POST", body: "{}" }),
+      (error: unknown) => error instanceof ApiClientError && error.kind === "network"
+    )
+    assert.equal(attempts, 1)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test("parseApiResponse preserves a structured server error", async () => {
   await assert.rejects(
     parseApiResponse(apiResponse({ success: false, error: "发票号已存在" }, 409)),
@@ -181,4 +235,55 @@ test("raw response errors and unknown errors use consistent messages", async () 
   assert.equal(error.kind, "http")
   assert.equal(error.retryable, true)
   assert.equal(error.message, "服务器暂时不可用，请稍后重试")
+})
+
+test("a 401 clears local auth caches and replaces the expired route", async () => {
+  const originalFetch = globalThis.fetch
+  const originalWindow = (globalThis as { window?: unknown }).window
+  const originalDocument = (globalThis as { document?: unknown }).document
+  const replacedUrl: string[] = []
+  const values = new Map<string, string>([["accessToken", "expired"]])
+  const storage = {
+    get length() {
+      return values.size
+    },
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => [...values.keys()][index] ?? null,
+    removeItem: (key: string) => {
+      values.delete(key)
+    },
+    setItem: (key: string, value: string) => {
+      values.set(key, value)
+    },
+  }
+
+  globalThis.fetch = (async () =>
+    apiResponse({ success: false, error: "未授权" }, 401)) as typeof fetch
+  ;(globalThis as { window?: unknown }).window = {
+    location: {
+      pathname: "/dashboard/land-orders",
+      search: "?page=2",
+      origin: "http://localhost:3001",
+      replace: (url: string) => replacedUrl.push(url),
+    },
+    localStorage: storage,
+    sessionStorage: storage,
+  }
+  ;(globalThis as { document?: unknown }).document = { cookie: "" }
+
+  try {
+    const response = await fetchResponse("/api/land-orders")
+    assert.equal(response.status, 401)
+    assert.equal(values.size, 0)
+    assert.equal(replacedUrl.length, 1)
+    const url = new URL(replacedUrl[0])
+    assert.equal(url.pathname, "/login")
+    assert.equal(url.searchParams.get("callbackUrl"), "/dashboard/land-orders?page=2")
+    assert.equal(url.searchParams.get("reason"), "session-expired")
+    assert.ok(url.searchParams.get("_ts"))
+  } finally {
+    globalThis.fetch = originalFetch
+    ;(globalThis as { window?: unknown }).window = originalWindow
+    ;(globalThis as { document?: unknown }).document = originalDocument
+  }
 })

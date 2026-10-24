@@ -8,8 +8,10 @@
 
 import React from "react"
 import type { SortingState } from "@tanstack/react-table"
-import { fetchJson } from "@/lib/api/client"
+import { ApiClientError, fetchJson } from "@/lib/api/client"
 import type { PaginatedData } from "@/lib/api/types"
+
+export const SERVER_TABLE_REFRESH_EVENT = "gng:server-table-refresh"
 
 type BuildParamsArgs = {
   page: number
@@ -44,6 +46,7 @@ export function useServerTable<TRow>({
   const [pageSize, setPageSize] = React.useState(initialPageSize)
   const [sorting, setSorting] = React.useState<SortingState>(initialSorting)
   const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
   const [reloadFlag, setReloadFlag] = React.useState(0)
 
   // 参数串做 effect 依赖：筛选/翻页/排序任一变化都会改变 paramsKey
@@ -59,11 +62,21 @@ export function useServerTable<TRow>({
   })
 
   React.useEffect(() => {
+    const refreshTables = () => setReloadFlag((flag) => flag + 1)
+    window.addEventListener(SERVER_TABLE_REFRESH_EVENT, refreshTables)
+    return () => window.removeEventListener(SERVER_TABLE_REFRESH_EVENT, refreshTables)
+  }, [])
+
+  React.useEffect(() => {
     let cancelled = false
-    ;(async () => {
+    const controller = new AbortController()
+    const load = async () => {
       setLoading(true)
+      setError(null)
       try {
-        const data = await fetchJson<PaginatedData<TRow>>(`${endpoint}?${paramsKey}`)
+        const data = await fetchJson<PaginatedData<TRow>>(`${endpoint}?${paramsKey}`, {
+          signal: controller.signal,
+        })
         if (cancelled) return
         setRows(data.rows)
         setTotal(data.pagination.total)
@@ -73,14 +86,24 @@ export function useServerTable<TRow>({
         }
       } catch (error) {
         if (!cancelled) {
-          onErrorRef.current?.(getErrorMessage(error, "加载数据失败"))
+          if (error instanceof ApiClientError && error.kind === "aborted") return
+          const message = getErrorMessage(error, "加载数据失败")
+          setError(message)
+          onErrorRef.current?.(message)
         }
       } finally {
         if (!cancelled) setLoading(false)
       }
-    })()
+    }
+
+    void load().catch(() => {
+      // Errors are handled in load; this guard avoids an unhandled rejection if
+      // cancellation races React's state update.
+    })
+
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [endpoint, paramsKey, reloadFlag, page, pageSize])
 
@@ -114,6 +137,7 @@ export function useServerTable<TRow>({
     setSorting,
     toggleSort,
     loading,
+    error,
     refresh,
   }
 }

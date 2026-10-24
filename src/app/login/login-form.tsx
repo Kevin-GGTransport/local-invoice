@@ -26,6 +26,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { clearLocalAuthCache } from "@/lib/auth-cache";
 
 const loginSchema = z.object({
   username: z.string().min(1, "请输入用户名"),
@@ -44,6 +45,7 @@ export function LoginForm() {
       : "/dashboard";
 
   useEffect(() => {
+    clearLocalAuthCache();
     if (searchParams.get("reason") === "session-expired") {
       toast.error("登录已过期，请重新登录");
     }
@@ -64,6 +66,7 @@ export function LoginForm() {
         toast.error("用户名或密码错误");
         return;
       }
+      clearLocalAuthCache();
       toast.success("登录成功");
       router.push(callbackUrl);
       router.refresh();

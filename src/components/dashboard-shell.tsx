@@ -7,6 +7,7 @@ import { BookOpen, Building2, CalendarClock, ChevronDown, CircleDollarSign, Circ
 import { signOut } from "next-auth/react";
 
 import { Button } from "@/components/ui/button";
+import { NetworkRecovery } from "@/components/network-recovery";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
@@ -372,6 +373,7 @@ export function DashboardShell({
           </div>
         </header>
 
+        <NetworkRecovery />
         <main className="min-w-0 flex-1 p-3 sm:p-4 lg:p-6">{children}</main>
       </div>
     </div>

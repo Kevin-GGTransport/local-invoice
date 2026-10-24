@@ -71,6 +71,7 @@ model accounting_invoices {
   @@index([check_date], map: "idx_accounting_invoices_check_date")
   @@index([company], map: "idx_accounting_invoices_company")
   @@index([invoice_date], map: "idx_accounting_invoices_invoice_date")
+  @@index([company, invoice_date], map: "idx_accounting_invoices_company_invoice_date")
   @@index([invoice_template_id], map: "idx_accounting_invoices_template")
 }
 
@@ -149,6 +150,7 @@ model land_order_stops {
   @@unique([land_order_id, sequence], map: "uk_land_order_stops_order_sequence")
   @@index([land_order_id, stop_type], map: "idx_land_order_stops_order_type")
   @@index([stop_date], map: "idx_land_order_stops_date")
+  @@index([stop_type, stop_date, land_order_id], map: "idx_land_order_stops_type_date_order")
 }
 
 model land_dispatch_items {
@@ -172,6 +174,7 @@ model land_dispatch_items {
   land_orders     land_orders  @relation(fields: [land_order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([dispatch_date], map: "idx_land_dispatch_items_date")
+  @@index([dispatch_date, sort_order, id], map: "idx_land_dispatch_items_date_order_id")
   @@index([truck], map: "idx_land_dispatch_items_truck")
   @@index([driver], map: "idx_land_dispatch_items_driver")
   @@index([status], map: "idx_land_dispatch_items_status")

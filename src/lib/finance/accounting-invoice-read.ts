@@ -40,14 +40,18 @@ export async function readAccountingInvoices(
   const orderClause = key === "master_order_number"
     ? Prisma.sql`${sortField} ${sortDirection} NULLS LAST, i.master_order_number ${sortDirection} NULLS LAST, i.id ${sortDirection}`
     : Prisma.sql`${sortField} ${sortDirection}, i.id ${sortDirection}`
-  const ids = await tx.$queryRaw<Array<{ id: bigint }>>(Prisma.sql`
+  const pageQuery = Prisma.sql`
     SELECT i.id ${from}
     ORDER BY ${orderClause}
     LIMIT ${options.take} OFFSET ${options.skip ?? 0}
-  `)
-  const counts = options.count ? await tx.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`
-    SELECT COUNT(*) AS total ${from}
-  `) : null
+  `
+  const countQuery = Prisma.sql`SELECT COUNT(*) AS total ${from}`
+  const [ids, counts] = options.count
+    ? await Promise.all([
+        tx.$queryRaw<Array<{ id: bigint }>>(pageQuery),
+        tx.$queryRaw<Array<{ total: bigint }>>(countQuery),
+      ])
+    : [await tx.$queryRaw<Array<{ id: bigint }>>(pageQuery), null]
   const records = await tx.accounting_invoices.findMany({
     where: { id: { in: ids.map((row) => row.id) } },
     include: { accounting_invoice_reconciliations: activeReconciliations },

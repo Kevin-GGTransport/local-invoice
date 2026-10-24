@@ -251,24 +251,36 @@ export async function readLandDispatches(
         return parseSelectedLandOrderIds(raw)
       })()
   const where = buildWhere(filters, ids)
-  const total = options.count ? await tx.land_dispatch_items.count({ where }) : undefined
-  if (total != null && options.rejectIfOverTake && total > options.take) {
-    return {
-      rows: [] as LandDispatchPlanningRow[],
-      total,
-      exceededLimit: true as const,
+  const count = () => tx.land_dispatch_items.count({ where })
+  const findRows = () =>
+    tx.land_dispatch_items.findMany({
+      where,
+      include: {
+        land_orders: { include: { land_order_stops: { orderBy: { sequence: "asc" } } } },
+      },
+      orderBy: orderBy(filters.sort, filters.order),
+      skip: options.skip ?? 0,
+      take: options.take,
+    })
+
+  let total: number | undefined
+  let items: Awaited<ReturnType<typeof findRows>>
+  if (options.count && options.rejectIfOverTake) {
+    total = await count()
+    if (total > options.take) {
+      return {
+        rows: [] as LandDispatchPlanningRow[],
+        total,
+        exceededLimit: true as const,
+      }
     }
+    items = await findRows()
+  } else if (options.count) {
+    ;[total, items] = await Promise.all([count(), findRows()])
+  } else {
+    items = await findRows()
   }
 
-  const items = await tx.land_dispatch_items.findMany({
-    where,
-    include: {
-      land_orders: { include: { land_order_stops: { orderBy: { sequence: "asc" } } } },
-    },
-    orderBy: orderBy(filters.sort, filters.order),
-    skip: options.skip ?? 0,
-    take: options.take,
-  })
   return {
     rows: items.map((item) =>
       buildLandDispatchPlanningRow(item as unknown as LandDispatchPlanningSource)

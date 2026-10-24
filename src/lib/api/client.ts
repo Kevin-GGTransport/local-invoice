@@ -1,4 +1,5 @@
 import type { ApiResponse } from "./types";
+import { clearLocalAuthCache } from "@/lib/auth-cache";
 
 export type ApiErrorKind =
   | "http"
@@ -27,6 +28,8 @@ export class ApiClientError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const RETRYABLE_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const GET_RETRY_DELAY_MS = 500;
 let redirectingToLogin = false;
 
 function isApiSuccess<TData>(
@@ -52,16 +55,22 @@ function statusMessage(status: number): string {
   return `请求失败 (${status})`;
 }
 
+function isRetryableHttpStatus(status: number): boolean {
+  return RETRYABLE_HTTP_STATUSES.has(status);
+}
+
 function redirectToLogin(): void {
   if (typeof window === "undefined" || redirectingToLogin) return;
   if (window.location.pathname === "/login") return;
 
   redirectingToLogin = true;
+  clearLocalAuthCache();
   const current = `${window.location.pathname}${window.location.search}`;
   const loginUrl = new URL("/login", window.location.origin);
   loginUrl.searchParams.set("callbackUrl", current);
   loginUrl.searchParams.set("reason", "session-expired");
-  window.location.assign(loginUrl.toString());
+  loginUrl.searchParams.set("_ts", Date.now().toString());
+  window.location.replace(loginUrl.toString());
 }
 
 async function readApiPayload<TData>(response: Response): Promise<ApiResponse<TData> | null> {
@@ -76,7 +85,7 @@ async function errorFromResponse(response: Response, fallback?: string): Promise
   return new ApiClientError(serverMessage || standardized || fallback || "请求失败，请稍后重试", {
     status: response.status,
     kind: "http",
-    retryable: response.status === 408 || response.status === 429 || response.status >= 500,
+    retryable: isRetryableHttpStatus(response.status),
   });
 }
 
@@ -166,7 +175,7 @@ export async function parseApiResponse<TData>(response: Response): Promise<TData
     throw new ApiClientError(serverMessage || statusMessage(response.status), {
       status: response.status,
       kind: "http",
-      retryable: response.status === 408 || response.status === 429 || response.status >= 500,
+      retryable: isRetryableHttpStatus(response.status),
     });
   }
   if (!isApiSuccess(payload)) {
@@ -187,7 +196,59 @@ export async function fetchJson<TData>(
   init?: RequestInit,
   timeoutMs = DEFAULT_TIMEOUT_MS
 ): Promise<TData> {
-  return parseApiResponse<TData>(await fetchResponse(url, init, timeoutMs));
+  const method = (init?.method ?? "GET").toUpperCase();
+  // Only retry idempotent requests. A dropped browser connection can reject a GET
+  // before the server has finished returning data even though no write occurred.
+  const retry = method === "GET" || method === "HEAD";
+  const maxAttempts = retry ? 2 : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetchResponse(url, init, timeoutMs);
+      if (
+        attempt < maxAttempts &&
+        RETRYABLE_HTTP_STATUSES.has(response.status)
+      ) {
+        await waitForRetry(GET_RETRY_DELAY_MS, init?.signal);
+        continue;
+      }
+      return parseApiResponse<TData>(response);
+    } catch (error) {
+      const transientTransportFailure =
+        error instanceof ApiClientError &&
+        (error.kind === "network" || error.kind === "offline");
+      if (attempt < maxAttempts && transientTransportFailure) {
+        await waitForRetry(GET_RETRY_DELAY_MS, init?.signal);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new ApiClientError("请求失败，请稍后重试", {
+    kind: "network",
+    retryable: true,
+  });
+}
+
+function waitForRetry(delayMs: number, signal?: AbortSignal | null): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(new ApiClientError("请求已取消", { kind: "aborted" }));
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeout = globalThis.setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+
+    function onAbort() {
+      globalThis.clearTimeout(timeout);
+      reject(new ApiClientError("请求已取消", { kind: "aborted" }));
+    }
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 export async function getApiErrorMessage(
